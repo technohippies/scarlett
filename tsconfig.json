@@ -1,16 +1,11 @@
 {
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "~/*": [
-        "./src/*"
-      ]
-    },
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "jsx": "preserve",
     "jsxImportSource": "solid-js"
-  }
+  },
+  "include": ["src/**/*", "stories/**/*", ".wxt/wxt.d.ts"]
 }

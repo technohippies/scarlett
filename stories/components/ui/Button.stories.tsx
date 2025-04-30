@@ -1,3 +1,4 @@
+// @ts-expect-error - TS server struggles with alias resolution outside src in WXT
 import { Button } from '~/components/ui/button';
 
 export default {
