@@ -1,4 +1,3 @@
-// Add comment here -> // @ts-expect-error - TS server struggles with alias resolution outside src in WXT
 import {
   TextField,
   TextFieldInput,
@@ -6,8 +5,7 @@ import {
   TextFieldTextArea,
   TextFieldDescription,
   TextFieldErrorMessage
-// @ts-expect-error - TS server struggles with alias resolution outside src in WXT
-} from '~/components/ui/text-field';
+} from '../../../src/components/ui/text-field';
 
 // Define the type for the args based on argTypes
 // type StoryArgs = {

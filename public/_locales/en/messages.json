@@ -1,0 +1,10 @@
+{
+  "extensionName": {
+    "message": "Scarlett Clipper",
+    "description": "The name of the extension."
+  },
+  "extensionDescription": {
+    "message": "A brief description of what Scarlett Clipper does.",
+    "description": "The description of the extension."
+  }
+} 

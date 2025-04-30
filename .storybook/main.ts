@@ -20,11 +20,6 @@ const config = {
   async viteFinal(config, { configType }) {
     return mergeConfig(config, {
       plugins: [UnoCSS()],
-      resolve: {
-        alias: {
-          '~': path.resolve(__dirname, '../src'),
-        },
-      },
     });
   },
 };

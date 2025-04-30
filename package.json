@@ -21,7 +21,6 @@
     "@electric-sql/pglite": "^0.2.17",
     "@solid-primitives/scheduled": "^1.5.1",
     "@webext-core/messaging": "^2.2.0",
-    "@webext-core/proxy-service": "^1.2.1",
     "@wxt-dev/storage": "^1.1.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
