@@ -1,0 +1,53 @@
+{
+  "name": "supercoach",
+  "description": "manifest.json description",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "build:firefox": "wxt build -b firefox",
+    "zip": "wxt zip",
+    "zip:firefox": "wxt zip -b firefox",
+    "compile": "tsc --noEmit",
+    "postinstall": "wxt prepare",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build",
+    "chromatic": "npx chromatic --project-token=chpt_91b2a3b8b536944"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.2.17",
+    "@solid-primitives/scheduled": "^1.5.1",
+    "@webext-core/messaging": "^2.2.0",
+    "@webext-core/proxy-service": "^1.2.1",
+    "@wxt-dev/storage": "^1.1.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "phosphor-solid": "^1.1.5",
+    "solid-js": "^1.9.5",
+    "tailwind-merge": "^3.2.0",
+    "ts-fsrs": "^4.7.1"
+  },
+  "devDependencies": {
+    "@kobalte/core": "^0.13.9",
+    "@storybook/addon-essentials": "^8.6.12",
+    "@storybook/addon-interactions": "^8.6.12",
+    "@storybook/addon-links": "^8.6.12",
+    "@storybook/blocks": "^8.6.12",
+    "@storybook/test": "^8.6.12",
+    "@types/marked": "^6.0.0",
+    "@unocss/preset-uno": "66.1.0-beta.12",
+    "@unocss/preset-wind4": "^66.1.0-beta.13",
+    "@wxt-dev/module-solid": "^1.1.3",
+    "@wxt-dev/unocss": "^1.0.1",
+    "storybook": "^8.6.12",
+    "typescript": "^5.8.3",
+    "unocss": "^66.1.0-beta.13",
+    "wxt": "^0.20.3"
+  },
+  "overrides": {
+    "storybook-solidjs-vite": "file:../../storybook-solidjs/packages/frameworks/solid-vite"
+  }
+}
