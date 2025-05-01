@@ -13,7 +13,7 @@ import {
     ComboboxTrigger 
 } from '../../components/ui/combobox';
 import { TextField, TextFieldInput } from '../../components/ui/text-field'; // Use TextField components for input
-import { LLMProviderOption } from './LLM'; // Import the simplified type
+import { ProviderOption } from './SetupProvider'; // Updated import: Renamed type and file is correct
 import { OllamaProvider } from '../../services/llm/providers/ollama';
 import { JanProvider, loadJanModel } from '../../services/llm/providers/jan';
 import { LMStudioProvider } from '../../services/llm/providers/lmstudio'; // Add when ready
@@ -26,7 +26,7 @@ import { Callout, CalloutTitle, CalloutContent } from '../../components/ui/callo
 import { ArrowLeft } from 'phosphor-solid'; // Import icon
 
 interface SetupLLMProps {
-  selectedProvider: LLMProviderOption;
+  selectedProvider: ProviderOption;
   onComplete: (config: LLMConfig) => void;
   onBack: () => void; // Add onBack prop
   messages: Messages; // Required for labels/instructions

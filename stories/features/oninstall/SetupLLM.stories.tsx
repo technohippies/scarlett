@@ -1,10 +1,10 @@
-import { SetupLLM } from '../../../src/features/oninstall/SetupLLM';
-import { LLMProviderOption } from '../../../src/features/oninstall/LLM';
+import { SetupLLM } from '../../../src/features/oninstall/SetupLLM'; // Reverted import path and name
+import { ProviderOption } from '../../../src/features/oninstall/SetupProvider'; // Updated import path and type
 import messagesEn from '../../../public/_locales/en/messages.json';
 import type { ModelInfo } from '../../../src/services/llm/types'; // Import ModelInfo type
 
 // --- Mock Data ---
-const mockOllamaProvider: LLMProviderOption = {
+const mockOllamaProvider: ProviderOption = { // Updated type
   id: 'ollama',
   name: 'Ollama',
   defaultBaseUrl: 'http://localhost:11434',
@@ -19,8 +19,8 @@ const mockDisplayModels: ModelInfo[] = [
 
 // --- Story Definition (Simple) ---
 export default {
-  title: 'Features/OnInstall/SetupLLM',
-  component: SetupLLM,
+  title: 'Features/OnInstall/SetupLLM', // Reverted title
+  component: SetupLLM, // Reverted component
   parameters: {
     layout: 'fullscreen',
   },
@@ -52,14 +52,14 @@ export default {
 // Helper function to wrap stories
 const renderWithWrapper = (args: any) => (
     <div class="h-screen w-full">
-        <SetupLLM {...args} />
+        <SetupLLM {...args} /> // Reverted component usage
     </div>
 );
 
 // --- Story Variants for Visual States ---
 
 // 1. Initial Loading State
-export const StateInitialLoading = {
+export const SetupLLMInitialLoading = {
     args: {
         _initialIsLoadingModels: true,
         _initialModels: [], // Ensure no models are shown
@@ -68,7 +68,7 @@ export const StateInitialLoading = {
 };
 
 // 2. Initial Load Error (Generic)
-export const StateInitialLoadError = {
+export const SetupLLMLoadError = {
     args: {
         _initialIsLoadingModels: false,
         _initialInitialLoadError: 'Error: Server connection failed (500)',
@@ -86,7 +86,7 @@ export const StateInitialLoadError = {
 };
 
 // 3. Model Selected, Ready to Test
-export const StateModelSelected = {
+export const SetupLLMModelSelected = {
     args: {
         _initialIsLoadingModels: false,
         _initialModels: mockDisplayModels,
@@ -97,7 +97,7 @@ export const StateModelSelected = {
 };
 
 // 4. Testing Connection State (Spinner)
-export const StateTestingConnection = {
+export const SetupLLMTestingConnection = {
   args: {
         _initialIsLoadingModels: false,
         _initialModels: mockDisplayModels,
@@ -108,7 +108,7 @@ export const StateTestingConnection = {
 };
 
 // 5. Test Connection Success
-export const StateTestSuccess = {
+export const SetupLLMTestSuccess = {
    args: {
         _initialIsLoadingModels: false,
         _initialModels: mockDisplayModels,
@@ -119,7 +119,7 @@ export const StateTestSuccess = {
 };
 
 // 6. Test Connection Error (Generic)
-export const StateTestErrorGeneric = {
+export const SetupLLMTestErrorGeneric = {
   args: {
         _initialIsLoadingModels: false,
         _initialModels: mockDisplayModels,
@@ -150,25 +150,25 @@ const createCorsErrorStoryArgs = (os: 'macos' | 'linux' | 'windows' | 'unknown')
 });
 
 // 7. Test Error (CORS - macOS)
-export const StateTestErrorCorsMacos = {
+export const SetupLLMTestErrorCorsMacos = {
     args: createCorsErrorStoryArgs('macos'),
     render: renderWithWrapper,
 };
 
 // 8. Test Error (CORS - Linux)
-export const StateTestErrorCorsLinux = {
+export const SetupLLMTestErrorCorsLinux = {
     args: createCorsErrorStoryArgs('linux'),
     render: renderWithWrapper,
 };
 
 // 9. Test Error (CORS - Windows)
-export const StateTestErrorCorsWindows = {
+export const SetupLLMTestErrorCorsWindows = {
     args: createCorsErrorStoryArgs('windows'),
     render: renderWithWrapper,
 };
 
 // 10. Test Error (CORS - Unknown OS)
-export const StateTestErrorCorsUnknown = {
+export const SetupLLMTestErrorCorsUnknown = {
     args: createCorsErrorStoryArgs('unknown'),
     render: renderWithWrapper,
 };
@@ -177,7 +177,7 @@ export const StateTestErrorCorsUnknown = {
 // This story shows the component when the Ollama provider is selected.
 // The actual display (loading, model list, error) depends on whether
 // an Ollama server is accessible at the defaultBaseUrl when viewing the story.
-export const OllamaDefault = {
+export const SetupLLMOllamaDefault = {
     render: renderWithWrapper,
 };
 
@@ -187,7 +187,7 @@ export const OllamaDefault = {
 //
 // - Initial Load Error: Requires mocking the initial `fetchInitialModels` to fail.
 //   - To see this visually, you would need to ensure the Ollama server is *not* running
-//     or accessible when viewing the `OllamaDefault` story.
+//     or accessible when viewing the `SetupLLMOllamaDefault` story.
 //
 // - Testing State: Requires simulating the click on "Test Connection" and mocking the
 //   `testConnection` API call to be in a pending state. The spinner and "Testing..."

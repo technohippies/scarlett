@@ -26,7 +26,7 @@ export default defineConfig({
       },
       muted: {
         DEFAULT: "hsl(230 8% 16%)",
-        foreground: "hsl(215.4 16.3% 56.9%)",
+        foreground: "hsl(0 0% 64%)",
       },
       accent: {
         DEFAULT: "hsl(230 8% 16%)",

@@ -144,7 +144,7 @@ export const Language: Component<LanguageProps> = (props) => {
           </div>
 
           {/* Target Language Grid: Limit width */}
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-md mb-6">
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg mb-6">
               <For each={targetLanguages()}> 
                 {(langStub) => {
                   const name = getLangName(langStub.value, props.messages);

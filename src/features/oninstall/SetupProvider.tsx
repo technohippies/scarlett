@@ -5,7 +5,7 @@ import type { Messages } from '../../types/i18n';
 import { ArrowLeft } from 'phosphor-solid';
 
 // Define the structure for a provider option (Simplified)
-export interface LLMProviderOption {
+export interface ProviderOption {
   id: string;
   name: string;
   defaultBaseUrl: string;
@@ -13,19 +13,19 @@ export interface LLMProviderOption {
 }
 
 // Define props for the component
-interface LLMProps {
-  onComplete: (selectedProvider: LLMProviderOption) => void;
+interface SetupProviderProps {
+  onComplete: (selectedProvider: ProviderOption) => void;
   onBack: () => void;
   selectProviderLabel: string;
   continueLabel: string;
-  availableProviders: LLMProviderOption[];
+  availableProviders: ProviderOption[];
   messages?: Messages; // Optional
 }
 
-export const LLM: Component<LLMProps> = (props) => {
+export const SetupProvider: Component<SetupProviderProps> = (props) => {
   const [selectedProviderId, setSelectedProviderId] = createSignal<string | undefined>();
 
-  const handleSelect = (provider: LLMProviderOption) => {
+  const handleSelect = (provider: ProviderOption) => {
     // No longer checking isDetected
     setSelectedProviderId(provider.id);
   };
@@ -37,7 +37,7 @@ export const LLM: Component<LLMProps> = (props) => {
     const selectedProvider = props.availableProviders.find(p => p.id === selectedId);
     // No longer checking isDetected
     if (selectedProvider) {
-      console.log('[LLM] handleSubmit: Calling onComplete with:', selectedProvider);
+      console.log('[SetupProvider] handleSubmit: Calling onComplete with:', selectedProvider);
       props.onComplete(selectedProvider);
     }
   };
@@ -65,10 +65,23 @@ export const LLM: Component<LLMProps> = (props) => {
             // Adjusted mb for spacing within scrollable area
             class="w-32 h-32 md:w-48 md:h-48 object-contain mb-6 flex-shrink-0" 
           />
-          <div class="text-center text-xl md:text-2xl w-full max-w-md mb-6">
-              <p>{props.selectProviderLabel}</p>
+          <div class="text-center w-full max-w-lg mb-6">
+              {/* Main Title */}
+              <p class="text-xl md:text-2xl mb-2">{props.selectProviderLabel}</p>
+              {/* Added Description Text */}
+              <p class="text-lg text-muted-foreground">
+                If you can't run Qwen3 4B or Gemma3 4B or larger locally, 
+                <a 
+                  href="https://jan.ai/docs/remote-models/openrouter"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="underline text-primary hover:text-primary/90"
+                >
+                  setup Jan with an OpenRouter model
+                </a>, many of which are free.
+              </p>
           </div>
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-md mb-6">
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg mb-6">
               <For each={props.availableProviders}>
                 {(provider) => {
                   const isSelected = () => selectedProviderId() === provider.id;

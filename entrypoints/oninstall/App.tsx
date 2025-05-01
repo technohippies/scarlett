@@ -6,8 +6,8 @@ import { userConfigurationStorage } from '../../src/services/storage';
 import type { Messages } from '../../src/types/i18n';
 // Import LLM Setup components and types
 import { SetupLLM } from '../../src/features/oninstall/SetupLLM';
-// Import the LLM component for provider selection
-import { LLM, LLMProviderOption } from '../../src/features/oninstall/LLM'; 
+// Import the Provider Setup component and type
+import { SetupProvider, ProviderOption } from '../../src/features/oninstall/SetupProvider'; // Updated import
 import type { LLMConfig } from '../../src/services/llm/types'; // Import LLMConfig
 
 // Define language lists here (could also be moved)
@@ -25,7 +25,7 @@ const allTargetLanguagesList: LanguageOptionStub[] = [
 ];
 
 // Define available LLM Providers
-const availableProviders: LLMProviderOption[] = [
+const availableProviders: ProviderOption[] = [ // Updated type
     {
       id: 'ollama',
       name: 'Ollama',
@@ -119,7 +119,7 @@ const App: Component = () => {
   const [targetLangLabel, setTargetLangLabel] = createSignal<string>('');
   const [uiLangCode, setUiLangCode] = createSignal<string>(getBestInitialLangCode());
   // State for selected LLM provider
-  const [selectedProvider, setSelectedProvider] = createSignal<LLMProviderOption | null>(null);
+  const [selectedProvider, setSelectedProvider] = createSignal<ProviderOption | null>(null); // Updated type
   
   const [messagesData] = createResource(uiLangCode, fetchMessages);
   const initialNativeValue = uiLangCode(); 
@@ -163,7 +163,7 @@ const App: Component = () => {
   };
 
   // New handler: Store selected provider and move to LLM setup
-  const handleProviderSelectComplete = (provider: LLMProviderOption) => {
+  const handleProviderSelectComplete = (provider: ProviderOption) => { // Updated type
     console.log('[App] Provider Selected:', provider);
     setSelectedProvider(provider);
     console.log('[App] Proceeding to LLM setup step.');
@@ -245,11 +245,11 @@ const App: Component = () => {
                    availableTargetLanguages={allTargetLanguagesList}
                    messages={messagesData() || {}} 
                />;
-       case 'providerSelect': // Use the LLM component for provider selection
-         return <LLM 
+       case 'providerSelect': // Use the SetupProvider component for provider selection
+         return <SetupProvider // Updated component usage
                     onComplete={handleProviderSelectComplete}
                     onBack={handleBack}
-                    selectProviderLabel={currentMessages.get('onboardingLLMProviderTitle', 'Choose your Local LLM Provider')}
+                    selectProviderLabel={currentMessages.get('onboardingLLMProviderTitle', 'Choose an LLM Provider')}
                     continueLabel={currentMessages.get('onboardingContinue', 'Continue')}
                     availableProviders={availableProviders}
                     messages={messagesData() || {}}
