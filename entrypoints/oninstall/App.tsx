@@ -53,7 +53,7 @@ const availableEmbeddingProviders: ProviderOption[] = [
     // Reuse or define specific providers
     { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
     { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
-    // Jan does not support embeddings currently
+    { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/llm-providers/jan.png' }, // Add Jan for embeddings
 ];
 
 // Define available Reader Providers (likely subset of LLM providers)
@@ -197,41 +197,42 @@ const App: Component = () => {
     setCurrentStep('setupLLM'); // Go to the new LLM setup step
   };
 
-  // Handler for LLM setup step
+  // Handler for LLM setup step completion
   const handleLLMComplete = async (config: FunctionConfig) => {
-    console.log('[App] LLM Setup Complete (Using SetupFunction). Saving config.', config);
-
-    const currentConfig = await userConfigurationStorage.getValue();
-    // Only save LLM parts here, onboardingComplete is false until the end
-    const updatedConfig = {
-      ...currentConfig,
-      llmProvider: config.providerId,
-      llmModel: config.modelId,
-      llmBaseUrl: config.baseUrl,
-    };
-    await userConfigurationStorage.setValue(updatedConfig);
-    console.log('[App] Config after saving LLM:', updatedConfig);
-
+    console.log('[App] LLM Setup Complete:', config);
+    if (!config.providerId || !config.modelId) {
+        console.warn('[App] LLM setup skipped or incomplete. Proceeding without saving LLM config.');
+    } else {
+        const currentConfig = await userConfigurationStorage.getValue();
+        const updatedConfig = {
+          ...currentConfig,
+          llmConfig: config, // Save LLM configuration
+        };
+        await userConfigurationStorage.setValue(updatedConfig);
+        console.log('[App] Config after saving LLM setup:', updatedConfig);
+    }
     console.log('[App] Proceeding to Embedding setup step.');
-    setCurrentStep('setupEmbedding'); // Go to next step
+    setCurrentStep('setupEmbedding'); // Go to Embedding setup next
   };
 
-  // Handler for Embedding setup step
+  // Handler for Embedding setup step completion
   const handleEmbeddingComplete = async (config: FunctionConfig) => {
-    console.log('[App] Embedding Setup Complete. Saving config.', config);
+    console.log('[App] Embedding Setup Complete:', config);
 
-    const currentConfig = await userConfigurationStorage.getValue();
-    const updatedConfig = {
-      ...currentConfig,
-      embeddingProvider: config.providerId,
-      embeddingModel: config.modelId,
-      embeddingBaseUrl: config.baseUrl,
-    };
-    await userConfigurationStorage.setValue(updatedConfig);
-    console.log('[App] Config after saving Embedding:', updatedConfig);
+    if (!config.providerId || !config.modelId) {
+        console.warn('[App] Embedding setup skipped or incomplete. Proceeding without saving Embedding config.');
+    } else {
+        const currentConfig = await userConfigurationStorage.getValue();
+        const updatedConfig = {
+          ...currentConfig,
+          embeddingConfig: config, // Save Embedding configuration
+        };
+        await userConfigurationStorage.setValue(updatedConfig);
+        console.log('[App] Config after saving Embedding setup:', updatedConfig);
+    }
 
     console.log('[App] Proceeding to Reader setup step.');
-    setCurrentStep('setupReader'); // Go to next step
+    setCurrentStep('setupReader'); // Go to Reader setup
   };
 
    // Handler for Reader setup step (FINAL STEP)
@@ -266,16 +267,27 @@ const App: Component = () => {
   // Back navigation handler
   const handleBack = () => {
     const step = currentStep();
-    if (step === 'learningGoal') {
+    console.log(`[App] Back requested from step: ${step}`);
+    switch (step) {
+      case 'learningGoal':
         setCurrentStep('language');
-    } else if (step === 'setupLLM') {
+        break;
+      case 'setupLLM':
         setCurrentStep('learningGoal');
-    } else if (step === 'setupEmbedding') {
-        setCurrentStep('setupLLM');
-    } else if (step === 'setupReader') {
-        setCurrentStep('setupEmbedding');
+        break;
+      case 'setupEmbedding':
+        setCurrentStep('setupLLM'); // Go back to LLM setup
+        break;
+      case 'setupReader':
+        setCurrentStep('setupEmbedding'); // Go back to Embedding setup
+        break;
+      // Add cases for other steps if needed
+      default:
+        console.warn('[App] Back requested from unhandled step:', step);
+        // Optionally go back to a default previous step like language
+        // setCurrentStep('language');
+        break;
     }
-    console.log(`[App] Navigated back from ${step} to ${currentStep()}`);
   };
 
   const renderStep = () => {
@@ -295,39 +307,36 @@ const App: Component = () => {
                    availableTargetLanguages={allTargetLanguagesList}
                    messages={messagesData() || {}} 
                />;
-       case 'setupLLM': // Use SetupFunction for LLM
+       case 'setupLLM':
          return <SetupFunction
                     functionName="LLM"
                     providerOptions={availableLLMProviders}
                     onComplete={handleLLMComplete}
                     onBack={handleBack}
-                    title={currentMessages.get('onboardingLLMFunctionTitle', 'Configure LLM')}
-                    description={currentMessages.get('onboardingLLMDescription', "If you can't run a 4B+ model like Gemma3 or Qwen3 locally, setup Jan with an OpenRouter model, many of which are free.")}
-                    continueLabel={currentMessages.get('onboardingContinue', 'Continue')}
-                    messages={messagesData() || {}}
+                    continueLabel={i18n().get('onboardingNext', 'Next')}
+                    messages={messagesData()}
+                    title={i18n().get('onboardingSetupLLMTitle', 'Choose LLM')} 
+                    description={i18n().get('onboardingSetupLLMDescription', 'Select your preferred provider and model for general chat and tasks.')}
                  />;
-       case 'setupEmbedding': // Use SetupFunction for Embedding
+       case 'setupEmbedding':
          return <SetupFunction
                     functionName="Embedding"
                     providerOptions={availableEmbeddingProviders}
-                    // Models fetched internally by component
                     onComplete={handleEmbeddingComplete}
                     onBack={handleBack}
-                    title={currentMessages.get('onboardingEmbeddingFunctionTitle', 'Configure Embedding')}
-                    description={currentMessages.get('onboardingEmbeddingDescription', 'Select provider and model for text embeddings.')}
-                    continueLabel={currentMessages.get('onboardingContinue', 'Continue')}
-                    messages={messagesData() || {}}
+                    continueLabel={i18n().get('onboardingNext', 'Next')}
+                    messages={messagesData()}
+                    title={i18n().get('onboardingSetupEmbeddingTitle', 'Choose Embedding')}
+                    description={i18n().get('onboardingSetupEmbeddingDescription', 'Select a provider and model for generating text embeddings (used for context search).')}
                  />;
-        case 'setupReader': // Use SetupFunction for Reader
+        case 'setupReader':
          return <SetupFunction
                     functionName="Reader"
                     providerOptions={availableReaderProviders}
-                    // Models fetched internally by component
                     onComplete={handleReaderComplete}
                     onBack={handleBack}
                     title="Go Faster with Reader LM"
                     description="Converts HTML to Markdown fast! 1.5B model, 1.1 GB."
-                    // Use different label for final step
                     continueLabel={currentMessages.get('onboardingFinishSetup', 'Finish Setup')}
                     messages={messagesData() || {}}
                    />;

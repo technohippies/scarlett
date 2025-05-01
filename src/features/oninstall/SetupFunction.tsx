@@ -137,8 +137,28 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
           description: undefined // Ensure no description is added
         }));
 
-        // Filter specifically for Reader function
-        if (props.functionName === 'Reader') {
+        // Apply function-specific filtering for Ollama
+        if (props.functionName === 'Embedding') {
+          // Filter *in* known embedding models based on keywords
+          const embeddingKeywords = [
+            'embed', 
+            'bge', 
+            'minilm', 
+            'paraphrase', 
+            'nomic-embed', 
+            'mxbai-embed', 
+            'snowflake-arctic-embed', 
+            'granite-embedding'
+          ];
+          ollamaModels = ollamaModels.filter((model: ModelOption) => {
+            const lowerCaseId = model.id.toLowerCase();
+            return embeddingKeywords.some(keyword => lowerCaseId.includes(keyword));
+          });
+          if (ollamaModels.length === 0) {
+             console.log(`[SetupFunction] No known embedding models found in Ollama list based on keywords.`);
+          }
+        } else if (props.functionName === 'Reader') {
+          // Filter specifically for Reader function
           const readerModelName = 'milkey/reader-lm-v2:latest';
           ollamaModels = ollamaModels.filter((model: ModelOption) => model.id === readerModelName);
           if (ollamaModels.length === 0) {
@@ -171,8 +191,25 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         }));
 
         if (provider.id === 'jan') {
-          const local = allModels.filter((m: any) => m.status === 'downloaded');
-          const remote = allModels.filter((m: any) => m.status !== 'downloaded'); // Group non-local
+          let local = allModels.filter((m: any) => m.status === 'downloaded');
+          let remote = allModels.filter((m: any) => m.status !== 'downloaded'); // Group non-local
+          console.log(`[SetupFunction] Jan - Initial remote models (${remote.length}):`, remote.map((m: ModelOption) => m.id)); // Log initial remote
+
+          // Apply Embedding filter if necessary
+          if (props.functionName === 'Embedding') {
+              // ** Jan does not support embedding endpoints. Only show LOCAL models that match keywords. **
+              console.log('[SetupFunction] Jan selected for Embedding function. Filtering local models for embedding keywords and clearing remote list.');
+              const embeddingKeywords = [
+                'embed', 'bge', 'minilm', 'paraphrase', 'nomic-embed', 
+                'mxbai-embed', 'snowflake-arctic-embed', 'granite-embedding'
+              ];
+              local = local.filter((model: ModelOption) => {
+                const lowerCaseId = model.id.toLowerCase();
+                return embeddingKeywords.some(keyword => lowerCaseId.includes(keyword));
+              });
+              remote = [];
+          }
+          // TODO: Add similar filtering for LLM/Reader if needed for Jan?
           
           console.log(`[SetupFunction] Jan models: ${local.length} local, ${remote.length} remote/downloadable.`);
           setRemoteModels(remote); // Set remote models state
@@ -554,45 +591,52 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                     </Select>
                    </div>
 
-                  {/* Divider text */}
-                  <div class="text-left text-muted-foreground my-2">or</div>
+                  {/* Log length immediately before Show for remote section */}
+                  {( () => {
+                    console.log(`[JSX Render] remoteModels().length check: ${remoteModels().length}`);
+                    return null;
+                  })()}
+                  <Show when={remoteModels().length > 0}>
+                     {/* Divider text */}
+                     <div class="text-left text-muted-foreground my-2">or</div>
 
-                   {/* Remote/Downloadable Models Dropdown - Changed to Combobox */}
-                   <div class="w-full">
-                    <Label for="remote-model-combo" class="text-sm font-medium text-muted-foreground mb-1 block">Remote LLM</Label>
-                    <Combobox<ModelOption>
-                      id="remote-model-combo" // Add id for label association
-                      options={remoteModels().sort((a, b) => a.name.localeCompare(b.name))}
-                      optionValue="id"
-                      optionTextValue="name"
-                      placeholder="Search"
-                      value={remoteModels().find(m => m.id === selectedModelId()) || null}
-                      onChange={(value: ModelOption | null) => {
-                        console.log("[SetupFunction] Jan Remote Combobox onChange triggered. Selected object:", value);
-                        setSelectedModelId(value?.id);
-                        console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
-                      }}
-                      itemComponent={(props) => (
-                        <ComboboxItem item={props.item}>
-                          <ComboboxItemLabel>{props.item.rawValue.name}</ComboboxItemLabel>
-                          <ComboboxItemIndicator />
-                        </ComboboxItem>
-                      )}
-                    >
-                      <ComboboxControl aria-label="Remote Model">
-                        {/* Bind input value to selected model name or empty string */}
-                        <ComboboxInput 
-                          value={remoteModels().find(m => m.id === selectedModelId())?.name || ''} 
-                        />
-                        <ComboboxTrigger />
-                      </ComboboxControl>
-                      <ComboboxContent class="max-h-72 overflow-y-auto"> 
-                         <Show when={!remoteModels() || remoteModels().length === 0}>
-                            <div class="px-2 py-1.5 text-sm text-muted-foreground">No remote models found.</div>
-                         </Show>
-                      </ComboboxContent>
-                    </Combobox>
-                   </div>
+                     {/* Remote/Downloadable Models Dropdown - Changed to Combobox */}
+                     <div class="w-full">
+                      <Label for="remote-model-combo" class="text-sm font-medium text-muted-foreground mb-1 block">Remote LLM</Label>
+                      <Combobox<ModelOption>
+                        id="remote-model-combo" // Add id for label association
+                        options={remoteModels().sort((a, b) => a.name.localeCompare(b.name))}
+                        optionValue="id"
+                        optionTextValue="name"
+                        placeholder="Search"
+                        value={remoteModels().find(m => m.id === selectedModelId()) || null}
+                        onChange={(value: ModelOption | null) => {
+                          console.log("[SetupFunction] Jan Remote Combobox onChange triggered. Selected object:", value);
+                          setSelectedModelId(value?.id);
+                          console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
+                        }}
+                        itemComponent={(props) => (
+                          <ComboboxItem item={props.item}>
+                            <ComboboxItemLabel>{props.item.rawValue.name}</ComboboxItemLabel>
+                            <ComboboxItemIndicator />
+                          </ComboboxItem>
+                        )}
+                      >
+                        <ComboboxControl aria-label="Remote Model">
+                          {/* Bind input value to selected model name or empty string */}
+                          <ComboboxInput 
+                            value={remoteModels().find(m => m.id === selectedModelId())?.name || ''} 
+                          />
+                          <ComboboxTrigger />
+                        </ComboboxControl>
+                        <ComboboxContent class="max-h-72 overflow-y-auto"> 
+                           <Show when={!remoteModels() || remoteModels().length === 0}>
+                              <div class="px-2 py-1.5 text-sm text-muted-foreground">No remote models found.</div>
+                           </Show>
+                        </ComboboxContent>
+                      </Combobox>
+                     </div>
+                  </Show>
                 </Match>
 
                 {/* Case: Other Providers (Ollama, LMStudio, etc.) */}
@@ -699,11 +743,13 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
             size="lg"
             class="w-full"
             onClick={handleButtonClick} // Use the dynamic handler
-            // Disable logic: fetching models, or no model selected, or currently testing
-            disabled={
+            // Corrected Disable Logic:
+            // Disable if: loading models, OR (load succeeded BUT no model selected), OR actively testing.
+            disabled={ 
+                !selectedProviderId() || // Disable if no provider selected
                 fetchStatus() === 'loading' || 
-                (fetchStatus() === 'success' && !selectedModelId()) ||
-                testStatus() === 'testing'
+                (fetchStatus() === 'success' && !selectedModelId()) || 
+                testStatus() === 'testing' 
             }
           >
             {/* Use the dynamic label */} 
