@@ -1,26 +1,26 @@
-import type { LLMConfig, LLMChatResponse } from '../../types'; // Path relative to chat.ts
+import type { LLMConfig, LLMChatResponse, ChatMessage, StreamedChatResponsePart } from '../../types'; // Path relative to chat.ts
 import { parseSseChunk } from '../../../../lib/utils'; // Path to utils where parseSseChunk is
 
 // Combined implementation for Ollama
 export function ollamaChat(
-  prompt: string,
+  messages: ChatMessage[],
   config: LLMConfig
-): Promise<LLMChatResponse> | AsyncGenerator<string> { // Use generic LLMChatResponse type
+): Promise<LLMChatResponse> | AsyncGenerator<StreamedChatResponsePart> { // Corrected stream type
   if (config.stream === true) {
-    return _ollamaChatStream(prompt, config);
+    return _ollamaChatStream(messages, config);
   } else {
-    return _ollamaChatNonStream(prompt, config);
+    return _ollamaChatNonStream(messages, config);
   }
 }
 
 // Non-streaming implementation for Ollama
 async function _ollamaChatNonStream(
-  prompt: string,
+  messages: ChatMessage[],
   config: LLMConfig
 ): Promise<LLMChatResponse> { 
   const body = {
     model: config.model, 
-    messages: [{ role: 'user', content: prompt }],
+    messages: messages,
     stream: false,
     ...(config.extraParams ? config.extraParams : {}),
   };
@@ -46,12 +46,12 @@ async function _ollamaChatNonStream(
 
 // Streaming implementation for Ollama (adapted from Jan)
 export async function* _ollamaChatStream(
-  prompt: string,
+  messages: ChatMessage[],
   config: LLMConfig
-): AsyncGenerator<string> {
+): AsyncGenerator<StreamedChatResponsePart> {
   const body = {
     model: config.model, 
-    messages: [{ role: 'user', content: prompt }],
+    messages: messages,
     stream: true,
     ...(config.extraParams ? config.extraParams : {}),
   };
@@ -104,15 +104,15 @@ export async function* _ollamaChatStream(
                   // Assuming Ollama chunk structure matches OpenAI delta format
                   const content = parsedData.choices?.[0]?.delta?.content;
                   if (content) {
-                      yield content;
+                      yield { type: 'content', content: content };
                   }
               }
           }
       }
     }
-  } catch (error) {
+  } catch (error: any) {
       console.error('[ollamaChat] Error reading stream:', error);
-      throw new Error('Failed to read response stream');
+      yield { type: 'error', error: error.message || 'Failed to read response stream' };
   } finally {
       reader.releaseLock();
   }

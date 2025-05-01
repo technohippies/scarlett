@@ -98,6 +98,68 @@ async function ollamaEmbed(
 }
 // --- End Embedding Function ---
 
+// --- Test Connection Function --- 
+async function testConnection(
+  config: LLMConfig,
+  functionName: 'LLM' | 'Embedding' | 'Reader'
+): Promise<void> {
+  const baseUrl = config.baseUrl || 'http://localhost:11434';
+  let testApiUrl = '';
+  let requestBody: any = {};
+
+  if (functionName === 'Embedding') {
+    testApiUrl = `${baseUrl}/api/embeddings`;
+    requestBody = { model: config.model, prompt: "test" }; // Ollama uses prompt
+  } else { // LLM or Reader - Test with streaming generate
+    testApiUrl = `${baseUrl}/api/generate`;
+    requestBody = { model: config.model, prompt: 'hi', options: { num_predict: 1 } }; // Default stream=true
+  }
+
+  console.log(`[Ollama testConnection] Testing ${functionName} at ${testApiUrl}`);
+
+  const response = await fetch(testApiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody),
+    signal: AbortSignal.timeout(10000) // 10s timeout
+  });
+
+  if (!response.ok) {
+    let errorMsg = `HTTP error! status: ${response.status}`;
+    try { errorMsg += ` - ${await response.text()}`; } catch { /* Ignore */ }
+    const error = new Error(errorMsg);
+    (error as any).status = response.status;
+    throw error;
+  }
+
+  // Process based on type
+  if (functionName === 'Embedding') {
+    await response.json(); // Just ensure full response is valid JSON
+    console.log(`[Ollama testConnection] Embedding test successful.`);
+  } else {
+    // Check first stream chunk
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("Failed to get stream reader.");
+    let firstChunkReceived = false;
+    try {
+      const { done, value } = await reader.read();
+      if (done || !value) throw new Error("Stream ended or first chunk empty.");
+      firstChunkReceived = true;
+      console.log(`[Ollama testConnection] Stream test successful (first chunk received).`);
+    } finally {
+       // Always try to cancel, even if read failed after getting the reader
+       if (reader) await reader.cancel().catch(e => console.warn("[Ollama testConnection] Error cancelling stream reader:", e));
+       // If the read itself failed, the error is already thrown by await reader.read()
+    }
+    if (!firstChunkReceived) { 
+        // This should technically be unreachable if reader exists but read fails
+        throw new Error("Stream test failed: No chunk received.");
+    } 
+  }
+  // If we reach here, the test passed
+}
+// --- End Test Connection --- 
+
 // Explicitly type the exported provider
 export const OllamaProvider: LLMProvider = {
   // Cast the combined chat function to the specific type expected by the interface
@@ -105,4 +167,5 @@ export const OllamaProvider: LLMProvider = {
   chat: ollamaChat, // No need to cast if ollamaChat already returns the correct type
   listModels, // Export the new function
   embed: ollamaEmbed, // Add the embed function
+  testConnection, // Add the test function
 }; 

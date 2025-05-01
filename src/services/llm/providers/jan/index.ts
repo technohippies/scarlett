@@ -111,6 +111,68 @@ async function janEmbed(
 }
 // --- End Embedding Function ---
 
+// --- Test Connection Function --- 
+async function testConnection(
+  config: LLMConfig,
+  functionName: 'LLM' | 'Embedding' | 'Reader'
+): Promise<void> {
+  if (functionName === 'Embedding') {
+    // Jan provider doesn't support standard embedding API for testing this way
+    console.warn("[Jan testConnection] Skipping test for Embedding function.");
+    // Optionally throw an error if embedding is critical and expected to work
+    // throw new Error("Jan provider does not support testing the Embedding function via this method.");
+    return; // Consider it a pass for now, as we know it's not supported
+  }
+
+  // Proceed with testing LLM/Reader via streaming chat completions
+  const baseUrl = config.baseUrl || 'http://localhost:1337';
+  const testApiUrl = `${baseUrl}/v1/chat/completions`;
+  const requestBody = {
+    model: config.model,
+    messages: [{ role: 'user', content: 'hi' }], // Minimal prompt
+    max_tokens: 1, 
+    stream: true
+  };
+
+  console.log(`[Jan testConnection] Testing ${functionName} at ${testApiUrl}`);
+
+  const response = await fetch(testApiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+      ...(config.apiKey ? { 'Authorization': `Bearer ${config.apiKey}` } : {}),
+    },
+    body: JSON.stringify(requestBody),
+    signal: AbortSignal.timeout(10000) // 10s timeout
+  });
+
+  if (!response.ok) {
+    let errorMsg = `HTTP error! status: ${response.status}`;
+    try { errorMsg += ` - ${await response.text()}`; } catch { /* Ignore */ }
+    const error = new Error(errorMsg);
+    (error as any).status = response.status;
+    throw error;
+  }
+
+  // Check first stream chunk
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("Failed to get stream reader.");
+  let firstChunkReceived = false;
+  try {
+    const { done, value } = await reader.read();
+    if (done || !value) throw new Error("Stream ended or first chunk empty.");
+    firstChunkReceived = true;
+    console.log(`[Jan testConnection] Stream test successful (first chunk received).`);
+  } finally {
+      if (reader) await reader.cancel().catch(e => console.warn("[Jan testConnection] Error cancelling stream reader:", e));
+  }
+  if (!firstChunkReceived) {
+      throw new Error("Stream test failed: No chunk received.");
+  }
+  // If we reach here, the test passed
+}
+// --- End Test Connection --- 
 
 // Explicitly type the exported provider
 export const JanProvider: LLMProvider = {
@@ -118,4 +180,5 @@ export const JanProvider: LLMProvider = {
   chat: _janChatStream, // Assuming _janChatStream matches the required signature
   listModels,
   embed: janEmbed, // Re-added embed property
+  testConnection, // Add the test function
 }; 

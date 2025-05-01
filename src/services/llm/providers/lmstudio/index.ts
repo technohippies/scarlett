@@ -6,7 +6,7 @@ import type {
   StreamedChatResponsePart,
   EmbeddingInput,
   EmbeddingResponse,
-} from '../types'; 
+} from '../../types'; // Adjusted relative path
 
 // Default LM Studio REST API URL
 const DEFAULT_LMSTUDIO_URL = 'http://127.0.0.1:1234';
@@ -14,7 +14,6 @@ const DEFAULT_LMSTUDIO_URL = 'http://127.0.0.1:1234';
 // List models using the REST API
 async function listModels(config: Pick<LLMConfig, 'baseUrl'>): Promise<ModelInfo[]> {
   const baseUrl = config.baseUrl || DEFAULT_LMSTUDIO_URL;
-  // Ensure it starts with http:// or https:// for REST API
   const validatedBaseUrl = /^https?:\/\//.test(baseUrl) ? baseUrl : DEFAULT_LMSTUDIO_URL;
   if (baseUrl !== validatedBaseUrl) {
     console.warn(`[LMStudio Provider] Invalid baseUrl "${baseUrl}" provided for REST API. Using default: ${DEFAULT_LMSTUDIO_URL}`);
@@ -37,12 +36,10 @@ async function listModels(config: Pick<LLMConfig, 'baseUrl'>): Promise<ModelInfo
       throw new Error('Invalid response structure from LM Studio /api/v0/models');
     }
 
-    // Map the response data to our ModelInfo interface
     const models: ModelInfo[] = data.data.map((model: any) => ({
-      id: model.id, // e.g., "qwen2-vl-7b-instruct"
+      id: model.id,
       provider: 'lmstudio',
-      name: model.id, // Use id as name for simplicity, could potentially parse further
-      // Add other fields if available and needed in ModelInfo
+      name: model.id, 
     }));
 
     console.log(`[LMStudio Provider] Found ${models.length} models via REST API.`);
@@ -50,7 +47,7 @@ async function listModels(config: Pick<LLMConfig, 'baseUrl'>): Promise<ModelInfo
 
   } catch (error: any) {
     console.error(`[LMStudio Provider] Error fetching or parsing LM Studio models from ${url}:`, error);
-    throw error; // Re-throw for UI layer
+    throw error;
   }
 }
 
@@ -73,10 +70,8 @@ async function* lmStudioChatStream(
       body: JSON.stringify({
         model: config.model,
         messages: messages,
-        temperature: 0.7, // Example parameter, make configurable if needed
-        max_tokens: -1, // Example parameter
-        stream: true, // Ensure streaming is requested
-        ...(config.extraParams || {}), // Include extra params if provided
+        stream: true,
+        ...(config.extraParams || {}), 
       }),
     });
 
@@ -90,7 +85,6 @@ async function* lmStudioChatStream(
       throw new Error('Response body is null');
     }
 
-    // Process the Server-Sent Events (SSE) stream
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -103,7 +97,6 @@ async function* lmStudioChatStream(
       }
       buffer += decoder.decode(value, { stream: true });
 
-      // Process buffer line by line for SSE events
       let boundary = buffer.indexOf('\n\n');
       while (boundary !== -1) {
         const chunk = buffer.substring(0, boundary);
@@ -113,23 +106,21 @@ async function* lmStudioChatStream(
           const jsonStr = chunk.substring(6);
           if (jsonStr.trim() === '[DONE]') {
             console.log('[LMStudio Provider] Received [DONE] marker.');
-            // Optional: Yield a specific 'done' type if needed by the interface
-            // yield { type: 'done' }; 
-            continue; // Continue processing buffer in case of multiple events
+            continue; 
           }
           try {
             const parsed = JSON.parse(jsonStr);
             if (parsed.choices && parsed.choices[0]?.delta?.content) {
               yield { type: 'content', content: parsed.choices[0].delta.content };
             }
-          } catch (e) {
+          } catch (e: any) {
             console.error('[LMStudio Provider] Error parsing stream chunk:', e, 'Chunk:', jsonStr);
             yield { type: 'error', error: 'Error parsing stream data' };
           }
         }
         boundary = buffer.indexOf('\n\n');
-      } // end while boundary
-    } // end while reader
+      } 
+    } 
 
   } catch (error: any) {
     console.error(`[LMStudio Provider] Error during chat stream:`, error);
@@ -147,7 +138,7 @@ async function lmStudioEmbed(
   const url = new URL('/api/v0/embeddings', validatedBaseUrl).toString();
   console.log(`[LMStudio Provider] Requesting embeddings from ${url} for model ${config.model}`);
 
-  const inputText = Array.isArray(text) ? text : [text]; // API might expect single string or array
+  const inputText = Array.isArray(text) ? text : [text]; 
 
   try {
     const response = await fetch(url, {
@@ -157,7 +148,7 @@ async function lmStudioEmbed(
       },
       body: JSON.stringify({
         model: config.model,
-        input: inputText, // Send input as provided (string or string[])
+        input: inputText, 
         ...(config.extraParams || {}),
       }),
     });
@@ -170,13 +161,11 @@ async function lmStudioEmbed(
 
     const data = await response.json();
     
-    // Basic validation of expected structure
     if (data?.object !== 'list' || !Array.isArray(data?.data)) {
       console.error('[LMStudio Provider] Invalid response structure from /api/v0/embeddings:', data);
       throw new Error('Invalid response structure from LM Studio /api/v0/embeddings');
     }
     
-    // Map response to our EmbeddingResponse interface
     return {
       object: 'list',
       data: data.data.map((item: any) => ({
@@ -184,9 +173,8 @@ async function lmStudioEmbed(
         embedding: item.embedding,
         index: item.index,
       })),
-      model: data.model || config.model, // Use model from response if provided
-      // LM Studio embed response doesn't seem to include usage stats based on docs
-      usage: { prompt_tokens: 0, total_tokens: 0 }, 
+      model: data.model || config.model, 
+      usage: { prompt_tokens: 0, total_tokens: 0 }, // Placeholder usage
     } as EmbeddingResponse;
 
   } catch (error: any) {
@@ -195,8 +183,71 @@ async function lmStudioEmbed(
   }
 }
 
+// --- Test Connection Function ---
+async function testConnection(
+  config: LLMConfig,
+  functionName: 'LLM' | 'Embedding' | 'Reader'
+): Promise<void> {
+  const baseUrl = config.baseUrl || DEFAULT_LMSTUDIO_URL;
+  const validatedBaseUrl = /^https?:\/\//.test(baseUrl) ? baseUrl : DEFAULT_LMSTUDIO_URL;
+  let testApiUrl = '';
+  let requestBody: any = {};
+
+  if (functionName === 'Embedding') {
+    testApiUrl = new URL('/api/v0/embeddings', validatedBaseUrl).toString();
+    requestBody = { model: config.model, input: "test" }; 
+  } else { // LLM or Reader - Test with streaming chat
+    testApiUrl = new URL('/api/v0/chat/completions', validatedBaseUrl).toString();
+    requestBody = {
+      model: config.model,
+      messages: [{ role: 'user', content: 'hi' }], 
+      max_tokens: 1, 
+      stream: true
+    };
+  }
+
+  console.log(`[LMStudio testConnection] Testing ${functionName} at ${testApiUrl}`);
+
+  const response = await fetch(testApiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody),
+    signal: AbortSignal.timeout(10000) 
+  });
+
+  if (!response.ok) {
+    let errorMsg = `HTTP error! status: ${response.status}`;
+    try { errorMsg += ` - ${await response.text()}`; } catch { /* Ignore */ }
+    const error = new Error(errorMsg);
+    (error as any).status = response.status;
+    throw error;
+  }
+
+  if (functionName === 'Embedding') {
+    await response.json(); 
+    console.log(`[LMStudio testConnection] Embedding test successful.`);
+  } else {
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("Failed to get stream reader.");
+    let firstChunkReceived = false;
+    try {
+      const { done, value } = await reader.read();
+      if (done || !value) throw new Error("Stream ended or first chunk empty.");
+      firstChunkReceived = true;
+      console.log(`[LMStudio testConnection] Stream test successful (first chunk received).`);
+    } finally {
+        if (reader) await reader.cancel().catch(e => console.warn("[LMStudio testConnection] Error cancelling stream reader:", e));
+    }
+    if (!firstChunkReceived) {
+        throw new Error("Stream test failed: No chunk received.");
+    }
+  }
+}
+// --- End Test Connection ---
+
 export const LMStudioProvider: LLMProvider = {
   chat: lmStudioChatStream,
   listModels,
   embed: lmStudioEmbed,
+  testConnection,
 }; 

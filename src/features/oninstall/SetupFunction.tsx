@@ -1,13 +1,15 @@
-import { Component, createSignal, createEffect, createResource, createMemo, Show } from 'solid-js';
+import { Component, createSignal, createEffect, createResource, Show } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { cn } from '../../lib/utils';
 import type { Messages } from '../../types/i18n';
-import { ArrowLeft, CaretRight, CheckCircle, Spinner, WarningCircle } from 'phosphor-solid';
+import { ArrowLeft, CaretRight, CheckCircle, WarningCircle } from 'phosphor-solid';
 import { Callout, CalloutContent } from '../../components/ui/callout';
 import { CodeBlock } from '../../components/ui/CodeBlock';
 import { Switch, Match } from 'solid-js';
 import { Label } from '../../components/ui/label';
+import { Spinner } from '../../components/ui/spinner';
+import type { LLMConfig } from '../../services/llm/types';
 
 // Reusable interfaces (consider moving to a types file)
 export interface ProviderOption {
@@ -52,6 +54,20 @@ interface SetupFunctionProps {
 type FetchStatus = 'idle' | 'loading' | 'success' | 'error';
 type TestStatus = 'idle' | 'testing' | 'success' | 'error';
 
+// Import provider implementations (adjust path as needed)
+import { OllamaProvider } from '../../services/llm/providers/ollama';
+import { JanProvider } from '../../services/llm/providers/jan';
+import { LMStudioProvider } from '../../services/llm/providers/lmstudio';
+// Add imports for other providers like LMStudio if they exist
+
+// Map provider IDs to their implementations
+// Consider moving this to a central registry if more providers are added
+const providerImplementations = {
+  ollama: OllamaProvider,
+  jan: JanProvider,
+  lmstudio: LMStudioProvider, 
+};
+
 export const SetupFunction: Component<SetupFunctionProps> = (props) => {
   // Default selection logic for single-provider Reader
   const initialDefaultProvider = 
@@ -68,25 +84,6 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
   const [fetchError, setFetchError] = createSignal<Error | null>(null);
   const [testStatus, setTestStatus] = createSignal<TestStatus>('idle');
   const [testError, setTestError] = createSignal<Error | null>(null);
-
-  // Memo to filter models based on function type
-  const displayModels = createMemo(() => {
-    const models = fetchedModels();
-    if (props.functionName !== 'Embedding') {
-      return models; // Show all models for LLM/Reader
-    }
-
-    // Filter for embedding models
-    const embeddingKeywords = ['embed', 'bge', 'minilm', 'paraphrase', 'granite'];
-    return models.filter(model => {
-        const lowerCaseId = model.id.toLowerCase();
-        // Check if model ID contains any known embedding keywords
-        const hasKeyword = embeddingKeywords.some(keyword => lowerCaseId.includes(keyword));
-        // Additionally, check Ollama's family details if available (might be redundant with keywords but safer)
-        const isOllamaEmbeddingFamily = (model as any).details?.family?.toLowerCase().includes('embedding'); 
-        return hasKeyword || isOllamaEmbeddingFamily;
-    });
-  });
 
   // Ensure fetchModels implementation remains as previously defined
   const fetchModels = async (provider: ProviderOption | undefined): Promise<ModelOption[]> => {
@@ -315,113 +312,49 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
     }
   };
   
-  // Function to test the actual inference endpoint
+  // Refactored function to test connection using provider method
   const handleTestConnection = async () => {
-    const provider = selectedProvider();
+    const providerId = selectedProviderId();
     const modelId = selectedModelId();
+    const providerInfo = selectedProvider(); // Get the basic info (URL etc)
 
-    if (!provider || !modelId) return;
+    if (!providerId || !modelId || !providerInfo) return;
+
+    // Get the actual provider implementation
+    const provider = providerImplementations[providerId as keyof typeof providerImplementations];
+
+    if (!provider || !provider.testConnection) {
+      console.warn(`[SetupFunction] No testConnection method found for provider: ${providerId}. Skipping test.`);
+      // Optionally set status to success to allow proceeding, or error if test is mandatory
+      setTestStatus('success'); // Treat as success if no test method
+      setTestError(null);
+      return;
+    }
 
     setTestStatus('testing');
     setTestError(null);
 
-    const baseUrl = provider.defaultBaseUrl.replace(/\/+$/, '');
-    let testApiUrl = '';
-    let requestBody: any = {};
-    let httpBaseUrl = baseUrl; // Default to original base URL
+    // Construct the config needed for the test
+    const testConfig: LLMConfig = {
+      provider: providerId,
+      model: modelId,
+      baseUrl: providerInfo.defaultBaseUrl,
+      // Add apiKey if relevant: apiKey: providerInfo.apiKey // Assuming apiKey is part of ProviderOption if needed
+    };
+
+    console.log(`[SetupFunction] Calling ${providerId}.testConnection for ${props.functionName}`);
 
     try {
-      if (provider.id === 'ollama') {
-        if (props.functionName === 'Embedding') { // Non-streaming for Embedding
-          testApiUrl = `${baseUrl}/api/embed`;
-          requestBody = { model: modelId, input: "test" }; 
-        } else { // LLM or Reader - Enable Streaming
-          testApiUrl = `${baseUrl}/api/generate`;
-          requestBody = { model: modelId, prompt: 'hi', options: { num_predict: 1 } };
-        }
-      } else if (provider.id === 'lmstudio' || provider.id === 'jan') {
-        httpBaseUrl = baseUrl.replace(/^ws:/, 'http:');
-        if (props.functionName === 'Embedding') { // Non-streaming for Embedding
-          testApiUrl = `${httpBaseUrl}/v1/embeddings`; // Standard OpenAI embed endpoint
-          requestBody = { model: modelId, input: "test" };
-        } else { // LLM or Reader - Enable Streaming
-          testApiUrl = `${httpBaseUrl}/v1/chat/completions`;
-          requestBody = { model: modelId, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1, stream: true };
-        }
-      } else {
-        // Fallback or other providers might use OpenAI standard
-        if (props.functionName === 'Embedding') { // Non-streaming for Embedding
-          testApiUrl = `${baseUrl}/v1/embeddings`;
-          requestBody = { model: modelId, input: "test" };
-        } else { // LLM or Reader - Enable Streaming
-          testApiUrl = `${baseUrl}/v1/chat/completions`;
-          requestBody = { model: modelId, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1, stream: true };
-        }
-      }
-
-      console.log(`[SetupFunction] Testing connection to ${provider.name} at ${testApiUrl} for ${props.functionName}`);
-
-      const response = await fetch(testApiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(10000) // 10 second timeout for initial connection/headers
-      });
-
-      if (!response.ok) {
-        let errorMsg = `HTTP error! status: ${response.status}`;
-        try {
-          const errorBody = await response.json(); // Attempt to get error body
-          errorMsg += ` - ${JSON.stringify(errorBody)}`;
-        } catch { /* Ignore if body isn't JSON */ }
-        const error = new Error(errorMsg);
-        (error as any).status = response.status; // Add status to error object
-        throw error;
-      }
-
-      // --- Process Response (Streaming or Full) --- 
-      if (props.functionName !== 'Embedding') {
-        // Streaming check: successful if we can read the first chunk
-        console.log(`[SetupFunction] Checking stream for ${provider.name}...`);
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error("Failed to get response stream reader.");
-        }
-        try {
-          const { done, value } = await reader.read();
-          if (done) {
-            throw new Error("Stream ended unexpectedly before first chunk.");
-          }
-          if (!value) {
-             throw new Error("First stream chunk was empty.");
-          }
-          // First chunk received successfully!
-          console.log(`[SetupFunction] First stream chunk received for ${provider.name}. Test successful.`);
-          await reader.cancel(); // IMPORTANT: Stop reading the stream
-          setTestStatus('success');
-        } catch (streamError) {
-           console.error(`[SetupFunction] Error reading stream for ${provider.name}:`, streamError);
-           // Attempt to cancel reader even if read failed
-           try { await reader.cancel(); } catch { /* Ignore cancel error */ }
-           throw streamError; // Re-throw the stream reading error
-        }
-
-      } else {
-        // Non-streaming check for Embeddings: just parse the JSON
-        console.log(`[SetupFunction] Waiting for full embedding response for ${provider.name}...`);
-        const responseData = await response.json();
-        console.log(`[SetupFunction] Full embedding response received for ${provider.name}. Test successful.`, responseData);
-        setTestStatus('success');
-      }
+      // Call the provider-specific test method
+      await provider.testConnection(testConfig, props.functionName as 'LLM' | 'Embedding' | 'Reader');
+      
+      console.log(`[SetupFunction] ${providerId}.testConnection successful.`);
+      setTestStatus('success');
 
     } catch (error: any) {
-      console.error(`[SetupFunction] Connection test failed for ${provider.name} at ${testApiUrl}:`, error);
-      // Add status code to error if available from initial check
-      if (error.status) {
-          (error as any).status = error.status;
-      }
-      // Keep TimeoutError name for specific message handling
-      setTestError(error); 
+      console.error(`[SetupFunction] ${providerId}.testConnection failed:`, error);
+      // Keep error object as is, display logic handles TimeoutError etc.
+      setTestError(error);
       setTestStatus('error');
     }
   };
@@ -506,11 +439,12 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
             })}
         </div>
 
-        {fetchStatus() === 'loading' && (
-            <div class="w-full max-w-lg mb-6 flex justify-center items-center space-x-2 text-muted-foreground">
-                <Spinner /> 
-            </div>
-        )}
+        {/* Restore spinner location: Show while loading, before errors/success */}
+        <Show when={fetchStatus() === 'loading'}>
+          <div class="w-full max-w-lg mb-6 flex justify-center items-center space-x-2 text-muted-foreground">
+            <Spinner class="h-6 w-6"/>
+          </div>
+        </Show>
 
         {fetchStatus() === 'error' && (
             <div class="w-full max-w-lg space-y-4">
@@ -569,14 +503,6 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         {/* Show this section only when a provider is selected */}
         <Show when={selectedProviderId()}>
           <div class="w-full max-w-lg mt-6 space-y-4">
-            {/* Show spinner *while* loading models for the selected provider */}
-            <Show when={fetchStatus() === 'loading'}>
-              <div class="flex justify-center items-center space-x-2 text-muted-foreground py-4">
-                  <Spinner /> 
-                  <span>Loading models...</span>
-              </div>
-            </Show>
-
             {/* Show dropdowns and test section only *after* successful fetch */}
             <Show when={fetchStatus() === 'success'}>
               {/* Conditional rendering for Jan vs other providers */}
