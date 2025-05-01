@@ -33,7 +33,7 @@ export default {
     onComplete: (provider: ProviderOption) => console.log('Story: SetupProvider onComplete triggered with:', provider),
     onBack: () => console.log('Story: SetupProvider onBack triggered'),
     selectProviderLabel: "Select an LLM Provider",
-    description: "If you can't run Qwen3 4B or Gemma3 4B or larger locally, setup Jan with an OpenRouter model, many of which are free.",
+    description: "If you can't run a 4B+ model like Gemma3 or Qwen3 locally, setup Jan with an OpenRouter model, many of which are free.",
     continueLabel: messagesEn.onboardingContinue?.message || "Continue",
     availableProviders: allMockProviders,
     messages: messagesEn,

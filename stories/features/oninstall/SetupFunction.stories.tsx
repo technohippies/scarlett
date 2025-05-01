@@ -57,7 +57,7 @@ export const LLMSetupIdle = {
     functionName: 'LLM',
     providerOptions: mockLLMProviders,
     title: 'Configure LLM',
-    description: "If you can't run Qwen3 4B or Gemma3 4B or larger locally, setup Jan with an OpenRouter model, many of which are free.",
+    description: "If you can't run a 4B+ model like Gemma3 or Qwen3 locally, setup Jan with an OpenRouter model, many of which are free.",
     _fetchStatus: 'idle' // Explicitly idle
   },
     render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
@@ -109,7 +109,7 @@ export const ConnectionErrorOllama = {
     functionName: 'LLM',
     providerOptions: mockLLMProviders,
     title: 'Configure LLM',
-    description: "If you can't run Qwen3 4B or Gemma3 4B or larger locally, setup Jan with an OpenRouter model, many of which are free.",
+    description: "If you can't run a 4B+ model like Gemma3 or Qwen3 locally, setup Jan with an OpenRouter model, many of which are free.",
     initialProviderId: 'ollama', // Need a provider selected to show error context
     _fetchStatus: 'error' // Set to error
     // _mockErrorType: 'TypeError' // Could add another control later to simulate different errors
@@ -148,7 +148,7 @@ export const ReadyToTestJan = {
     functionName: 'LLM',
     providerOptions: mockLLMProviders,
     title: 'Configure LLM',
-    description: "If you can't run Qwen3 4B or Gemma3 4B or larger locally, setup Jan with an OpenRouter model, many of which are free.",
+    description: "If you can't run a 4B+ model like Gemma3 or Qwen3 locally, setup Jan with an OpenRouter model, many of which are free.",
     initialProviderId: 'jan',
     initialModelId: 'mock-model-1', // Pre-select mock model
     _fetchStatus: 'success',

@@ -580,7 +580,10 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                       )}
                     >
                       <ComboboxControl aria-label="Remote Model">
-                        <ComboboxInput />
+                        {/* Bind input value to selected model name or empty string */}
+                        <ComboboxInput 
+                          value={remoteModels().find(m => m.id === selectedModelId())?.name || ''} 
+                        />
                         <ComboboxTrigger />
                       </ComboboxControl>
                       <ComboboxContent class="max-h-72 overflow-y-auto"> 

@@ -302,7 +302,7 @@ const App: Component = () => {
                     onComplete={handleLLMComplete}
                     onBack={handleBack}
                     title={currentMessages.get('onboardingLLMFunctionTitle', 'Configure LLM')}
-                    description={currentMessages.get('onboardingLLMDescription', "If you can't run Qwen3 4B or Gemma3 4B or larger locally, setup Jan with an OpenRouter model, many of which are free.")}
+                    description={currentMessages.get('onboardingLLMDescription', "If you can't run a 4B+ model like Gemma3 or Qwen3 locally, setup Jan with an OpenRouter model, many of which are free.")}
                     continueLabel={currentMessages.get('onboardingContinue', 'Continue')}
                     messages={messagesData() || {}}
                  />;
