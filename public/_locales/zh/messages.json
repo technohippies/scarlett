@@ -1,0 +1,47 @@
+{
+  "extName": {
+    "message": "Scarlett 超级教练",
+    "description": "扩展程序的名称。"
+  },
+  "extDescription": {
+    "message": "您的个人语言学习助手，帮助您练习和提高。",
+    "description": "扩展程序的描述。"
+  },
+  "onboardingISpeak": {
+    "message": "我说",
+    "description": "入职流程中母语选择器之前的标签。"
+  },
+  "onboardingIWantToLearn": {
+    "message": "并且我想学习...",
+    "description": "指示目标语言选择部分的标签。"
+  },
+  "onboardingSelectLanguage": {
+    "message": "选择语言",
+    "description": "母语下拉菜单的占位符文本。"
+  },
+  "onboardingLearningGoalQuestionPrefix": {
+    "message": "你为什么学习",
+    "description": "询问学习动机的问题的第一部分。"
+  },
+  "onboardingLearningGoalQuestionSuffix": {
+    "message": "？",
+    "description": "学习动机问题末尾的标点符号。"
+  },
+  "onboardingTargetLanguageFallback": {
+    "message": "您选择的语言",
+    "description": "如果目标语言标签不可用时的后备文本。"
+  },
+  "onboardingContinue": {
+    "message": "继续",
+    "description": "用于进入下一个入职步骤的按钮文本。"
+  },
+  "langNameEn": { "message": "英语", "description": "语言名称：英语" },
+  "langNameZh": { "message": "中文", "description": "语言名称：中文" },
+  "langNameTh": { "message": "泰语", "description": "语言名称：泰语" },
+  "langNameId": { "message": "印度尼西亚语", "description": "语言名称：印度尼西亚语" },
+  "langNameAr": { "message": "阿拉伯语", "description": "语言名称：阿拉伯语" },
+  "langNameJa": { "message": "日语", "description": "语言名称：日语" },
+  "langNameKo": { "message": "韩语", "description": "语言名称：韩语" },
+  "langNameEs": { "message": "西班牙语", "description": "语言名称：西班牙语" },
+  "langNameVi": { "message": "越南语", "description": "语言名称：越南语" }
+} 

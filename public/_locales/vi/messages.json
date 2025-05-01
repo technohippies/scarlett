@@ -1,0 +1,47 @@
+{
+  "extName": {
+    "message": "Scarlett Siêu Huấn Luyện Viên",
+    "description": "Tên của tiện ích mở rộng."
+  },
+  "extDescription": {
+    "message": "Trợ lý học ngôn ngữ cá nhân của bạn để giúp bạn luyện tập và cải thiện.",
+    "description": "Mô tả của tiện ích mở rộng."
+  },
+  "onboardingISpeak": {
+    "message": "Tôi nói",
+    "description": "Nhãn trước bộ chọn ngôn ngữ mẹ đẻ trong quá trình giới thiệu."
+  },
+  "onboardingIWantToLearn": {
+    "message": "và tôi muốn học...",
+    "description": "Nhãn chỉ phần chọn ngôn ngữ đích."
+  },
+  "onboardingSelectLanguage": {
+    "message": "Chọn ngôn ngữ",
+    "description": "Văn bản giữ chỗ cho danh sách thả xuống ngôn ngữ mẹ đẻ."
+  },
+  "onboardingLearningGoalQuestionPrefix": {
+    "message": "Tại sao bạn học",
+    "description": "Phần đầu tiên của câu hỏi về động lực học tập."
+  },
+  "onboardingLearningGoalQuestionSuffix": {
+    "message": "?",
+    "description": "Dấu chấm câu ở cuối câu hỏi về động lực học tập."
+  },
+  "onboardingTargetLanguageFallback": {
+    "message": "ngôn ngữ bạn đã chọn",
+    "description": "Văn bản dự phòng nếu nhãn ngôn ngữ đích không có sẵn."
+  },
+  "onboardingContinue": {
+    "message": "Tiếp tục",
+    "description": "Văn bản cho nút để chuyển sang bước giới thiệu tiếp theo."
+  },
+  "langNameEn": { "message": "Tiếng Anh", "description": "Tên ngôn ngữ: Tiếng Anh" },
+  "langNameZh": { "message": "Tiếng Trung", "description": "Tên ngôn ngữ: Tiếng Trung" },
+  "langNameTh": { "message": "Tiếng Thái", "description": "Tên ngôn ngữ: Tiếng Thái" },
+  "langNameId": { "message": "Tiếng Indonesia", "description": "Tên ngôn ngữ: Tiếng Indonesia" },
+  "langNameAr": { "message": "Tiếng Ả Rập", "description": "Tên ngôn ngữ: Tiếng Ả Rập" },
+  "langNameJa": { "message": "Tiếng Nhật", "description": "Tên ngôn ngữ: Tiếng Nhật" },
+  "langNameKo": { "message": "Tiếng Hàn", "description": "Tên ngôn ngữ: Tiếng Hàn" },
+  "langNameEs": { "message": "Tiếng Tây Ban Nha", "description": "Tên ngôn ngữ: Tiếng Tây Ban Nha" },
+  "langNameVi": { "message": "Tiếng Việt", "description": "Tên ngôn ngữ: Tiếng Việt" }
+} 

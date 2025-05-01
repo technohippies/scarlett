@@ -28,6 +28,9 @@ export default defineConfig({
   }),
   manifest: {
     default_locale: "en", // Keep default locale
+    // Add placeholders for localized name and description
+    name: "__MSG_extName__",
+    description: "__MSG_extDescription__", 
     background: {
       service_worker: "background.ts",
     },

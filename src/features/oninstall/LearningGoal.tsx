@@ -6,6 +6,11 @@ import { cn } from '../../lib/utils';
 interface LearningGoalProps {
   onComplete: (goalId: string) => void; // Modify onComplete to pass the selected goal ID
   targetLanguageLabel: string; // Add prop for the language label
+  // Add props for translated strings
+  questionPrefix: string;
+  questionSuffix: string;
+  fallbackLabel: string;
+  continueLabel: string;
 }
 
 // Corrected label For self growth
@@ -33,6 +38,15 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
     props.onComplete(goal);
   };
 
+  // Helper to split the label into emoji and name
+  const getLanguageParts = (label: string | undefined) => {
+    if (!label) return { name: props.fallbackLabel, emoji: '' };
+    const parts = label.split(' ');
+    const emoji = parts[0] || ''; 
+    const name = parts.slice(1).join(' ') || label; // Fallback to full label if split fails
+    return { name, emoji };
+  };
+
   return (
     <div class="p-4 md:p-8 max-w-2xl mx-auto flex flex-col items-center space-y-6 min-h-screen justify-center">
       {/* Image at the top - Same as Language step */}
@@ -42,9 +56,19 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
         class="w-32 h-32 md:w-48 md:h-48 object-contain mb-6"
       />
 
-      {/* Question */}
+      {/* Question - Reordered language name and emoji */} 
       <div class="text-center text-xl md:text-2xl space-y-4">
-        <p>Why are you learning <span class="font-semibold">{props.targetLanguageLabel || 'your selected language'}</span>?</p> 
+        <p>
+          {props.questionPrefix}
+          {' '}
+          <span class="font-semibold">
+            {/* Display name first, then emoji */}
+            {getLanguageParts(props.targetLanguageLabel).name}
+            {' '}{/* Add space before emoji */}
+            {getLanguageParts(props.targetLanguageLabel).emoji}
+          </span>
+          {props.questionSuffix}
+        </p> 
       </div>
 
       {/* Learning Goal Grid Selector - Use corrected array */}
@@ -70,7 +94,7 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
         </For>
       </div>
 
-      {/* Continue Button */}
+      {/* Continue Button - Use prop */}
       <div class="pt-6 w-full max-w-xs">
          <Button
            size="lg"
@@ -78,7 +102,8 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
            onClick={handleSubmit}
            disabled={!selectedGoal()} // Disable if no goal selected
          >
-           Continue
+           {/* Use prop */} 
+           {props.continueLabel} 
          </Button>
       </div>
     </div>

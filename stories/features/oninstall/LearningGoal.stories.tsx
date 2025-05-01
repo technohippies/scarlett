@@ -8,8 +8,14 @@ export default {
   },
   tags: ['autodocs'],
   args: {
-    // Provide a mock function for the required onComplete prop
+    // Use actual English messages from public/_locales/en/messages.json
     onComplete: () => console.log('Story: LearningGoal onComplete triggered'),
+    // Include the emoji in the mock label, like the real component expects
+    targetLanguageLabel: 'Japanese 🇯🇵 ', 
+    questionPrefix: 'Why are you learning',
+    questionSuffix: '?',
+    fallbackLabel: 'your selected language',
+    continueLabel: 'Continue',
   },
 };
 

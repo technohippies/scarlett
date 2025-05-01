@@ -8,59 +8,86 @@ import {
 } from '../../components/ui/select';
 import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
+import type { Messages } from '../../types/i18n';
 
-// Define explicit type
-interface LanguageOption {
+// LanguageOption now might only need value and emoji if name comes from messages
+export interface LanguageOptionStub {
   value: string;
-  label: string;
+  emoji: string; 
 }
 
-// Keep language lists defined locally for now
-const nativeLanguages: LanguageOption[] = [
-  { value: 'en', label: '🇺🇸 English' },
-  { value: 'zh', label: '🇨🇳 Chinese' },
-  { value: 'th', label: '🇹🇭 Thai' },
-  { value: 'id', label: '🇮🇩 Indonesian' }, // Bahasa Indonesia
-  { value: 'ar', label: '🇸🇦 Arabic' },
-  { value: 'ja', label: '🇯🇵 Japanese' },
-  { value: 'ko', label: '🇰🇷 Korean' },
-  { value: 'es', label: '🇪🇸 Spanish' },
-];
-
-const allTargetLanguages: LanguageOption[] = [
-  { value: 'en', label: '🇺🇸 English' },
-  { value: 'zh', label: '🇨🇳 Mandarin' },
-  { value: 'ja', label: '🇯🇵 Japanese' },
-  { value: 'ko', label: '🇰🇷 Korean' },
-];
+// No longer defining lists here
+/*
+export const nativeLanguages: LanguageOption[] = [...];
+export const allTargetLanguages: LanguageOption[] = [...];
+*/
 
 // Define props for the component
 interface LanguageProps {
-  // Expect label in the callback object
-  onComplete: (selectedLangs: { native: string; target: string; targetLabel: string }) => void;
+  onComplete: (selectedLangs: { targetValue: string; targetLabel: string }) => void;
+  onNativeLangChange: (newLangCode: string) => void;
+  iSpeakLabel: string;
+  selectLanguagePlaceholder: string;
+  wantToLearnLabel: string;
+  continueLabel: string;
+  initialNativeLangValue: string | undefined;
+  availableNativeLanguages: LanguageOptionStub[];
+  availableTargetLanguages: LanguageOptionStub[];
+  messages: Messages | undefined;
 }
 
-export const Language: Component<LanguageProps> = (props) => {
-  // Store the full object in state
-  const [selectedNativeLangObj, setSelectedNativeLangObj] = createSignal<LanguageOption | undefined>(
-    nativeLanguages[0] // Default to English object
-  );
-  const [selectedTargetLang, setSelectedTargetLang] = createSignal<string | undefined>();
+// Helper function to get translated name (could be moved)
+const getLangName = (value: string | undefined, messages: Messages | undefined): string => {
+  if (!value || !messages) return '';
+  const key = `langName${value.charAt(0).toUpperCase() + value.slice(1)}`;
+  return messages[key]?.message || value; // Fallback to value code
+};
 
-  // Filter using the value from the state object
-  const targetLanguages = (): LanguageOption[] => allTargetLanguages.filter(
-    lang => lang.value !== selectedNativeLangObj()?.value
+export const Language: Component<LanguageProps> = (props) => {
+
+  // Find the initial language stub based on the prop value
+  const initialNativeLangStub = props.availableNativeLanguages.find(lang => lang.value === props.initialNativeLangValue);
+  
+  // State now holds the LanguageOptionStub
+  const [selectedNativeLangStub, setSelectedNativeLangStub] = createSignal<LanguageOptionStub | undefined>(
+    initialNativeLangStub || props.availableNativeLanguages.find(l => l.value === 'en') // Fallback to English stub
   );
+  // State for target language VALUE
+  const [selectedTargetLangValue, setSelectedTargetLangValue] = createSignal<string | undefined>();
+
+  // Filter target languages based on selected native language
+  const targetLanguages = (): LanguageOptionStub[] => props.availableTargetLanguages.filter(
+    lang => lang.value !== selectedNativeLangStub()?.value
+  );
+
+  const handleNativeChange = (stub: LanguageOptionStub | null) => {
+    const newValue = stub?.value;
+    console.log('[Language] handleNativeChange: New value:', newValue);
+    setSelectedNativeLangStub(stub ?? undefined);
+    // Call the new prop if value is valid
+    if (newValue) {
+      props.onNativeLangChange(newValue);
+    }
+  };
 
   const handleSubmit = () => {
-    const nativeLang = selectedNativeLangObj()?.value;
-    const targetLangValue = selectedTargetLang();
-    if (!nativeLang || !targetLangValue) return;
+    // Native value is now handled by onChange, just get target
+    const nativeLangValue = selectedNativeLangStub()?.value; // Still need for filtering/saving
+    const targetLangValue = selectedTargetLangValue();
+    if (!nativeLangValue || !targetLangValue) return;
 
-    // Find the label from the locally defined list
-    const targetLangLabel = allTargetLanguages.find(lang => lang.value === targetLangValue)?.label || targetLangValue;
+    // Find the full target label (emoji + translated name) for the callback
+    const targetStub = props.availableTargetLanguages.find(l => l.value === targetLangValue);
+    const targetEmoji = targetStub?.emoji || '';
+    const targetTranslatedName = getLangName(targetLangValue, props.messages);
+    const fullTargetLabel = `${targetEmoji} ${targetTranslatedName}`.trim();
 
-    props.onComplete({ native: nativeLang, target: targetLangValue, targetLabel: targetLangLabel });
+    const dataToPass = { 
+      targetValue: targetLangValue, 
+      targetLabel: fullTargetLabel 
+    };
+    console.log('[Language] handleSubmit: Calling onComplete with:', dataToPass);
+    props.onComplete(dataToPass);
   };
 
   return (
@@ -75,55 +102,65 @@ export const Language: Component<LanguageProps> = (props) => {
       {/* Sentence Structure */}
       <div class="text-center text-xl md:text-2xl space-y-4">
         <p class="inline-flex items-center gap-2">
-          <span>I speak</span>
-          <Select<LanguageOption>
-            options={nativeLanguages}
-            // Pass the object to value prop
-            value={selectedNativeLangObj()}
-            // onChange now receives the full object
-            onChange={setSelectedNativeLangObj}
+          <span>{props.iSpeakLabel}</span>
+          <Select<LanguageOptionStub>
+            options={props.availableNativeLanguages}
+            value={selectedNativeLangStub()}
+            onChange={handleNativeChange}
             optionValue="value"
-            optionTextValue="label"
-            placeholder="Select language"
-            itemComponent={(props) => (
-              <SelectItem item={props.item}>
-                {props.item.rawValue.label}
-              </SelectItem>
-            )}
+            optionTextValue={stub => `${stub.emoji} ${getLangName(stub.value, props.messages)}`.trim()}
+            placeholder={props.selectLanguagePlaceholder}
+            itemComponent={(itemProps) => {
+              const name = getLangName(itemProps.item.rawValue.value, props.messages);
+              const emoji = itemProps.item.rawValue.emoji;
+              return (
+                <SelectItem item={itemProps.item}>
+                  {name} {' '}{emoji} 
+                </SelectItem>
+              );
+            }}
             multiple={false}
             id="native-language"
             class="w-auto inline-block align-middle"
           >
             <SelectTrigger class="font-semibold border-b border-border hover:border-primary pl-3 pr-1 py-0 focus:ring-0 min-w-[150px] cursor-pointer">
-              <SelectValue<LanguageOption>>
-                {(state) => state.selectedOption()?.label || '...'}
+              <SelectValue<LanguageOptionStub>>
+                {(state) => {
+                  const stub = state.selectedOption();
+                  if (!stub) return '...';
+                  const name = getLangName(stub.value, props.messages);
+                  return `${name} ${stub.emoji}`.trim(); 
+                }}
               </SelectValue>
             </SelectTrigger>
             <SelectContent />
           </Select>
         </p>
-        <p>and I want to learn...</p>
+        <p>{props.wantToLearnLabel}</p>
       </div>
 
-      {/* Target Language Grid Selector */}
+      {/* Target Language Grid - Use messages */} 
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg">
-        <For each={targetLanguages()}>
-          {(lang) => (
-            <Button
-              variant="outline"
-              onClick={() => setSelectedTargetLang(lang.value)}
-              class={cn(
-                'h-auto p-4 flex flex-col items-center justify-center space-y-2 text-base border',
-                'cursor-pointer hover:bg-neutral-700 hover:border-neutral-600 focus:outline-none focus:ring-0',
-                selectedTargetLang() === lang.value
-                  ? 'bg-neutral-800 text-foreground border-neutral-700'
-                  : 'border-neutral-700'
-              )}
-            >
-              <span class="text-4xl">{lang.label.split(' ')[0]}</span> {/* Emoji */}
-              <span>{lang.label.split(' ').slice(1).join(' ')}</span> {/* Name */}
-            </Button>
-          )}
+        <For each={targetLanguages()}> 
+          {(langStub) => {
+            const name = getLangName(langStub.value, props.messages);
+            return (
+              <Button
+                variant="outline"
+                onClick={() => setSelectedTargetLangValue(langStub.value)}
+                class={cn(
+                  'h-auto p-4 flex flex-col items-center justify-center space-y-2 text-base border',
+                  'cursor-pointer hover:bg-neutral-700 hover:border-neutral-600 focus:outline-none focus:ring-0',
+                  selectedTargetLangValue() === langStub.value
+                    ? 'bg-neutral-800 text-foreground border-neutral-700'
+                    : 'border-neutral-700'
+                )}
+              >
+                <span class="text-4xl">{langStub.emoji}</span>
+                <span>{name}</span> 
+              </Button>
+            );
+          }}
         </For>
       </div>
 
@@ -133,9 +170,9 @@ export const Language: Component<LanguageProps> = (props) => {
            size="lg"
            class="w-full"
            onClick={handleSubmit}
-           disabled={!selectedTargetLang()} // Disable if no target language selected
+           disabled={!selectedTargetLangValue()}
          >
-           Continue
+           {props.continueLabel}
          </Button>
       </div>
     </div>

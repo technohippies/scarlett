@@ -1,10 +1,47 @@
 {
-  "extensionName": {
-    "message": "Scarlett Clipper",
+  "extName": {
+    "message": "Scarlett Supercoach",
     "description": "The name of the extension."
   },
-  "extensionDescription": {
-    "message": "A brief description of what Scarlett Clipper does.",
+  "extDescription": {
+    "message": "Your personal language learning assistant to help you practice and improve.",
     "description": "The description of the extension."
-  }
+  },
+  "onboardingISpeak": {
+    "message": "I speak",
+    "description": "Label before the native language selector in onboarding."
+  },
+  "onboardingIWantToLearn": {
+    "message": "and I want to learn...",
+    "description": "Label indicating the target language selection section."
+  },
+  "onboardingSelectLanguage": {
+    "message": "Select language",
+    "description": "Placeholder text for the native language dropdown."
+  },
+  "onboardingLearningGoalQuestionPrefix": {
+    "message": "Why are you learning",
+    "description": "The first part of the question asking for learning motivation."
+  },
+  "onboardingLearningGoalQuestionSuffix": {
+    "message": "?",
+    "description": "The punctuation mark at the end of the learning motivation question."
+  },
+  "onboardingTargetLanguageFallback": {
+    "message": "your selected language",
+    "description": "Fallback text if the target language label isn't available."
+  },
+  "onboardingContinue": {
+    "message": "Continue",
+    "description": "Text for the button to proceed to the next onboarding step."
+  },
+  "langNameEn": { "message": "English", "description": "Language name: English" },
+  "langNameZh": { "message": "Chinese", "description": "Language name: Chinese" },
+  "langNameTh": { "message": "Thai", "description": "Language name: Thai" },
+  "langNameId": { "message": "Indonesian", "description": "Language name: Indonesian" },
+  "langNameAr": { "message": "Arabic", "description": "Language name: Arabic" },
+  "langNameJa": { "message": "Japanese", "description": "Language name: Japanese" },
+  "langNameKo": { "message": "Korean", "description": "Language name: Korean" },
+  "langNameEs": { "message": "Spanish", "description": "Language name: Spanish" },
+  "langNameVi": { "message": "Vietnamese", "description": "Language name: Vietnamese" }
 } 
