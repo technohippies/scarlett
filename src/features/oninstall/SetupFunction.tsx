@@ -3,11 +3,11 @@ import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { cn } from '../../lib/utils';
 import type { Messages } from '../../types/i18n';
-import { ArrowLeft, CaretRight } from 'phosphor-solid';
+import { ArrowLeft, CaretRight, CheckCircle, Spinner, WarningCircle } from 'phosphor-solid';
 import { Callout, CalloutContent } from '../../components/ui/callout';
-import { Spinner } from '../../components/ui/spinner';
 import { CodeBlock } from '../../components/ui/CodeBlock';
 import { Switch, Match } from 'solid-js';
+import { Label } from '../../components/ui/label';
 
 // Reusable interfaces (consider moving to a types file)
 export interface ProviderOption {
@@ -64,6 +64,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
   const [selectedModelId, setSelectedModelId] = createSignal<string | undefined>(props.initialModelId);
   const [fetchStatus, setFetchStatus] = createSignal<FetchStatus>(props._fetchStatus || 'idle');
   const [fetchedModels, setFetchedModels] = createSignal<ModelOption[]>([]);
+  const [remoteModels, setRemoteModels] = createSignal<ModelOption[]>([]);
   const [fetchError, setFetchError] = createSignal<Error | null>(null);
   const [testStatus, setTestStatus] = createSignal<TestStatus>('idle');
   const [testError, setTestError] = createSignal<Error | null>(null);
@@ -154,8 +155,42 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
 
         return ollamaModels;
 
-      } else if (data.data) { // OpenAI format
-        return data.data.map((m: any) => ({ id: m.id, name: m.id, description: undefined })); // Ensure no description is added
+      } else if (data.data && (provider.id === 'jan' || provider.id === 'lmstudio')) { // OpenAI format - Jan/LMStudio specific handling
+        const allModels = data.data.map((m: any) => ({
+          id: m.id, 
+          name: m.name || m.id, // Prefer name if available
+          status: m.status, // Keep status for filtering
+          description: undefined // Ensure no description
+        }));
+
+        if (provider.id === 'jan') {
+          const local = allModels.filter((m: any) => m.status === 'downloaded');
+          const remote = allModels.filter((m: any) => m.status !== 'downloaded'); // Group non-local
+          
+          console.log(`[SetupFunction] Jan models: ${local.length} local, ${remote.length} remote/downloadable.`);
+          setRemoteModels(remote); // Set remote models state
+          return local; // Return only local models for the primary fetchedModels state
+        } else {
+          // For LMStudio or others using this format but without status distinction
+          setRemoteModels([]); // Ensure remote models are cleared
+          // Explicitly type the parameter to satisfy the linter
+          interface ModelWithStatus extends ModelOption {
+            status?: string; 
+          }
+          return allModels.map((model: ModelWithStatus) => {
+            const { status, ...rest } = model;
+            return rest; 
+          });
+        }
+
+      } else if (data.data) { // Generic OpenAI format fallback (no status check)
+         console.log('[SetupFunction] Processing generic OpenAI format response.');
+         setRemoteModels([]); // Ensure remote models are cleared
+         return data.data.map((m: any) => ({ 
+             id: m.id, 
+             name: m.name || m.id, 
+             description: undefined 
+         }));
       } else {
           console.warn('[SetupFunction] Unexpected API response format:', data);
           throw new Error('Invalid response format from server.');
@@ -196,19 +231,24 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
     if (modelData.loading) {
         setFetchStatus('loading');
         setFetchedModels([]); // Clear models while loading
+        setRemoteModels([]); // Clear remote models too
         setFetchError(null);
     } else if (modelData.error) {
         setFetchStatus('error');
         setFetchedModels([]); 
+        setRemoteModels([]); // Clear remote models too
         // Store the actual error from the resource
         setFetchError(modelData.error); 
     } else if (modelData.state === 'ready') {
         setFetchStatus('success');
-        setFetchedModels(modelData() || []); // Update with real models
+        // fetchedModels is already set correctly by fetchModels for Jan (local only)
+        // For other providers, it sets all models. Remote models are handled separately.
+        setFetchedModels(modelData() || []); 
         setFetchError(null);
     } else { // Initial state or provider deselected
         setFetchStatus('idle');
         setFetchedModels([]);
+        setRemoteModels([]); // Clear remote models too
         setFetchError(null);
     }
   });
@@ -292,31 +332,30 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
 
     try {
       if (provider.id === 'ollama') {
-        if (props.functionName === 'Embedding') {
+        if (props.functionName === 'Embedding') { // Non-streaming for Embedding
           testApiUrl = `${baseUrl}/api/embed`;
           requestBody = { model: modelId, input: "test" }; 
-        } else { // LLM or Reader
+        } else { // LLM or Reader - Enable Streaming
           testApiUrl = `${baseUrl}/api/generate`;
-          requestBody = { model: modelId, prompt: 'hi', stream: false, options: { num_predict: 1 } };
+          requestBody = { model: modelId, prompt: 'hi', options: { num_predict: 1 } };
         }
       } else if (provider.id === 'lmstudio' || provider.id === 'jan') {
-        // Replace ws:// with http:// specifically for the test fetch call
         httpBaseUrl = baseUrl.replace(/^ws:/, 'http:');
-        if (props.functionName === 'Embedding') {
+        if (props.functionName === 'Embedding') { // Non-streaming for Embedding
           testApiUrl = `${httpBaseUrl}/v1/embeddings`; // Standard OpenAI embed endpoint
           requestBody = { model: modelId, input: "test" };
-        } else { // LLM or Reader
+        } else { // LLM or Reader - Enable Streaming
           testApiUrl = `${httpBaseUrl}/v1/chat/completions`;
-          requestBody = { model: modelId, messages: [{ role: 'user', content: 'What is 2+2? Respond with nothing else.' }], max_tokens: 1 };
+          requestBody = { model: modelId, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1, stream: true };
         }
       } else {
         // Fallback or other providers might use OpenAI standard
-        if (props.functionName === 'Embedding') {
-           testApiUrl = `${baseUrl}/v1/embeddings`;
-           requestBody = { model: modelId, input: "test" };
-        } else { // LLM or Reader
-           testApiUrl = `${baseUrl}/v1/chat/completions`;
-           requestBody = { model: modelId, messages: [{ role: 'user', content: 'What is 2+2? Respond with nothing else.' }], max_tokens: 1 };
+        if (props.functionName === 'Embedding') { // Non-streaming for Embedding
+          testApiUrl = `${baseUrl}/v1/embeddings`;
+          requestBody = { model: modelId, input: "test" };
+        } else { // LLM or Reader - Enable Streaming
+          testApiUrl = `${baseUrl}/v1/chat/completions`;
+          requestBody = { model: modelId, messages: [{ role: 'user', content: 'hi' }], max_tokens: 1, stream: true };
         }
       }
 
@@ -326,41 +365,63 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(10000) // Adjusted timeout to 10 seconds
+        signal: AbortSignal.timeout(10000) // 10 second timeout for initial connection/headers
       });
 
       if (!response.ok) {
         let errorMsg = `HTTP error! status: ${response.status}`;
         try {
-          const errorBody = await response.json();
+          const errorBody = await response.json(); // Attempt to get error body
           errorMsg += ` - ${JSON.stringify(errorBody)}`;
         } catch { /* Ignore if body isn't JSON */ }
-        throw new Error(errorMsg);
+        const error = new Error(errorMsg);
+        (error as any).status = response.status; // Add status to error object
+        throw error;
       }
 
-      // Parse response for potential markdown check
-      const responseData = await response.json();
-
-      console.log(`[SetupFunction] Connection test to ${provider.name} successful.`);
-
-      // Enhanced check for Reader + Ollama
-      if (props.functionName === 'Reader' && provider.id === 'ollama') {
-        const ollamaResponseText = responseData?.response; // Ollama generate endpoint typically has a 'response' field
-        if (typeof ollamaResponseText === 'string') {
-          // Basic heuristic check for Markdown characters
-          const looksLikeMarkdown = /[#*\-\[\]]/.test(ollamaResponseText);
-          console.log(`[SetupFunction] Reader test (Ollama): Response ${looksLikeMarkdown ? 'appears to be' : 'does not appear to be'} Markdown.`);
-        } else {
-          console.log('[SetupFunction] Reader test (Ollama): Response format unexpected, could not check for Markdown.');
+      // --- Process Response (Streaming or Full) --- 
+      if (props.functionName !== 'Embedding') {
+        // Streaming check: successful if we can read the first chunk
+        console.log(`[SetupFunction] Checking stream for ${provider.name}...`);
+        const reader = response.body?.getReader();
+        if (!reader) {
+          throw new Error("Failed to get response stream reader.");
         }
-      }
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            throw new Error("Stream ended unexpectedly before first chunk.");
+          }
+          if (!value) {
+             throw new Error("First stream chunk was empty.");
+          }
+          // First chunk received successfully!
+          console.log(`[SetupFunction] First stream chunk received for ${provider.name}. Test successful.`);
+          await reader.cancel(); // IMPORTANT: Stop reading the stream
+          setTestStatus('success');
+        } catch (streamError) {
+           console.error(`[SetupFunction] Error reading stream for ${provider.name}:`, streamError);
+           // Attempt to cancel reader even if read failed
+           try { await reader.cancel(); } catch { /* Ignore cancel error */ }
+           throw streamError; // Re-throw the stream reading error
+        }
 
-      setTestStatus('success');
+      } else {
+        // Non-streaming check for Embeddings: just parse the JSON
+        console.log(`[SetupFunction] Waiting for full embedding response for ${provider.name}...`);
+        const responseData = await response.json();
+        console.log(`[SetupFunction] Full embedding response received for ${provider.name}. Test successful.`, responseData);
+        setTestStatus('success');
+      }
 
     } catch (error: any) {
       console.error(`[SetupFunction] Connection test failed for ${provider.name} at ${testApiUrl}:`, error);
-      // Assume CORS or connectivity issue on TypeError or fetch failure
-      setTestError(error instanceof TypeError ? new Error("Connection/CORS Issue") : error);
+      // Add status code to error if available from initial check
+      if (error.status) {
+          (error as any).status = error.status;
+      }
+      // Keep TimeoutError name for specific message handling
+      setTestError(error); 
       setTestStatus('error');
     }
   };
@@ -376,7 +437,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
   };
 
   return (
-    <div class="relative flex flex-col min-h-screen bg-background text-foreground">
+    <div class="flex flex-col bg-background text-foreground">
       <Button
         variant="ghost"
         size="icon"
@@ -399,7 +460,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         </Button>
       </Show>
 
-      <div class="flex-grow overflow-y-auto flex flex-col items-center p-4 pt-24 md:p-8 md:pt-24">
+      <div class="flex-grow flex flex-col items-center p-4 pt-24 md:p-8 md:pt-24">
         {/* Image 1: Centered at top for sm/md, hidden on lg */}
         <img
           src="/images/scarlett-supercoach/scarlett-on-llama.png"
@@ -504,125 +565,198 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
             </div>
         )}
 
-        {/* --- Model Selection Dropdown (Show ONLY on fetch success) --- */} 
-        {fetchStatus() === 'success' && (
-            <div class="w-full max-w-lg">
-                <label for={`${props.functionName}-model-select`} class="block text-sm font-medium text-muted-foreground mb-1">
-                    {i18n().get(`onboarding${props.functionName}ModelLabel`, `${props.functionName} Model`)}
-                </label>
-                <Select<ModelOption>
-                    options={displayModels()}
-                    optionValue="id"
-                    optionTextValue="name"
-                    placeholder={i18n().get('onboardingSelectModelPlaceholder', 'Select')}
-                    value={displayModels().find(m => m.id === selectedModelId())}
-                    onChange={(selected) => setSelectedModelId(selected?.id)}
-                    disabled={fetchStatus() !== 'success' || !selectedProviderId()} // Already covered by outer conditional, but safe
-                    itemComponent={(itemProps) => (
-                        <SelectItem item={itemProps.item} class="cursor-pointer">
-                            <div class="flex flex-col">
-                                <span class="font-medium">{itemProps.item.rawValue.name}</span>
-                            </div>
-                        </SelectItem>
-                    )}
-                >
-                    <SelectTrigger id={`${props.functionName}-model-select`} class="w-full" disabled={!selectedProviderId()}>
-                        <SelectValue<ModelOption>>{state => state.selectedOption()?.name}</SelectValue>
+        {/* --- Model Selection and Connection Test --- */}
+        {/* Show this section only when a provider is selected */}
+        <Show when={selectedProviderId()}>
+          <div class="w-full max-w-lg mt-6 space-y-4">
+            {/* Show spinner *while* loading models for the selected provider */}
+            <Show when={fetchStatus() === 'loading'}>
+              <div class="flex justify-center items-center space-x-2 text-muted-foreground py-4">
+                  <Spinner /> 
+                  <span>Loading models...</span>
+              </div>
+            </Show>
+
+            {/* Show dropdowns and test section only *after* successful fetch */}
+            <Show when={fetchStatus() === 'success'}>
+              {/* Conditional rendering for Jan vs other providers */}
+              <Switch>
+                {/* Case: Jan Provider */}
+                <Match when={selectedProvider()?.id === 'jan'}>
+                   {/* Local Models Dropdown */}
+                   <div>
+                    <Label for="local-model-select" class="text-sm font-medium text-muted-foreground mb-1 block">Local LLM</Label>
+                    <Select<ModelOption>
+                       options={fetchedModels()}
+                       optionValue="id"
+                       optionTextValue="name"
+                       onChange={(value: ModelOption | null) => {
+                         console.log("[SetupFunction] Jan Local onChange triggered. Selected object:", value);
+                         setSelectedModelId(value?.id);
+                         console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
+                       }}
+                       value={fetchedModels().find(m => m.id === selectedModelId()) || null}
+                       itemComponent={(props) => (
+                          <SelectItem item={props.item}>{props.item.rawValue.name}</SelectItem>
+                       )}
+                    >
+                      <SelectTrigger id="local-model-select">
+                        <SelectValue>
+                          {(() => {
+                            const selectedName = fetchedModels().find(m => m.id === selectedModelId())?.name;
+                            return selectedName 
+                              ? selectedName 
+                              : <span class="text-muted-foreground">Select Local Model</span>;
+                          })()}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                         <Show when={!fetchedModels() || fetchedModels().length === 0}>
+                           <div class="px-2 py-1.5 text-sm text-muted-foreground">No local models found.</div>
+                         </Show>
+                      </SelectContent>
+                    </Select>
+                   </div>
+
+                  {/* Divider text */}
+                  <div class="text-left text-muted-foreground my-2">or</div>
+
+                   {/* Remote/Downloadable Models Dropdown */}
+                   <div>
+                    <Label for="remote-model-select" class="text-sm font-medium text-muted-foreground mb-1 block">Remote LLM</Label>
+                    <Select<ModelOption>
+                       options={remoteModels()}
+                       optionValue="id"
+                       optionTextValue="name"
+                       onChange={(value: ModelOption | null) => {
+                         console.log("[SetupFunction] Jan Remote onChange triggered. Selected object:", value);
+                         setSelectedModelId(value?.id);
+                         console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
+                       }}
+                       value={remoteModels().find(m => m.id === selectedModelId()) || null}
+                       itemComponent={(props) => (
+                         <SelectItem item={props.item}>{props.item.rawValue.name}</SelectItem>
+                       )}
+                    >
+                      <SelectTrigger id="remote-model-select">
+                        <SelectValue>
+                          {(() => {
+                            const selectedName = remoteModels().find(m => m.id === selectedModelId())?.name;
+                            return selectedName 
+                              ? selectedName 
+                              : <span class="text-muted-foreground">Select Remote Model</span>;
+                          })()}
+                        </SelectValue>
+                      </SelectTrigger>
+                      {/* Apply scrolling classes here */}
+                      <SelectContent class="max-h-72 overflow-y-auto">
+                         <Show when={!remoteModels() || remoteModels().length === 0}>
+                           <div class="px-2 py-1.5 text-sm text-muted-foreground">No remote models found.</div>
+                         </Show>
+                      </SelectContent>
+                    </Select>
+                   </div>
+                </Match>
+
+                {/* Case: Other Providers (Ollama, LMStudio, etc.) */}
+                <Match when={selectedProvider()?.id !== 'jan'}>
+                  <Select<ModelOption>
+                     options={fetchedModels()}
+                     optionValue="id"
+                     optionTextValue="name"
+                     onChange={(value: ModelOption | null) => {
+                       console.log("[SetupFunction] Other Provider onChange triggered. Selected object:", value);
+                       setSelectedModelId(value?.id);
+                       console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
+                     }}
+                     value={fetchedModels().find(m => m.id === selectedModelId()) || null}
+                     itemComponent={(props) => (
+                         <SelectItem item={props.item}>{props.item.rawValue.name}</SelectItem>
+                     )}
+                  >
+                    <SelectTrigger>
+                      <SelectValue>
+                        {(() => {
+                          const selectedName = fetchedModels().find(m => m.id === selectedModelId())?.name;
+                          return selectedName 
+                            ? selectedName 
+                            : <span class="text-muted-foreground">Select Model</span>;
+                        })()}
+                      </SelectValue>
                     </SelectTrigger>
-                    <SelectContent />
-                </Select>
+                    {/* Apply scrolling classes here too for consistency */}
+                    <SelectContent class="max-h-72 overflow-y-auto"> 
+                      {/* Remove manual mapping */}
+                      <Show when={!fetchedModels() || fetchedModels().length === 0}>
+                         <div class="px-2 py-1.5 text-sm text-muted-foreground">No models found for this provider.</div>
+                      </Show>
+                    </SelectContent>
+                  </Select>
+                </Match>
+              </Switch>
+              
+              {/* Log the value being passed to the Select components */}
+              {(() => {
+                const provider = selectedProvider();
+                if (provider?.id === 'jan') {
+                  console.log("[SetupFunction] Rendering Jan. Value for local Select:", fetchedModels().find(m => m.id === selectedModelId()) || null);
+                  console.log("[SetupFunction] Rendering Jan. Value for remote Select:", remoteModels().find(m => m.id === selectedModelId()) || null);
+                } else if (provider) {
+                  console.log(`[SetupFunction] Rendering ${provider.name}. Value for Select:`, fetchedModels().find(m => m.id === selectedModelId()) || null);
+                }
+                return null; // Don't render anything
+              })()}
 
-                {/* Conditionally show CodeBlock for Reader LM */}
-                <Show when={props.functionName === 'Reader'}>
-                  <div class="mt-4 text-sm text-muted-foreground text-center">
-                    <CodeBlock code="ollama run milkey/reader-lm-v2" language="bash" />
+              {/* Status messages are moved inside the success block or handled by the loading block above */}
+
+              {/* --- Connection Test Section --- */}
+              {/* Show test button/status only after successful model fetch AND model selected */}
+              <Show when={selectedModelId()}>
+                 <div class="flex flex-col space-y-2">
+                      {/* Test status messages */}
+                      <Show when={testStatus() === 'testing'}>
+                         <div class="flex items-center text-muted-foreground">
+                          <Spinner class="mr-2 h-4 w-4 animate-spin" />
+                          <span>Testing connection... (Max 10s)</span>
+                         </div>
+                      </Show>
+                      <Show when={testStatus() === 'error' && testError()}>
+                          <div class="text-destructive flex items-center">
+                              <WarningCircle class="mr-2 h-4 w-4" />
+                              <span>
+                                {testError()?.name === 'TimeoutError'
+                                  ? i18n().get('onboardingErrorTimeout', 'Connection failed: Timed out')
+                                  : `Connection test failed: ${testError()?.message || 'Unknown error'}`
+                                }
+                              </span>
+                          </div>
+                      </Show>
+                      <Show when={testStatus() === 'success'}>
+                          <div class="text-green-500 flex items-center">
+                              <CheckCircle class="mr-2 h-4 w-4" />
+                              <span>Connection successful!</span>
+                          </div>
+                      </Show>
                   </div>
-                </Show>
-            </div>
-        )}
+              </Show>
+            </Show>
+          </div>
+        </Show>
 
-        {/* --- Test Connection Status Indicators (Show ONLY on fetch success AND model selected) --- */} 
-        {fetchStatus() === 'success' && selectedModelId() && (
-            <div class="w-full max-w-lg text-center space-y-4 mt-8">
-                 {/* Testing Spinner */} 
-                 {testStatus() === 'testing' && (
-                     <div class="flex justify-center items-center space-x-2 text-muted-foreground">
-                         <Spinner /> 
-                     </div>
-                 )}
- 
-                 {/* Test Error Callout */} 
-                 {testStatus() === 'error' && (
-                     <>
-                         <Callout variant="error">
-                             <CalloutContent>
-                                 {/* Show specific error message based on error type */}
-                                 <p class="text-lg">
-                                     {testError()?.name === 'TimeoutError'
-                                         ? i18n().get('onboardingErrorTimeout', 'Error: Connection timed out. Is the server responding?')
-                                         : testError() instanceof TypeError 
-                                         ? i18n().get('onboardingErrorCORSCheck', 'Error: Is CORS enabled? Enable and restart')
-                                         : testError()?.message || i18n().get('onboardingErrorUnknown', 'An unknown error occurred')
-                                     }
-                                 </p>
-                             </CalloutContent>
-                         </Callout>
-                         {/* Show help images for TypeError (CORS) OR TimeoutError (Server Slow/Stuck) */}
-                         {(testError() instanceof TypeError || testError()?.name === 'TimeoutError') && (
-                             <div class="w-full max-w-lg text-sm mt-4">
-                                 <Switch fallback={<p class="text-xs text-muted-foreground">Instructions not available.</p>}>
-                                     <Match when={selectedProvider()?.id === 'ollama'}>
-                                         <div class="space-y-2">
-                                             <p>1. Open Terminal:</p>
-                                             <CodeBlock language="bash" code="sudo systemctl edit ollama.service" />
-                                             <p>2. Add these lines under [Service]:</p>
-                                             <CodeBlock language="plaintext" code={"[Service]\nEnvironment=\"OLLAMA_HOST=0.0.0.0\"\nEnvironment=\"OLLAMA_ORIGINS=*\""} />
-                                             <p>3. Save, exit, then run:</p>
-                                             <CodeBlock language="bash" code="sudo systemctl restart ollama" />
-                                         </div>
-                                     </Match>
-                                     <Match when={selectedProvider()?.id === 'jan'}>
-                                         <img 
-                                             src="/images/llm-providers/Jan-help.png" 
-                                             alt="Jan CORS setting location" 
-                                             class="rounded border border-neutral-700 max-w-sm mx-auto" 
-                                         />
-                                     </Match>
-                                     <Match when={selectedProvider()?.id === 'lmstudio'}>
-                                         <img 
-                                             src="/images/llm-providers/LMStudio-help.png" 
-                                             alt="LM Studio CORS setting location" 
-                                             class="rounded border border-neutral-700 max-w-sm mx-auto" 
-                                         />
-                                     </Match>
-                                 </Switch>
-                             </div>
-                         )}
-                     </>
-                 )}
- 
-                 {/* Success Indicator */} 
-                 {testStatus() === 'success' && (
-                     <div class="flex justify-center items-center space-x-2 text-green-500">
-                         <span class="text-md">{i18n().get('onboardingTestConnectionSuccess', 'Success!')}</span>
-                     </div>
-                 )}
-             </div>
-        )}
-       
-      </div>
+        {/* End of main content area */}
+      </div> 
 
-      {/* Image 2: Positioned bottom-right only on lg screens */}
+      {/* Image 2: Positioned bottom-right only on lg screens */} 
+      {/* This should remain outside the main scrollable content */}
+      {/* If it needs to scroll, move it inside the flex-grow div */} 
       <img 
         src="/images/scarlett-supercoach/scarlett-on-llama.png"
         alt="Scarlett Supercoach Help Image"
-        // Hidden by default, shown and positioned absolutely on large screens
         class="hidden lg:block lg:absolute lg:right-12 lg:bottom-24 lg:w-64 lg:h-64 object-contain pointer-events-none" 
-        // bottom-16 is 4rem/64px - Adjust as needed
-        // w-40/h-40 is 10rem/160px - Adjust as needed
       />
 
-      <div class="flex-shrink-0 p-4 md:p-6 border-t border-neutral-800 bg-background flex justify-center">
+      {/* Footer Button Container - Apply fixed positioning */}
+      <div class="fixed bottom-0 left-0 right-0 p-4 md:p-6 border-t border-neutral-800 bg-background flex justify-center">
         <div class="w-full max-w-xs">
           <Button
             size="lg"
