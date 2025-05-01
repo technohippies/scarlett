@@ -22,12 +22,13 @@ export default {
   title: 'Features/OnInstall/SetupLLM',
   component: SetupLLM,
   parameters: {
-    layout: 'centered',
+    layout: 'fullscreen',
   },
   tags: ['autodocs'],
   args: { // Default args shared by stories below
     selectedProvider: mockOllamaProvider,
     onComplete: (config: any) => console.log('Story [onComplete]:', config),
+    onBack: () => console.log('Story [onBack]:'),
     // Default messages object - ensure keys exist in messages.json!
     messages: {
         ...messagesEn,
@@ -48,6 +49,13 @@ export default {
   },
 };
 
+// Helper function to wrap stories
+const renderWithWrapper = (args: any) => (
+    <div class="h-screen w-full">
+        <SetupLLM {...args} />
+    </div>
+);
+
 // --- Story Variants for Visual States ---
 
 // 1. Initial Loading State
@@ -55,7 +63,8 @@ export const StateInitialLoading = {
     args: {
         _initialIsLoadingModels: true,
         _initialModels: [], // Ensure no models are shown
-    }
+    },
+    render: renderWithWrapper,
 };
 
 // 2. Initial Load Error (Generic)
@@ -72,7 +81,8 @@ export const StateInitialLoadError = {
             // Use default strings directly to fix type errors
             onboardingLLMTestConnection: { message: "Test Connection" }, 
         }
-  }
+    },
+    render: renderWithWrapper,
 };
 
 // 3. Model Selected, Ready to Test
@@ -82,7 +92,8 @@ export const StateModelSelected = {
         _initialModels: mockDisplayModels,
         _initialSelectedModelId: mockDisplayModels[0].id, // Pre-select the first model
         _initialTestState: 'idle',
-    }
+    },
+    render: renderWithWrapper,
 };
 
 // 4. Testing Connection State (Spinner)
@@ -92,7 +103,8 @@ export const StateTestingConnection = {
         _initialModels: mockDisplayModels,
         _initialSelectedModelId: mockDisplayModels[0].id,
         _initialTestState: 'testing', 
-    }
+    },
+    render: renderWithWrapper,
 };
 
 // 5. Test Connection Success
@@ -102,7 +114,8 @@ export const StateTestSuccess = {
         _initialModels: mockDisplayModels,
         _initialSelectedModelId: mockDisplayModels[0].id,
         _initialTestState: 'success',
-    }
+    },
+    render: renderWithWrapper,
 };
 
 // 6. Test Connection Error (Generic)
@@ -114,7 +127,8 @@ export const StateTestErrorGeneric = {
         _initialTestState: 'error',
         _initialTestError: 'Error testing connection: Model not found',
         _initialIsCorsError: false,
-    }
+    },
+    render: renderWithWrapper,
 };
 
 // Function to create CORS error stories for different OS
@@ -137,30 +151,34 @@ const createCorsErrorStoryArgs = (os: 'macos' | 'linux' | 'windows' | 'unknown')
 
 // 7. Test Error (CORS - macOS)
 export const StateTestErrorCorsMacos = {
-    args: createCorsErrorStoryArgs('macos')
+    args: createCorsErrorStoryArgs('macos'),
+    render: renderWithWrapper,
 };
 
 // 8. Test Error (CORS - Linux)
 export const StateTestErrorCorsLinux = {
-    args: createCorsErrorStoryArgs('linux')
+    args: createCorsErrorStoryArgs('linux'),
+    render: renderWithWrapper,
 };
 
 // 9. Test Error (CORS - Windows)
 export const StateTestErrorCorsWindows = {
-    args: createCorsErrorStoryArgs('windows')
+    args: createCorsErrorStoryArgs('windows'),
+    render: renderWithWrapper,
 };
 
 // 10. Test Error (CORS - Unknown OS)
 export const StateTestErrorCorsUnknown = {
-    args: createCorsErrorStoryArgs('unknown')
+    args: createCorsErrorStoryArgs('unknown'),
+    render: renderWithWrapper,
 };
 
-// 1. Default (Ollama Provider Initial State)
+// 11. Default (Ollama Provider Initial State)
 // This story shows the component when the Ollama provider is selected.
 // The actual display (loading, model list, error) depends on whether
 // an Ollama server is accessible at the defaultBaseUrl when viewing the story.
 export const OllamaDefault = {
-    // No specific args needed beyond the defaults defined above.
+    render: renderWithWrapper,
 };
 
 // VISUAL STATE APPROXIMATION NOTES:

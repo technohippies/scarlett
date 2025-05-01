@@ -16,7 +16,7 @@ export default {
   title: 'Features/OnInstall/Language',
   component: Language,
   parameters: {
-    layout: 'centered',
+    layout: 'fullscreen',
   },
   tags: ['autodocs'],
   args: {
@@ -37,6 +37,10 @@ export default {
 
 // Basic render story, similar structure to Card.stories.tsx
 export const Default = {
-  // Reverted: Removed render function and wrapper div.
-  // The global background setting in preview.ts will handle the theme.
+    // Wrap in a div to provide height context for the story
+    render: (args: any) => (
+        <div class="h-screen w-full">
+            <Language {...args} />
+        </div>
+    ),
 }; 

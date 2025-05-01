@@ -91,91 +91,96 @@ export const Language: Component<LanguageProps> = (props) => {
   };
 
   return (
-    // Enforce FIXED width: Use w-[48rem]
-    <div class="p-4 md:p-8 w-[48rem] mx-auto flex flex-col items-center space-y-6 min-h-screen justify-center bg-background text-foreground">
-      {/* Image: Centered by parent's items-center */}
-      <img
-        src="/images/scarlett-supercoach/scarlett-proud-512x512.png"
-        alt="Scarlett Supercoach"
-        class="w-32 h-32 md:w-48 md:h-48 object-contain mb-6"
-      />
+    // Use flex column, full height
+    <div class="flex flex-col min-h-screen bg-background text-foreground">
+      {/* Content Area: Remove justify-center, standardize top padding */}
+      <div class="flex-grow overflow-y-auto flex flex-col items-center p-4 pt-24 md:p-8 md:pt-24">
+          {/* Image: Centered by parent's items-center */} 
+          <img
+            src="/images/scarlett-supercoach/scarlett-proud-512x512.png"
+            alt="Scarlett Supercoach"
+            // Adjusted mb for spacing within scrollable area
+            class="w-32 h-32 md:w-48 md:h-48 object-contain mb-6 flex-shrink-0" 
+          />
 
-      {/* Sentence Structure: Takes full width */}
-      <div class="text-center text-xl md:text-2xl space-y-4 w-full">
-        <p class="inline-flex items-center gap-2">
-          <span>{props.iSpeakLabel}</span>
-          <Select<LanguageOptionStub>
-            options={props.availableNativeLanguages}
-            value={selectedNativeLangStub()}
-            onChange={handleNativeChange}
-            optionValue="value"
-            optionTextValue={stub => `${stub.emoji} ${getLangName(stub.value, props.messages)}`.trim()}
-            placeholder={props.selectLanguagePlaceholder}
-            itemComponent={(itemProps) => {
-              const name = getLangName(itemProps.item.rawValue.value, props.messages);
-              const emoji = itemProps.item.rawValue.emoji;
-              return (
-                <SelectItem item={itemProps.item}>
-                  {name} {' '}{emoji} 
-                </SelectItem>
-              );
-            }}
-            multiple={false}
-            id="native-language"
-            class="w-auto inline-block align-middle"
-          >
-            <SelectTrigger class="font-semibold border-b border-border hover:border-primary pl-3 pr-1 py-0 focus:ring-0 min-w-[150px] cursor-pointer">
-              <SelectValue<LanguageOptionStub>>
-                {(state) => {
-                  const stub = state.selectedOption();
-                  if (!stub) return '...';
-                  const name = getLangName(stub.value, props.messages);
-                  return `${name} ${stub.emoji}`.trim(); 
+          {/* Sentence Structure: Limit width, allow space */}
+          <div class="text-center text-xl md:text-2xl space-y-4 w-full max-w-lg mb-6">
+              <p class="inline-flex items-center justify-center flex-wrap gap-2"> {/* Added justify-center and flex-wrap */}
+                <span>{props.iSpeakLabel}</span>
+                <Select<LanguageOptionStub>
+                  options={props.availableNativeLanguages}
+                  value={selectedNativeLangStub()}
+                  onChange={handleNativeChange}
+                  optionValue="value"
+                  optionTextValue={stub => `${stub.emoji} ${getLangName(stub.value, props.messages)}`.trim()}
+                  placeholder={props.selectLanguagePlaceholder}
+                  itemComponent={(itemProps) => {
+                    const name = getLangName(itemProps.item.rawValue.value, props.messages);
+                    const emoji = itemProps.item.rawValue.emoji;
+                    return (
+                      <SelectItem item={itemProps.item}>
+                        {name} {' '}{emoji} 
+                      </SelectItem>
+                    );
+                  }}
+                  multiple={false}
+                  id="native-language"
+                  class="w-auto inline-block align-middle"
+                >
+                  <SelectTrigger class="font-semibold border-b border-border hover:border-primary pl-3 pr-1 py-0 focus:ring-0 min-w-[150px] cursor-pointer">
+                    <SelectValue<LanguageOptionStub>>
+                      {(state) => {
+                        const stub = state.selectedOption();
+                        if (!stub) return '...';
+                        const name = getLangName(stub.value, props.messages);
+                        return `${name} ${stub.emoji}`.trim(); 
+                      }}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent />
+                </Select>
+              </p>
+              <p>{props.wantToLearnLabel}</p>
+          </div>
+
+          {/* Target Language Grid: Limit width */}
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-md mb-6">
+              <For each={targetLanguages()}> 
+                {(langStub) => {
+                  const name = getLangName(langStub.value, props.messages);
+                  return (
+                    <Button
+                      variant="outline"
+                      onClick={() => setSelectedTargetLangValue(langStub.value)}
+                      class={cn(
+                        'h-auto p-4 flex flex-col items-center justify-center space-y-2 text-base border',
+                        'cursor-pointer hover:bg-neutral-700 hover:border-neutral-600 focus:outline-none focus:ring-0',
+                        selectedTargetLangValue() === langStub.value
+                          ? 'bg-neutral-800 text-foreground border-neutral-700'
+                          : 'border-neutral-700'
+                      )}
+                    >
+                      <span class="text-4xl">{langStub.emoji}</span>
+                      <span>{name}</span> 
+                    </Button>
+                  );
                 }}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent />
-          </Select>
-        </p>
-        <p>{props.wantToLearnLabel}</p>
-      </div>
-
-      {/* Target Language Grid: Takes full width (max-w-md applied internally) */}
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-md">
-        <For each={targetLanguages()}> 
-          {(langStub) => {
-            const name = getLangName(langStub.value, props.messages);
-            return (
-              <Button
-                variant="outline"
-                onClick={() => setSelectedTargetLangValue(langStub.value)}
-                class={cn(
-                  'h-auto p-4 flex flex-col items-center justify-center space-y-2 text-base border',
-                  'cursor-pointer hover:bg-neutral-700 hover:border-neutral-600 focus:outline-none focus:ring-0',
-                  selectedTargetLangValue() === langStub.value
-                    ? 'bg-neutral-800 text-foreground border-neutral-700'
-                    : 'border-neutral-700'
-                )}
-              >
-                <span class="text-4xl">{langStub.emoji}</span>
-                <span>{name}</span> 
-              </Button>
-            );
-          }}
-        </For>
-      </div>
-
-      {/* Continue Button Area: Takes full width (max-w-xs for button itself) */}
-      <div class="pt-6 w-full max-w-xs">
-         <Button
-           size="lg"
-           class="w-full"
-           onClick={handleSubmit}
-           disabled={!selectedTargetLangValue()}
-         >
-           {props.continueLabel}
-         </Button>
-      </div>
+              </For>
+          </div>
+      </div> 
+      {/* Footer Area: Fixed at bottom */}
+      <div class="flex-shrink-0 p-4 md:p-6 border-t border-neutral-800 bg-background flex justify-center">
+          <div class="w-full max-w-xs"> {/* Maintain max-width for button */}
+             <Button
+               size="lg"
+               class="w-full"
+               onClick={handleSubmit}
+               disabled={!selectedTargetLangValue()}
+             >
+               {props.continueLabel}
+             </Button>
+          </div>
+       </div>
     </div>
   );
 };

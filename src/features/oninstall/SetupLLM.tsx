@@ -11,10 +11,12 @@ import { getOperatingSystem } from '../../lib/os'; // Import the OS utility
 import { mergeProps } from 'solid-js'; // Import mergeProps
 import { CodeBlock } from '../../components/ui/CodeBlock'; // Import the new component
 import { Callout, CalloutTitle, CalloutContent } from '../../components/ui/callout'; // Import the new Callout component
+import { ArrowLeft } from 'phosphor-solid'; // Import icon
 
 interface SetupLLMProps {
   selectedProvider: LLMProviderOption;
   onComplete: (config: LLMConfig) => void;
+  onBack: () => void; // Add onBack prop
   messages: Messages; // Required for labels/instructions
   // --- Storybook-only Initial State Props ---
   _initialIsLoadingModels?: boolean;
@@ -211,6 +213,16 @@ export const SetupLLM: Component<SetupLLMProps> = (incomingProps) => {
   const getButtonProps = () => {
     const state = testState();
     const modelSelected = !!selectedModelId();
+    const initialError = initialLoadError();
+
+    // If there was an initial load error OR a test connection error, show Retry
+    if (initialError || state === 'error') {
+        return {
+            label: props.messages.onboardingLLMRetry?.message || 'Retry',
+            onClick: fetchInitialModels, // Always retry fetching models on error
+            disabled: isLoadingModels(), // Disable if already loading
+        };
+    }
 
     if (state === 'success') {
       return {
@@ -239,176 +251,185 @@ export const SetupLLM: Component<SetupLLMProps> = (incomingProps) => {
 
   // --- UI Rendering --- 
   return (
-    // Enforce FIXED width: Use w-[48rem]
-    <div class="p-4 md:p-8 w-[48rem] mx-auto flex flex-col items-center space-y-6 min-h-screen justify-center bg-background text-foreground">
-      {/* Standard Top Image */}
-      <img
-        src="/images/scarlett-supercoach/scarlett-on-llama.png" 
-        alt="Scarlett Supercoach on Llama"
-        class="w-32 h-32 md:w-48 md:h-48 object-contain mb-6"
-      />
-      
-      {/* Initial Loading State: Takes full width, content centered */}
-      {isLoadingModels() && (
-        <div class="flex flex-col items-center space-y-2 w-full">
-            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-            <span>{props.messages.onboardingLLMChecking?.message || 'Loading available models...'}</span>
-        </div>
-      )}
-
-      {/* Initial Load Error State - Use Callout */}
-      {!isLoadingModels() && initialLoadError() && (
-         <div class="w-full space-y-2 text-left">
-            <Callout 
-              variant="error" 
-            >
-                <CalloutTitle>Error</CalloutTitle>
-                <CalloutContent>
-                    <p>{props.messages.onboardingLLMErrorInitialLoad?.message || 'Failed to load models:'} {initialLoadError()}</p>
-                </CalloutContent>
-             </Callout>
-             {isCorsError() && (
-                <p class="mt-2 italic text-muted-foreground text-base">{props.messages.onboardingLLMErrorCorsHint?.message || "(This might be a CORS issue. Try setting Ollama's host/origins if applicable.)"}</p>
-             )}
-             <div class="pt-2 text-center">
-               {/* Button size remains sm for retry */}
-               <Button variant="secondary" size="sm" onClick={fetchInitialModels}> 
-                 {props.messages.onboardingLLMRetry?.message || 'Retry'} 
-               </Button>
-           </div>
-         </div>
-      )}
-
-      {/* Model Selection: Takes full width */}
-      {!isLoadingModels() && !initialLoadError() && (
-        <div class="w-full space-y-3 flex flex-col items-start">
-          <label for="model-select" class="block text-sm font-medium text-left self-start">
-              {/* Simplified Label */}
-              Choose Model: 
-          </label>
-          <Select
-            id="model-select"
-            options={models()}
-            value={models().find(m => m.id === selectedModelId())}
-            onChange={(model) => {
-                setSelectedModelId(model?.id);
-                setTestState('idle'); // Explicitly reset test state on selection
-                setTestError(null);
-                setIsCorsError(false);
-            }}
-            optionValue="id"
-            optionTextValue="id" 
-            placeholder={props.messages.onboardingLLMSelectPlaceholder?.message || 'Choose a model...'}
-            itemComponent={(itemProps) => (
-                <SelectItem item={itemProps.item}>
-                    {itemProps.item.rawValue.id}
-                </SelectItem>
-            )}
-            multiple={false}
-            class="w-full"
-          >
-            <SelectTrigger class="w-full">
-                <SelectValue<ModelInfo>>
-                    {(state) => state.selectedOption()?.id || props.messages.onboardingLLMSelectPlaceholder?.message || 'Choose a model...'}
-                </SelectValue>
-            </SelectTrigger>
-            <SelectContent />
-          </Select>
-        </div>
-      )}
-
-      {/* Test Status/Error Display */} 
-      {!isLoadingModels() && !initialLoadError() && (
-          <div class="w-full min-h-[100px] mt-4 flex flex-col items-center justify-center">
-             {/* Testing Spinner: Centered */}
-             {testState() === 'testing' && (
-                 <div class="flex flex-col items-center space-y-2">
-                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                    <span>{props.messages.onboardingLLMTesting?.message || 'Testing connection...'}</span>
-                 </div>
-             )}
-
-             {/* Test Success Message: Centered */} 
-             {testState() === 'success' && (
-                <div class="p-3 rounded-md bg-success/10 text-success text-sm font-medium">
-                    {props.messages.onboardingLLMTestSuccess?.message || 'Connection successful!'}
+    // Use flex column, full height, add relative
+    <div class="relative flex flex-col min-h-screen bg-background text-foreground">
+       {/* Back Button (Top Left) */}
+       <Button 
+           variant="ghost"
+           size="icon"
+           onClick={props.onBack}
+           aria-label="Go back"
+           class="absolute top-4 left-4 text-muted-foreground hover:text-foreground z-10"
+       >
+           <ArrowLeft class="h-6 w-6" />
+       </Button>
+       {/* Content Area: Ensure pt-24, remove justify-center */}
+       <div class="flex-grow overflow-y-auto flex flex-col items-center p-4 pt-24 md:p-8 md:pt-24">
+          {/* Standard Top Image */} 
+          <img
+            src="/images/scarlett-supercoach/scarlett-on-llama.png" 
+            alt="Scarlett Supercoach on Llama"
+            // Adjusted mb for spacing within scrollable area
+            class="w-32 h-32 md:w-48 md:h-48 object-contain mb-6 flex-shrink-0"
+          />
+          
+          {/* Group content elements to manage width and spacing */} 
+          <div class="w-full max-w-lg space-y-6"> {/* Apply max-width and spacing here */} 
+              {/* Initial Loading State */}
+              {isLoadingModels() && (
+                <div class="flex flex-col items-center space-y-2 w-full">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                    <span>{props.messages.onboardingLLMChecking?.message || 'Loading available models...'}</span>
                 </div>
-             )}
+              )}
 
-             {/* Test Error Section - Use Callout */}
-             {testState() === 'error' && testError() && (
-                 <div class="w-full space-y-3 text-left">
-                   <Callout variant="error">
-                       <CalloutTitle>Error</CalloutTitle>
-                       <CalloutContent>
-                           <p>{testError()}</p>
-                       </CalloutContent>
-                   </Callout>
+              {/* Initial Load Error State - Use Callout */}
+              {!isLoadingModels() && initialLoadError() && (
+                <div class="w-full space-y-2 text-left">
+                    <Callout 
+                      variant="error" 
+                      title="Error"
+                    >
+                        <CalloutTitle>Error</CalloutTitle>
+                        <CalloutContent>
+                            <p>{props.messages.onboardingLLMErrorInitialLoad?.message || 'Failed to load models:'} {initialLoadError()}</p>
+                        </CalloutContent>
+                    </Callout>
+                    {isCorsError() && (
+                        <p class="mt-2 italic text-muted-foreground text-base">{props.messages.onboardingLLMErrorCorsHint?.message || "(This might be a CORS issue. Try setting Ollama's host/origins if applicable.)"}</p>
+                    )}
+                </div>
+              )}
 
-                   {/* Instructions outside the callout */} 
-                   {!isCorsError() && (
-                       <p class="text-foreground">{props.messages.onboardingLLMErrorInstructions?.message || 'Please ensure the LLM provider server is running and accessible.'}</p>
-                   )}
+              {/* Model Selection */} 
+              {!isLoadingModels() && !initialLoadError() && (
+                <div class="w-full space-y-3 flex flex-col items-start">
+                    <label for="model-select" class="block text-sm font-medium text-left self-start">
+                        Choose Model: 
+                    </label>
+                    <Select
+                      id="model-select"
+                      options={models()}
+                      value={models().find(m => m.id === selectedModelId())}
+                      onChange={(model) => {
+                          setSelectedModelId(model?.id);
+                          setTestState('idle'); 
+                          setTestError(null);
+                          setIsCorsError(false);
+                      }}
+                      optionValue="id"
+                      optionTextValue="id" 
+                      placeholder={props.messages.onboardingLLMSelectPlaceholder?.message || 'Choose a model...'}
+                      itemComponent={(itemProps) => (
+                          <SelectItem item={itemProps.item}>
+                              {itemProps.item.rawValue.id}
+                          </SelectItem>
+                      )}
+                      multiple={false}
+                      class="w-full"
+                    >
+                      <SelectTrigger class="w-full">
+                          <SelectValue<ModelInfo>>
+                              {(state) => state.selectedOption()?.id || props.messages.onboardingLLMSelectPlaceholder?.message || 'Choose a model...'}
+                          </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent class="max-h-72 overflow-y-auto" />
+                    </Select>
+                </div>
+              )}
 
-                   {/* Simplified CORS help section */} 
-                   {props.selectedProvider.id === 'ollama' && isCorsError() && (
-                     <div class="space-y-4 pt-3 mt-3 border-t border-neutral-700 text-left text-foreground"> 
-                       {/* Check CORS */}
-                       <div>
-                         <p class="font-medium mb-1">Check CORS:</p>
-                         <CodeBlock 
-                           code={`curl -X OPTIONS ${props.selectedProvider.defaultBaseUrl} -H "Origin: ${window.location.origin}" -H "Access-Control-Request-Method: GET" -I`} 
-                           class="mt-1"
-                         />
-                         <p class="mt-1 italic text-muted-foreground">403 forbidden error means CORS is not enabled</p>
-                       </div>
+              {/* Test Status/Error Display */} 
+              {!isLoadingModels() && !initialLoadError() && (
+                  <div class="w-full min-h-[100px] mt-4 flex flex-col items-center justify-center">
+                    {/* Testing Spinner */} 
+                    {testState() === 'testing' && (
+                        <div class="flex flex-col items-center space-y-2">
+                          <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                          <span>{props.messages.onboardingLLMTesting?.message || 'Testing connection...'}</span>
+                        </div>
+                    )}
 
-                       {/* Enable CORS Title */}
-                       <p class="font-medium pt-2">Enable CORS:</p> 
+                    {/* Test Success Message */} 
+                    {testState() === 'success' && (
+                        <div class="p-3 rounded-md bg-success/10 text-success text-sm font-medium">
+                            {props.messages.onboardingLLMTestSuccess?.message || 'Connection successful!'}
+                        </div>
+                    )}
 
-                       {/* macOS */}
-                       {os === 'macos' && (
-                         <div class="space-y-1 text-left">
-                            <CodeBlock 
-                               code={`launchctl setenv OLLAMA_ORIGINS '${window.location.origin}'`} 
-                               class="mt-1"
-                             />
-                         </div>
-                       )}
-                       {/* Linux */} 
-                       {os === 'linux' && (
-                         <div class="space-y-1 text-left">
-                            <CodeBlock code={`sudo systemctl edit ollama.service`} class="mt-1"/>
-                            <p class="mt-1">Add/edit in [Service] section:</p>
-                            <CodeBlock 
-                              code={`[Service]\nEnvironment="OLLAMA_ORIGINS=${window.location.origin}"\nEnvironment="OLLAMA_HOST=0.0.0.0"`}
-                              class="mt-1"
-                            />
-                          </div>
-                       )}
-                       {/* Windows */} 
-                       {os === 'windows' && (
-                          <div class="space-y-1 text-left">
-                             <p>
-                               Set System Environment Variable: `OLLAMA_ORIGINS` to `{window.location.origin}` (or `*`). Restart Ollama.
-                             </p>
-                           </div>
-                       )}
-                            {/* Unknown */}
-                            {os === 'unknown' && (
-                              <p class="text-left">{props.messages.onboardingLLMErrorOllamaUnknownOS?.message || 'Check Ollama documentation for CORS/Host setup on your specific OS.'}</p>
-                           )}
-                            {/* Removed Footer note */}
-                       </div>
-                     )}
-                 </div>
-             )}
+                    {/* Test Error Section */} 
+                    {testState() === 'error' && testError() && (
+                        <div class="w-full space-y-3 text-left">
+                          <Callout variant="error"> 
+                              <CalloutTitle>Error</CalloutTitle>
+                              <CalloutContent>
+                                  <p>{testError()}</p> 
+                              </CalloutContent>
+                          </Callout>
+
+                          {!isCorsError() && (
+                              <p class="text-foreground">{props.messages.onboardingLLMErrorInstructions?.message || 'Please ensure the LLM provider server is running and accessible.'}</p>
+                          )}
+
+                          {/* CORS help section */} 
+                          {props.selectedProvider.id === 'ollama' && isCorsError() && (
+                            <div class="space-y-4 pt-3 mt-3 border-t border-neutral-700 text-left text-foreground"> 
+                              {/* Check CORS */}
+                              <div>
+                                <p class="font-medium mb-1">Check CORS:</p>
+                                <CodeBlock 
+                                  code={`curl -X OPTIONS ${props.selectedProvider.defaultBaseUrl} -H "Origin: ${window.location.origin}" -H "Access-Control-Request-Method: GET" -I`} 
+                                  class="mt-1"
+                                />
+                                <p class="mt-1 italic text-muted-foreground">403 forbidden error means CORS is not enabled</p>
+                              </div>
+
+                              {/* Enable CORS Title */} 
+                              <p class="font-medium pt-2">Enable CORS:</p> 
+
+                              {/* OS Specific Instructions */} 
+                              {/* ... macOS ... */} 
+                              {os === 'macos' && (
+                                <div class="space-y-1 text-left">
+                                  <CodeBlock 
+                                      code={`launchctl setenv OLLAMA_ORIGINS '${window.location.origin}'`} 
+                                      class="mt-1"
+                                    />
+                                </div>
+                              )}
+                              {/* ... Linux ... */} 
+                              {os === 'linux' && (
+                                <div class="space-y-1 text-left">
+                                  <CodeBlock code={`sudo systemctl edit ollama.service`} class="mt-1"/>
+                                  <p class="mt-1">Add/edit in [Service] section:</p>
+                                  <CodeBlock 
+                                    code={`[Service]\nEnvironment="OLLAMA_ORIGINS=${window.location.origin}"\nEnvironment="OLLAMA_HOST=0.0.0.0"`}
+                                    class="mt-1"
+                                  />
+                                </div>
+                              )}
+                              {/* ... Windows ... */} 
+                              {os === 'windows' && (
+                                  <div class="space-y-1 text-left">
+                                    <p>
+                                      Set System Environment Variable: `OLLAMA_ORIGINS` to `{window.location.origin}` (or `*`). Restart Ollama.
+                                    </p>
+                                  </div>
+                              )}
+                              {/* ... Unknown ... */} 
+                              {os === 'unknown' && (
+                                <p class="text-left">{props.messages.onboardingLLMErrorOllamaUnknownOS?.message || 'Check Ollama documentation for CORS/Host setup on your specific OS.'}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                    )}
+                  </div>
+              )}
           </div>
-      )}
-
-      {/* Action Button Area: Takes full width */} 
-      {!isLoadingModels() && !initialLoadError() && (
-          <div class="pt-6 w-full max-w-xs flex justify-center"> 
+      </div>
+      {/* Footer Area: Fixed at bottom */}
+      <div class="flex-shrink-0 p-4 md:p-6 border-t border-neutral-800 bg-background flex justify-center">
+          <div class="w-full max-w-xs"> {/* Maintain max-width for button */}
              <Button
                size="lg"
                class="w-full"
@@ -419,7 +440,7 @@ export const SetupLLM: Component<SetupLLMProps> = (incomingProps) => {
                {buttonProps().label} 
              </Button>
           </div>
-       )}
+       </div>
     </div>
   );
 };

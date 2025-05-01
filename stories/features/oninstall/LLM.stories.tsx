@@ -14,11 +14,12 @@ export default {
   title: 'Features/OnInstall/LLM',
   component: LLM,
   parameters: {
-    layout: 'centered',
+    layout: 'fullscreen',
   },
   tags: ['autodocs'],
   args: {
     onComplete: (provider: LLMProviderOption) => console.log('Story: LLM onComplete triggered with:', provider),
+    onBack: () => console.log('Story: LLM onBack triggered'),
     selectProviderLabel: "Select an LLM Provider",
     continueLabel: messagesEn.onboardingContinue?.message || "Continue",
     availableProviders: mockOllamaProvider,
@@ -27,4 +28,10 @@ export default {
 };
 
 // Basic render story (only Default needed now)
-export const Default = {};
+export const Default = {
+    render: (args: any) => (
+        <div class="h-screen w-full">
+            <LLM {...args} />
+        </div>
+    ),
+};

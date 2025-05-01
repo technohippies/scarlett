@@ -5,6 +5,7 @@ import { cn } from "../../../src/lib/utils";
 import {
   Select,
   SelectContent,
+  SelectItem,
   SelectTrigger,
   SelectValue
 } from "../../../src/components/ui/select";
@@ -83,5 +84,51 @@ export const Default = {
   },
   args: {
     placeholder: "Select a fruit…",
+  },
+};
+
+export const LongList = {
+  render: (props: Omit<ComponentProps<typeof Select>, 'itemComponent' | 'options'> & { placeholder?: string }) => {
+    type ItemOption = { value: string; label: string };
+    const [value, setValue] = createSignal<ItemOption | null>(null);
+    
+    // Generate a long list of items
+    const longListItems: ItemOption[] = Array.from({ length: 50 }, (_, i) => ({
+      value: `item-${i + 1}`,
+      label: `Item ${i + 1}`,
+    }));
+
+    return (
+      <div class="flex w-[250px] flex-col items-center gap-4">
+        <Select<ItemOption>
+          value={value()}
+          onChange={setValue}
+          options={longListItems}
+          optionValue="value"
+          optionTextValue="label"
+          multiple={false}
+          placeholder={props.placeholder || "Select an item…"}
+          itemComponent={(itemProps) => (
+             // Use the imported SelectItem component for consistency
+             <SelectItem item={itemProps.item}>
+               {itemProps.item.rawValue.label}
+             </SelectItem>
+          )}
+          {...props}
+        >
+          <SelectTrigger aria-label="Item" class="w-[180px]">
+            <SelectValue<ItemOption>>
+              {(state) => state.selectedOption()?.label || props.placeholder || "Select an item…"}
+            </SelectValue>
+          </SelectTrigger>
+          {/* Apply max-height and overflow directly to SelectContent here */}
+          <SelectContent class="max-h-72 overflow-y-auto" />
+        </Select>
+        <p class="pt-2 text-sm text-muted-foreground">Selected: {value()?.value || 'none'}</p>
+      </div>
+    );
+  },
+  args: {
+    placeholder: "Select from long list…",
   },
 }; 

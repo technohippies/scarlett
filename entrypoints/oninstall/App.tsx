@@ -208,6 +208,18 @@ const App: Component = () => {
     setCurrentStep('providerSelect'); // Go to provider select next
   };
 
+  // Back navigation handler
+  const handleBack = () => {
+    const step = currentStep();
+    if (step === 'learningGoal') {
+        setCurrentStep('language');
+    } else if (step === 'providerSelect') {
+        setCurrentStep('learningGoal');
+    } else if (step === 'llmSetup') {
+        setCurrentStep('providerSelect');
+    }
+    console.log(`[App] Navigated back from ${step} to ${currentStep()}`);
+  };
 
   const renderStep = () => {
     const currentMessages = i18n();
@@ -230,6 +242,7 @@ const App: Component = () => {
        case 'providerSelect': // Use the LLM component for provider selection
          return <LLM 
                     onComplete={handleProviderSelectComplete}
+                    onBack={handleBack}
                     selectProviderLabel={currentMessages.get('onboardingLLMProviderTitle', 'Choose your Local LLM Provider')}
                     continueLabel={currentMessages.get('onboardingContinue', 'Continue')}
                     availableProviders={availableProviders}
@@ -244,11 +257,13 @@ const App: Component = () => {
          return <SetupLLM
                     selectedProvider={provider}
                     onComplete={handleLLMSetupComplete}
+                    onBack={handleBack}
                     messages={messagesData() || {}}
                  />;
       case 'learningGoal':
         return <LearningGoal 
                    onComplete={handleLearningGoalComplete} 
+                   onBack={handleBack}
                    targetLanguageLabel={targetLangLabel()} 
                    questionPrefix={currentMessages.get('onboardingLearningGoalQuestionPrefix', 'Why are you learning')}
                    questionSuffix={currentMessages.get('onboardingLearningGoalQuestionSuffix', '?')}
@@ -264,7 +279,7 @@ const App: Component = () => {
 
   return (
     <div class="bg-background text-foreground min-h-screen">
-      {messagesData.loading ? <div>Loading...</div> : renderStep()} 
+       {messagesData.loading ? <div>Loading...</div> : renderStep()} 
     </div>
   );
 };
