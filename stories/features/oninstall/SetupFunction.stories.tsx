@@ -1,4 +1,4 @@
-import { SetupFunction, ProviderOption, ModelOption } from '../../../src/features/oninstall/SetupFunction';
+import { SetupFunction, ProviderOption } from '../../../src/features/oninstall/SetupFunction';
 import messagesEn from '../../../public/_locales/en/messages.json';
 
 // --- Mock Data ---
@@ -95,9 +95,9 @@ export const ReaderSetupSuccess = {
     render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
 };
 
-// Story showing the Connection/CORS error state
-export const ConnectionError = {
-  name: "Connection Error (TypeError)",
+// Story showing the Connection/CORS error state for Ollama
+export const ConnectionErrorOllama = {
+  name: "Connection Error (Ollama)",
   args: {
     functionName: 'LLM',
     providerOptions: mockLLMProviders,
@@ -110,12 +110,34 @@ export const ConnectionError = {
   render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
 };
 
+// Story showing the Connection/CORS error state for Jan
+export const ConnectionErrorJan = {
+  name: "Connection Error (Jan)",
+  args: {
+    ...ConnectionErrorOllama.args, // Inherit common args
+    initialProviderId: 'jan', // Set provider to Jan
+    _fetchStatus: 'error',
+  },
+  render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
+};
+
+// Story showing the Connection/CORS error state for LMStudio
+export const ConnectionErrorLMStudio = {
+  name: "Connection Error (LMStudio)",
+  args: {
+    ...ConnectionErrorOllama.args, // Inherit common args
+    initialProviderId: 'lmstudio', // Set provider to LMStudio
+    _fetchStatus: 'error',
+  },
+  render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
+};
+
 // Optional: Story showing HTTP error state
 // Note: Needs enhancement in component to simulate HTTP error via props if desired
 export const HTTPError = {
   name: "Connection Error (Simulated HTTP)",
    args: {
-     ...ConnectionError.args, // Inherit most args
+     ...ConnectionErrorOllama.args, // Inherit most args
      _fetchStatus: 'error', // Still uses error status
      // Need a way to tell the component *which* error to simulate if not TypeError
    },

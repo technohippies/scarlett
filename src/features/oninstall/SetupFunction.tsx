@@ -73,7 +73,11 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
     // Basic endpoint detection (improve as needed)
     if (provider.id === 'ollama') {
         apiUrl = `${baseUrl}/api/tags`;
-    } else { // Assume OpenAI compatible for Jan, LMStudio etc.
+    } else if (provider.id === 'lmstudio' || provider.id === 'jan') { // Handle HTTP endpoints for WS-based servers
+        // Replace ws:// with http:// specifically for the fetch call
+        const httpBaseUrl = baseUrl.replace(/^ws:/, 'http:');
+        apiUrl = `${httpBaseUrl}/v1/models`;
+    } else { // Fallback or handle other specific providers
         apiUrl = `${baseUrl}/v1/models`;
     }
 
@@ -195,11 +199,15 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
       </Button>
 
       <div class="flex-grow overflow-y-auto flex flex-col items-center p-4 pt-24 md:p-8 md:pt-24">
+        {/* Image 1: Centered at top for sm/md, hidden on lg */}
         <img
           src="/images/scarlett-supercoach/scarlett-on-llama.png"
           alt="Scarlett Supercoach"
-          class="w-32 h-32 md:w-48 md:h-48 object-contain mb-6 flex-shrink-0"
+          class="w-32 h-32 md:w-48 md:h-48 object-contain mb-6 flex-shrink-0 lg:hidden"
         />
+
+        {/* Main content block (text, providers, model select/status) */} 
+        {/* This block remains centered due to parent's items-center */}
         <div class="text-center w-full max-w-lg mb-6">
           <p class="text-xl md:text-2xl mb-2">
             {props.title || i18n().get(`onboardingSetup${props.functionName}Title`, `Configure ${props.functionName}`)}
@@ -239,7 +247,6 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         {fetchStatus() === 'loading' && (
             <div class="w-full max-w-lg mb-8 flex justify-center items-center space-x-2 text-muted-foreground">
                 <Spinner /> 
-                <span>{i18n().get('onboardingLoadingModels', 'Connecting to provider...')}</span>
             </div>
         )}
 
@@ -248,58 +255,51 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                 <Callout variant="error">
                     <CalloutContent>
                         {(fetchError() instanceof TypeError || (fetchError() as any)?.message?.includes('fetch')) ? (
-                            <p>
-                                {i18n().get('onboardingErrorConnectionFailed', 'Connection failed.') + " "}
-                                {i18n().get('onboardingErrorCheckServerRunning', 'Is the server running at')}{' '}
-                                <code class="text-sm font-semibold">{selectedProvider()?.defaultBaseUrl || ''}</code>?{' '}
-                                {i18n().get('onboardingErrorCheckProviderHelp', 'Check provider settings below.')}
+                            <p class="text-lg">
+                                {i18n().get('onboardingErrorConnectionOrCORS', 'Error: Is the server running at')}{' '}{selectedProvider()?.defaultBaseUrl || ''}?
                             </p>
                         ) : (fetchError() as any)?.status ? (
-                            <p>
+                            <p class="text-lg">
                                 {i18n().get('onboardingErrorHTTPServerPrefix', 'Server responded with error:') + " "}
-                                <code class="text-sm font-semibold">{(fetchError() as any).status}</code>.{' '}
+                                {(fetchError() as any).status}.{' '}
                                 {i18n().get('onboardingErrorCheckAPIEndpoint', 'Please check the API endpoint.')}
                             </p>
                         ) : (
-                            <p>{i18n().get('onboardingErrorUnknown', 'An unknown error occurred:') + " " + (fetchError()?.message || '')}</p>
+                            <p class="text-lg">{i18n().get('onboardingErrorUnknown', 'An unknown error occurred:') + " " + (fetchError()?.message || '')}</p>
                         )}
                     </CalloutContent>
                 </Callout>
 
+                {/* Provider-specific help BELOW the callout for TypeError */}
                 {(fetchError() instanceof TypeError || (fetchError() as any)?.message?.includes('fetch')) && (
-                    <Switch fallback={<p>Provider-specific instructions not available.</p>}>
-                        <Match when={selectedProvider()?.id === 'ollama'}>
-                            <CodeBlock 
-                                language="bash" 
-                                code={
-`sudo systemctl edit ollama.service
-# Add these lines in the editor:
-[Service]
-Environment="OLLAMA_HOST=0.0.0.0"
-Environment="OLLAMA_ORIGINS=*"
-
-# Save, exit editor, then run:
-sudo service ollama restart`}
-                            />
-                        </Match>
-                        <Match when={selectedProvider()?.id === 'jan'}>
-                            <p class="text-sm text-muted-foreground mb-2">
-                                Enable CORS in Jan settings (Server section):
-                            </p>
-                            <img 
-                                src="/images/llm-providers/Jan-help.png" 
-                                alt="Jan CORS setting location" 
-                                class="rounded border border-neutral-700 max-w-sm mx-auto" 
-                            />
-                        </Match>
-                        <Match when={selectedProvider()?.id === 'lmstudio'}>
-                            <img 
-                                src="/images/llm-providers/LMStudio-help.png" 
-                                alt="LM Studio CORS setting location" 
-                                class="rounded border border-neutral-700 max-w-sm mx-auto" 
-                            />
-                        </Match>
-                    </Switch>
+                    <div class="w-full max-w-lg text-sm"> {/* Container for help */}
+                        <Switch fallback={<p class="text-xs text-muted-foreground">Provider-specific instructions not available.</p>}>
+                            <Match when={selectedProvider()?.id === 'ollama'}>
+                                <div class="space-y-2">
+                                    <p>1. Open Terminal:</p>
+                                    <CodeBlock language="bash" code="sudo systemctl edit ollama.service" />
+                                    <p>2. Add these lines under [Service]:</p>
+                                    <CodeBlock language="ini" code={"[Service]\nEnvironment=\"OLLAMA_HOST=0.0.0.0\"\nEnvironment=\"OLLAMA_ORIGINS=*\""} />
+                                    <p>3. Save, exit, then run:</p>
+                                    <CodeBlock language="bash" code="sudo systemctl restart ollama" />
+                                </div>
+                            </Match>
+                            <Match when={selectedProvider()?.id === 'jan'}>
+                                 <img 
+                                     src="/images/llm-providers/Jan-help.png" 
+                                     alt="Jan CORS setting location" 
+                                     class="rounded border border-neutral-700 max-w-sm mx-auto" 
+                                 />
+                            </Match>
+                            <Match when={selectedProvider()?.id === 'lmstudio'}>
+                                <img 
+                                     src="/images/llm-providers/LMStudio-help.png" 
+                                     alt="LM Studio CORS setting location" 
+                                     class="rounded border border-neutral-700 max-w-sm mx-auto" 
+                                 />
+                            </Match>
+                        </Switch>
+                    </div>
                 )}
             </div>
         )}
@@ -337,6 +337,16 @@ sudo service ollama restart`}
         )}
 
       </div>
+
+      {/* Image 2: Positioned bottom-right only on lg screens */}
+      <img 
+        src="/images/scarlett-supercoach/scarlett-on-llama.png"
+        alt="Scarlett Supercoach Help Image"
+        // Hidden by default, shown and positioned absolutely on large screens
+        class="hidden lg:block lg:absolute lg:right-12 lg:bottom-24 lg:w-64 lg:h-64 object-contain pointer-events-none" 
+        // bottom-16 is 4rem/64px - Adjust as needed
+        // w-40/h-40 is 10rem/160px - Adjust as needed
+      />
 
       <div class="flex-shrink-0 p-4 md:p-6 border-t border-neutral-800 bg-background flex justify-center">
         <div class="w-full max-w-xs">

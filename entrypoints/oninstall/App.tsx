@@ -1,11 +1,11 @@
 import { Component, createSignal, createResource } from 'solid-js';
 import { Language, LanguageOptionStub } from '../../src/features/oninstall/Language';
 import { LearningGoal } from '../../src/features/oninstall/LearningGoal';
-import { userConfigurationStorage, UserConfiguration } from '../../src/services/storage'; // Import UserConfiguration
+import { userConfigurationStorage } from '../../src/services/storage';
 // Import the shared Messages type
 import type { Messages } from '../../src/types/i18n';
 // Import the new SetupFunction component and its types
-import { SetupFunction, ProviderOption, ModelOption } from '../../src/features/oninstall/SetupFunction';
+import { SetupFunction, ProviderOption } from '../../src/features/oninstall/SetupFunction';
 // No longer need specific LLMConfig type here, handled by SetupFunction's onComplete
 
 // Define language lists here (could also be moved)
@@ -48,12 +48,18 @@ const availableProviders: ProviderOption[] = [ // Updated type
 // Define available LLM Providers (Renamed for clarity)
 const availableLLMProviders: ProviderOption[] = availableProviders; // Reuse the existing list
 
-// Define LLM Models (Example - should match models compatible with providers)
-const llmModels: ModelOption[] = [
-    { id: 'llama3:latest', name: 'llama3:latest', description: 'Recommended Llama 3 model.' },
-    { id: 'phi3:latest', name: 'phi3:latest', description: "Microsoft's latest small model." },
-    { id: 'gemma:7b', name: 'gemma:7b', description: "Google's Gemma 7B model." },
-    { id: 'qwen:4b', name: 'qwen:4b', description: 'Qwen 4B model.' }, // Add more as needed
+// Define available Embedding Providers
+const availableEmbeddingProviders: ProviderOption[] = [
+    // Reuse or define specific providers
+    { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
+    { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
+    // Jan does not support embeddings currently
+];
+
+// Define available Reader Providers (likely subset of LLM providers)
+const availableReaderProviders: ProviderOption[] = [
+    { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
+    // Add others capable of running the reader model
 ];
 
 // Define types for function configuration (Can be expanded later)
@@ -64,7 +70,7 @@ interface FunctionConfig {
 }
 
 // Simplified Step type for the new flow
-type Step = 'language' | 'learningGoal' | 'setupLLM'; // Start with LLM setup
+type Step = 'language' | 'learningGoal' | 'setupLLM' | 'setupEmbedding' | 'setupReader';
 
 // Helper function modified to return the best determined language code
 function getBestInitialLangCode(): string {
@@ -134,9 +140,6 @@ const App: Component = () => {
   const [currentStep, setCurrentStep] = createSignal<Step>('language');
   const [targetLangLabel, setTargetLangLabel] = createSignal<string>('');
   const [uiLangCode, setUiLangCode] = createSignal<string>(getBestInitialLangCode());
-  // State for the configured function (start with LLM)
-  const [llmConfig, setLlmConfig] = createSignal<FunctionConfig | null>(null);
-  // TODO: Add state for embeddingConfig and readerConfig later
   
   const [messagesData] = createResource(uiLangCode, fetchMessages);
   const initialNativeValue = uiLangCode(); 
@@ -194,36 +197,69 @@ const App: Component = () => {
     setCurrentStep('setupLLM'); // Go to the new LLM setup step
   };
 
-  // New handler for SetupFunction completion (LLM for now)
-  // This will become the FINAL step temporarily
+  // Handler for LLM setup step
   const handleLLMComplete = async (config: FunctionConfig) => {
     console.log('[App] LLM Setup Complete (Using SetupFunction). Saving config.', config);
-    setLlmConfig(config);
 
     const currentConfig = await userConfigurationStorage.getValue();
+    // Only save LLM parts here, onboardingComplete is false until the end
     const updatedConfig = {
       ...currentConfig,
       llmProvider: config.providerId,
       llmModel: config.modelId,
       llmBaseUrl: config.baseUrl,
-      onboardingComplete: true, // Mark complete HERE for now
-      // TODO: Add embedding/reader config here later
     };
     await userConfigurationStorage.setValue(updatedConfig);
-    console.log('[App] Final config after saving LLM:', updatedConfig);
+    console.log('[App] Config after saving LLM:', updatedConfig);
 
-    // TODO: Move closing logic to the final step (Reader config) later
-    // Close tab logic HERE
-    console.log('[App] Onboarding complete (for now), attempting to close tab.');
+    console.log('[App] Proceeding to Embedding setup step.');
+    setCurrentStep('setupEmbedding'); // Go to next step
+  };
+
+  // Handler for Embedding setup step
+  const handleEmbeddingComplete = async (config: FunctionConfig) => {
+    console.log('[App] Embedding Setup Complete. Saving config.', config);
+
+    const currentConfig = await userConfigurationStorage.getValue();
+    const updatedConfig = {
+      ...currentConfig,
+      embeddingProvider: config.providerId,
+      embeddingModel: config.modelId,
+      embeddingBaseUrl: config.baseUrl,
+    };
+    await userConfigurationStorage.setValue(updatedConfig);
+    console.log('[App] Config after saving Embedding:', updatedConfig);
+
+    console.log('[App] Proceeding to Reader setup step.');
+    setCurrentStep('setupReader'); // Go to next step
+  };
+
+   // Handler for Reader setup step (FINAL STEP)
+   const handleReaderComplete = async (config: FunctionConfig) => {
+    console.log('[App] Reader Setup Complete (Final Step). Saving config.', config);
+
+    const currentConfig = await userConfigurationStorage.getValue();
+    const updatedConfig = {
+      ...currentConfig,
+      readerProvider: config.providerId, // Assuming keys like readerProvider etc.
+      readerModel: config.modelId,
+      readerBaseUrl: config.baseUrl,
+      onboardingComplete: true, // Mark complete HERE
+    };
+    await userConfigurationStorage.setValue(updatedConfig);
+    console.log('[App] Final config after saving Reader:', updatedConfig);
+
+    // Close tab logic
+    console.log('[App] Onboarding complete, attempting to close tab.');
     browser.tabs.getCurrent().then(tab => {
-      if (tab?.id) {
-        console.log(`[App] Closing tab with ID: ${tab.id}`);
-        browser.tabs.remove(tab.id);
-      } else {
-        console.log('[App] Could not get current tab ID to close.');
-      }
+        if (tab?.id) {
+            console.log(`[App] Closing tab with ID: ${tab.id}`);
+            browser.tabs.remove(tab.id);
+        } else {
+            console.log('[App] Could not get current tab ID to close.');
+        }
     }).catch(error => {
-      console.error('[App] Error getting current tab:', error);
+        console.error('[App] Error getting current tab:', error);
     });
   };
 
@@ -232,8 +268,12 @@ const App: Component = () => {
     const step = currentStep();
     if (step === 'learningGoal') {
         setCurrentStep('language');
-    } else if (step === 'setupLLM') { // Back from LLM setup goes to Learning Goal
+    } else if (step === 'setupLLM') {
         setCurrentStep('learningGoal');
+    } else if (step === 'setupEmbedding') {
+        setCurrentStep('setupLLM');
+    } else if (step === 'setupReader') {
+        setCurrentStep('setupEmbedding');
     }
     console.log(`[App] Navigated back from ${step} to ${currentStep()}`);
   };
@@ -259,7 +299,6 @@ const App: Component = () => {
          return <SetupFunction
                     functionName="LLM"
                     providerOptions={availableLLMProviders}
-                    modelOptions={llmModels}
                     onComplete={handleLLMComplete}
                     onBack={handleBack}
                     title={currentMessages.get('onboardingLLMFunctionTitle', 'Configure LLM')}
@@ -267,6 +306,31 @@ const App: Component = () => {
                     continueLabel={currentMessages.get('onboardingContinue', 'Continue')}
                     messages={messagesData() || {}}
                  />;
+       case 'setupEmbedding': // Use SetupFunction for Embedding
+         return <SetupFunction
+                    functionName="Embedding"
+                    providerOptions={availableEmbeddingProviders}
+                    // Models fetched internally by component
+                    onComplete={handleEmbeddingComplete}
+                    onBack={handleBack}
+                    title={currentMessages.get('onboardingEmbeddingFunctionTitle', 'Configure Embedding')}
+                    description={currentMessages.get('onboardingEmbeddingDescription', 'Select provider and model for text embeddings.')}
+                    continueLabel={currentMessages.get('onboardingContinue', 'Continue')}
+                    messages={messagesData() || {}}
+                 />;
+        case 'setupReader': // Use SetupFunction for Reader
+         return <SetupFunction
+                    functionName="Reader"
+                    providerOptions={availableReaderProviders}
+                    // Models fetched internally by component
+                    onComplete={handleReaderComplete}
+                    onBack={handleBack}
+                    title={currentMessages.get('onboardingReaderFunctionTitle', 'Configure Reader')}
+                    description={currentMessages.get('onboardingReaderDescription', 'Select provider and model for reading content.')}
+                    // Use different label for final step
+                    continueLabel={currentMessages.get('onboardingFinishSetup', 'Finish Setup')}
+                    messages={messagesData() || {}}
+                   />;
        case 'learningGoal':
          return <LearningGoal 
                     onComplete={handleLearningGoalComplete} 
