@@ -1,4 +1,4 @@
-import { Component, createSignal, For, Show } from 'solid-js';
+import { Component, createSignal, For } from 'solid-js';
 import {
   Select,
   SelectContent,
