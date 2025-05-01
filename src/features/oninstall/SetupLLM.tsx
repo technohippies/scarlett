@@ -1,0 +1,425 @@
+import { Component, createSignal, onMount, createMemo } from 'solid-js';
+import { Button } from '../../components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { LLMProviderOption } from './LLM'; // Import the simplified type
+import { OllamaProvider } from '../../services/llm/providers/ollama';
+import { JanProvider } from '../../services/llm/providers/jan';
+// import { LMStudioProvider } from '../../services/llm/providers/lmstudio'; // Add when ready
+import type { ModelInfo, LLMConfig } from '../../services/llm/types';
+import type { Messages } from '../../types/i18n';
+import { getOperatingSystem } from '../../lib/os'; // Import the OS utility
+import { mergeProps } from 'solid-js'; // Import mergeProps
+import { CodeBlock } from '../../components/ui/CodeBlock'; // Import the new component
+import { Callout, CalloutTitle, CalloutContent } from '../../components/ui/callout'; // Import the new Callout component
+
+interface SetupLLMProps {
+  selectedProvider: LLMProviderOption;
+  onComplete: (config: LLMConfig) => void;
+  messages: Messages; // Required for labels/instructions
+  // --- Storybook-only Initial State Props ---
+  _initialIsLoadingModels?: boolean;
+  _initialInitialLoadError?: string | null;
+  _initialModels?: ModelInfo[];
+  _initialSelectedModelId?: string;
+  _initialTestState?: TestState;
+  _initialTestError?: string | null;
+  _initialIsCorsError?: boolean;
+  _initialOS?: 'windows' | 'macos' | 'linux' | 'unknown'; // To override OS for stories
+}
+
+type TestState = 'idle' | 'testing' | 'success' | 'error';
+
+export const SetupLLM: Component<SetupLLMProps> = (incomingProps) => {
+  // Merge defaults for storybook props
+  const props = mergeProps({
+      _initialIsLoadingModels: true, // Default to loading initially
+      _initialInitialLoadError: null,
+      _initialModels: [],
+      _initialSelectedModelId: undefined,
+      _initialTestState: 'idle' as TestState,
+      _initialTestError: null,
+      _initialIsCorsError: false,
+      _initialOS: getOperatingSystem(), // Default to actual OS
+   }, incomingProps);
+
+  // State for initial model loading
+  const [isLoadingModels, setIsLoadingModels] = createSignal(props._initialIsLoadingModels);
+  const [initialLoadError, setInitialLoadError] = createSignal(props._initialInitialLoadError);
+
+  // State for selected model and model list
+  const [models, setModels] = createSignal<ModelInfo[]>(props._initialModels);
+  const [selectedModelId, setSelectedModelId] = createSignal<string | undefined>(props._initialSelectedModelId);
+  
+  // State for the connection test step
+  const [testState, setTestState] = createSignal<TestState>(props._initialTestState);
+  const [testError, setTestError] = createSignal(props._initialTestError);
+  const [isCorsError, setIsCorsError] = createSignal(props._initialIsCorsError);
+
+  const os = props._initialOS; // Get OS once, no need for signal if not changing dynamically
+
+  // --- Functions ---
+
+  // Initial fetch for models when component mounts
+  const fetchInitialModels = async () => {
+    setIsLoadingModels(true);
+    setInitialLoadError(null);
+    setModels([]);
+    setSelectedModelId(undefined);
+    setTestState('idle'); // Reset test state on initial fetch
+    setTestError(null);
+    setIsCorsError(false);
+
+    const providerId = props.selectedProvider.id;
+    const config: Pick<LLMConfig, 'baseUrl'> = {
+      baseUrl: props.selectedProvider.defaultBaseUrl,
+    };
+
+    console.log(`[SetupLLM] Fetching initial models for ${providerId} from ${config.baseUrl}`);
+
+    try {
+      let fetchedModels: ModelInfo[] = [];
+      switch (providerId) {
+        case 'ollama':
+          fetchedModels = await OllamaProvider.listModels(config);
+          break;
+        case 'jan':
+          fetchedModels = await JanProvider.listModels(config);
+          break;
+        // Add other providers as needed
+        default:
+             console.warn('[SetupLLM] Unsupported provider for model listing:', providerId);
+             throw new Error(`Cannot list models for unsupported provider: ${providerId}`);
+      }
+
+      // Filter models specifically for Ollama
+      let filteredModels = fetchedModels;
+      if (providerId === 'ollama') {
+          const allowedKeywords = ['gemma', 'qwen', 'llama', 'phi'];
+          console.log('[SetupLLM] Original Ollama models:', fetchedModels.map(m => m.id));
+          filteredModels = fetchedModels.filter(model => 
+              allowedKeywords.some(keyword => model.id.toLowerCase().includes(keyword))
+          );
+          console.log('[SetupLLM] Filtered Ollama models:', filteredModels.map(m => m.id));
+      }
+
+       if (filteredModels.length === 0) {
+         console.warn(`[SetupLLM] Initial fetch: Connection successful to ${providerId} but no *allowed* models found.`);
+         // Updated error message
+         setInitialLoadError(props.messages.onboardingLLMErrorNoModels?.message || 'Error: No compatible models (Gemma, Qwen, Llama, Phi) found for the selected provider.');
+      } else {
+          console.log(`[SetupLLM] Initial fetch: Found allowed models for ${providerId}:`, filteredModels.map(m => m.id));
+          setModels(filteredModels);
+          
+          // Pre-select model in order: gemma, qwen, llama
+          const preferredOrder = ['gemma', 'qwen', 'llama'];
+          let preSelectedModelId: string | undefined = undefined;
+          for (const keyword of preferredOrder) {
+              const foundModel = filteredModels.find(m => m.id.toLowerCase().includes(keyword));
+              if (foundModel) {
+                  preSelectedModelId = foundModel.id;
+                  console.log(`[SetupLLM] Pre-selecting model based on keyword '${keyword}': ${preSelectedModelId}`);
+                  break;
+              }
+          }
+          setSelectedModelId(preSelectedModelId); 
+          // Ensure test state is idle after successful load, even if no pre-selection
+          setTestState('idle');
+      }
+    } catch (error: any) {
+      console.error(`[SetupLLM] Initial fetch error for ${providerId}:`, error);
+      const errorMsg = error.message || 'An unknown error occurred';
+      setInitialLoadError(`${props.messages.onboardingLLMErrorPrefix?.message || 'Error:'} ${errorMsg}`);
+      // Set CORS flag only for initial load error if applicable (less critical here)
+      if (providerId === 'ollama' && error instanceof TypeError) {
+           setIsCorsError(true); 
+      }
+    } finally {
+      setIsLoadingModels(false);
+    }
+  };
+
+  // Function to test connection with the selected model
+  const testConnection = async () => {
+    const modelId = selectedModelId();
+    if (!modelId) return; // Should not happen if button is enabled correctly
+
+    setTestState('testing');
+    setTestError(null);
+    setIsCorsError(false);
+
+    const providerId = props.selectedProvider.id;
+    const config: Pick<LLMConfig, 'baseUrl'> = {
+      baseUrl: props.selectedProvider.defaultBaseUrl,
+    };
+
+    console.log(`[SetupLLM] Testing connection for ${providerId} at ${config.baseUrl}`);
+
+    try {
+      // Use listModels as a simple connectivity test
+      // In the future, could use a specific test endpoint or a dummy chat request
+      await OllamaProvider.listModels(config); // Assuming Ollama for example, adapt if needed
+       // switch (providerId) {
+       //   case 'ollama': await OllamaProvider.listModels(config); break;
+       //   case 'jan': await JanProvider.listModels(config); break;
+       //   default: throw new Error(`Cannot test connection for unsupported provider: ${providerId}`);
+       // }
+
+      console.log(`[SetupLLM] Test connection successful for ${providerId}.`);
+      setTestState('success');
+
+    } catch (error: any) {
+      console.error(`[SetupLLM] Test connection error for ${providerId}:`, error);
+      const errorMsg = error.message || 'An unknown error occurred';
+      setTestError(`${props.messages.onboardingLLMErrorPrefix?.message || 'Error testing connection:'} ${errorMsg}`);
+      setTestState('error');
+
+      // Set CORS flag specifically for test errors
+      if (providerId === 'ollama' && error instanceof TypeError) {
+           console.log("[SetupLLM] Test connection TypeError, likely CORS issue.");
+           setIsCorsError(true);
+           setTestError(props.messages.onboardingLLMErrorCors?.message || "Connection failed during test. This might be a CORS issue. Please check Ollama's Host and CORS settings.");
+      } else {
+           setIsCorsError(false); // Ensure CORS flag is false if not a TypeError
+      }
+    } 
+  };
+
+  // Run initial model fetch on mount ONLY if not pre-configured by storybook args
+  onMount(() => {
+     if (props._initialIsLoadingModels && props._initialModels.length === 0 && !props._initialInitialLoadError) {
+        fetchInitialModels();
+     } else {
+         console.log('[SetupLLM] Skipping initial fetch due to Storybook initial state args.');
+     }
+  });
+
+  // Called only when test is successful and user clicks "Continue"
+  const handleSubmit = () => {
+    const modelId = selectedModelId();
+    if (!modelId || testState() !== 'success') return; 
+
+    const finalConfig: LLMConfig = {
+      provider: props.selectedProvider.id,
+      model: modelId,
+      baseUrl: props.selectedProvider.defaultBaseUrl, 
+    };
+    console.log('[SetupLLM] Completing with config after successful test:', finalConfig);
+    props.onComplete(finalConfig);
+  };
+
+  // Determine button properties based on state
+  const getButtonProps = () => {
+    const state = testState();
+    const modelSelected = !!selectedModelId();
+
+    if (state === 'success') {
+      return {
+        label: props.messages.onboardingContinue?.message || 'Continue',
+        onClick: handleSubmit,
+        disabled: false,
+      };
+    }
+    if (state === 'testing') {
+      return {
+        label: props.messages.onboardingLLMTesting?.message || 'Testing...',
+        onClick: () => {}, // No action while testing
+        disabled: true,
+      };
+    }
+    // Default state ('idle' or 'error')
+    return {
+      label: props.messages.onboardingLLMTestConnection?.message || 'Test Connection',
+      onClick: testConnection,
+      disabled: !modelSelected, // Disabled only if no model is selected
+    };
+  };
+
+  // Make buttonProps reactive using createMemo
+  const buttonProps = createMemo(() => getButtonProps());
+
+  // --- UI Rendering --- 
+  return (
+    // Enforce FIXED width: Use w-[48rem]
+    <div class="p-4 md:p-8 w-[48rem] mx-auto flex flex-col items-center space-y-6 min-h-screen justify-center bg-background text-foreground">
+      {/* Standard Top Image */}
+      <img
+        src="/images/scarlett-supercoach/scarlett-on-llama.png" 
+        alt="Scarlett Supercoach on Llama"
+        class="w-32 h-32 md:w-48 md:h-48 object-contain mb-6"
+      />
+      
+      {/* Initial Loading State: Takes full width, content centered */}
+      {isLoadingModels() && (
+        <div class="flex flex-col items-center space-y-2 w-full">
+            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <span>{props.messages.onboardingLLMChecking?.message || 'Loading available models...'}</span>
+        </div>
+      )}
+
+      {/* Initial Load Error State - Use Callout */}
+      {!isLoadingModels() && initialLoadError() && (
+         <div class="w-full space-y-2 text-left">
+            <Callout 
+              variant="error" 
+            >
+                <CalloutTitle>Error</CalloutTitle>
+                <CalloutContent>
+                    <p>{props.messages.onboardingLLMErrorInitialLoad?.message || 'Failed to load models:'} {initialLoadError()}</p>
+                </CalloutContent>
+             </Callout>
+             {isCorsError() && (
+                <p class="mt-2 italic text-muted-foreground text-base">{props.messages.onboardingLLMErrorCorsHint?.message || "(This might be a CORS issue. Try setting Ollama's host/origins if applicable.)"}</p>
+             )}
+             <div class="pt-2 text-center">
+               {/* Button size remains sm for retry */}
+               <Button variant="secondary" size="sm" onClick={fetchInitialModels}> 
+                 {props.messages.onboardingLLMRetry?.message || 'Retry'} 
+               </Button>
+           </div>
+         </div>
+      )}
+
+      {/* Model Selection: Takes full width */}
+      {!isLoadingModels() && !initialLoadError() && (
+        <div class="w-full space-y-3 flex flex-col items-start">
+          <label for="model-select" class="block text-sm font-medium text-left self-start">
+              {/* Simplified Label */}
+              Choose Model: 
+          </label>
+          <Select
+            id="model-select"
+            options={models()}
+            value={models().find(m => m.id === selectedModelId())}
+            onChange={(model) => {
+                setSelectedModelId(model?.id);
+                setTestState('idle'); // Explicitly reset test state on selection
+                setTestError(null);
+                setIsCorsError(false);
+            }}
+            optionValue="id"
+            optionTextValue="id" 
+            placeholder={props.messages.onboardingLLMSelectPlaceholder?.message || 'Choose a model...'}
+            itemComponent={(itemProps) => (
+                <SelectItem item={itemProps.item}>
+                    {itemProps.item.rawValue.id}
+                </SelectItem>
+            )}
+            multiple={false}
+            class="w-full"
+          >
+            <SelectTrigger class="w-full">
+                <SelectValue<ModelInfo>>
+                    {(state) => state.selectedOption()?.id || props.messages.onboardingLLMSelectPlaceholder?.message || 'Choose a model...'}
+                </SelectValue>
+            </SelectTrigger>
+            <SelectContent />
+          </Select>
+        </div>
+      )}
+
+      {/* Test Status/Error Display */} 
+      {!isLoadingModels() && !initialLoadError() && (
+          <div class="w-full min-h-[100px] mt-4 flex flex-col items-center justify-center">
+             {/* Testing Spinner: Centered */}
+             {testState() === 'testing' && (
+                 <div class="flex flex-col items-center space-y-2">
+                    <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
+                    <span>{props.messages.onboardingLLMTesting?.message || 'Testing connection...'}</span>
+                 </div>
+             )}
+
+             {/* Test Success Message: Centered */} 
+             {testState() === 'success' && (
+                <div class="p-3 rounded-md bg-success/10 text-success text-sm font-medium">
+                    {props.messages.onboardingLLMTestSuccess?.message || 'Connection successful!'}
+                </div>
+             )}
+
+             {/* Test Error Section - Use Callout */}
+             {testState() === 'error' && testError() && (
+                 <div class="w-full space-y-3 text-left">
+                   <Callout variant="error">
+                       <CalloutTitle>Error</CalloutTitle>
+                       <CalloutContent>
+                           <p>{testError()}</p>
+                       </CalloutContent>
+                   </Callout>
+
+                   {/* Instructions outside the callout */} 
+                   {!isCorsError() && (
+                       <p class="text-foreground">{props.messages.onboardingLLMErrorInstructions?.message || 'Please ensure the LLM provider server is running and accessible.'}</p>
+                   )}
+
+                   {/* Simplified CORS help section */} 
+                   {props.selectedProvider.id === 'ollama' && isCorsError() && (
+                     <div class="space-y-4 pt-3 mt-3 border-t border-neutral-700 text-left text-foreground"> 
+                       {/* Check CORS */}
+                       <div>
+                         <p class="font-medium mb-1">Check CORS:</p>
+                         <CodeBlock 
+                           code={`curl -X OPTIONS ${props.selectedProvider.defaultBaseUrl} -H "Origin: ${window.location.origin}" -H "Access-Control-Request-Method: GET" -I`} 
+                           class="mt-1"
+                         />
+                         <p class="mt-1 italic text-muted-foreground">403 forbidden error means CORS is not enabled</p>
+                       </div>
+
+                       {/* Enable CORS Title */}
+                       <p class="font-medium pt-2">Enable CORS:</p> 
+
+                       {/* macOS */}
+                       {os === 'macos' && (
+                         <div class="space-y-1 text-left">
+                            <CodeBlock 
+                               code={`launchctl setenv OLLAMA_ORIGINS '${window.location.origin}'`} 
+                               class="mt-1"
+                             />
+                         </div>
+                       )}
+                       {/* Linux */} 
+                       {os === 'linux' && (
+                         <div class="space-y-1 text-left">
+                            <CodeBlock code={`sudo systemctl edit ollama.service`} class="mt-1"/>
+                            <p class="mt-1">Add/edit in [Service] section:</p>
+                            <CodeBlock 
+                              code={`[Service]\nEnvironment="OLLAMA_ORIGINS=${window.location.origin}"\nEnvironment="OLLAMA_HOST=0.0.0.0"`}
+                              class="mt-1"
+                            />
+                          </div>
+                       )}
+                       {/* Windows */} 
+                       {os === 'windows' && (
+                          <div class="space-y-1 text-left">
+                             <p>
+                               Set System Environment Variable: `OLLAMA_ORIGINS` to `{window.location.origin}` (or `*`). Restart Ollama.
+                             </p>
+                           </div>
+                       )}
+                            {/* Unknown */}
+                            {os === 'unknown' && (
+                              <p class="text-left">{props.messages.onboardingLLMErrorOllamaUnknownOS?.message || 'Check Ollama documentation for CORS/Host setup on your specific OS.'}</p>
+                           )}
+                            {/* Removed Footer note */}
+                       </div>
+                     )}
+                 </div>
+             )}
+          </div>
+      )}
+
+      {/* Action Button Area: Takes full width */} 
+      {!isLoadingModels() && !initialLoadError() && (
+          <div class="pt-6 w-full max-w-xs flex justify-center"> 
+             <Button
+               size="lg"
+               class="w-full"
+               // Access memoized values
+               onClick={buttonProps().onClick}
+               disabled={buttonProps().disabled}
+             >
+               {buttonProps().label} 
+             </Button>
+          </div>
+       )}
+    </div>
+  );
+};

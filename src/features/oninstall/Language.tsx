@@ -91,16 +91,17 @@ export const Language: Component<LanguageProps> = (props) => {
   };
 
   return (
-    <div class="p-4 md:p-8 max-w-2xl mx-auto flex flex-col items-center space-y-6 min-h-screen justify-center">
-      {/* Image at the top */}
+    // Enforce FIXED width: Use w-[48rem]
+    <div class="p-4 md:p-8 w-[48rem] mx-auto flex flex-col items-center space-y-6 min-h-screen justify-center bg-background text-foreground">
+      {/* Image: Centered by parent's items-center */}
       <img
         src="/images/scarlett-supercoach/scarlett-proud-512x512.png"
         alt="Scarlett Supercoach"
         class="w-32 h-32 md:w-48 md:h-48 object-contain mb-6"
       />
 
-      {/* Sentence Structure */}
-      <div class="text-center text-xl md:text-2xl space-y-4">
+      {/* Sentence Structure: Takes full width */}
+      <div class="text-center text-xl md:text-2xl space-y-4 w-full">
         <p class="inline-flex items-center gap-2">
           <span>{props.iSpeakLabel}</span>
           <Select<LanguageOptionStub>
@@ -139,8 +140,8 @@ export const Language: Component<LanguageProps> = (props) => {
         <p>{props.wantToLearnLabel}</p>
       </div>
 
-      {/* Target Language Grid - Use messages */} 
-      <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg">
+      {/* Target Language Grid: Takes full width (max-w-md applied internally) */}
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-md">
         <For each={targetLanguages()}> 
           {(langStub) => {
             const name = getLangName(langStub.value, props.messages);
@@ -164,7 +165,7 @@ export const Language: Component<LanguageProps> = (props) => {
         </For>
       </div>
 
-      {/* Continue Button */}
+      {/* Continue Button Area: Takes full width (max-w-xs for button itself) */}
       <div class="pt-6 w-full max-w-xs">
          <Button
            size="lg"

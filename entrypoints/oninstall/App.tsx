@@ -4,6 +4,11 @@ import { LearningGoal } from '../../src/features/oninstall/LearningGoal';
 import { userConfigurationStorage } from '../../src/services/storage';
 // Import the shared Messages type
 import type { Messages } from '../../src/types/i18n';
+// Import LLM Setup components and types
+import { SetupLLM } from '../../src/features/oninstall/SetupLLM';
+// Import the LLM component for provider selection
+import { LLM, LLMProviderOption } from '../../src/features/oninstall/LLM'; 
+import type { LLMConfig } from '../../src/services/llm/types'; // Import LLMConfig
 
 // Define language lists here (could also be moved)
 const nativeLanguagesList: LanguageOptionStub[] = [
@@ -19,7 +24,25 @@ const allTargetLanguagesList: LanguageOptionStub[] = [
   { value: 'ja', emoji: '🇯🇵' }, { value: 'ko', emoji: '🇰🇷' },
 ];
 
-type Step = 'language' | 'learningGoal';
+// Define available LLM Providers
+const availableProviders: LLMProviderOption[] = [
+    {
+      id: 'ollama',
+      name: 'Ollama',
+      defaultBaseUrl: 'http://localhost:11434',
+      logoUrl: '/images/llm-providers/ollama.png' // Assuming logo path
+    },
+    {
+      id: 'jan',
+      name: 'Jan',
+      defaultBaseUrl: 'http://localhost:1337',
+      logoUrl: '/images/llm-providers/jan.png' // Assuming logo path
+    },
+    // Add LMStudio or others here when ready
+];
+
+
+type Step = 'language' | 'providerSelect' | 'llmSetup' | 'learningGoal'; // Added providerSelect and llmSetup
 
 // Helper function modified to return the best determined language code
 function getBestInitialLangCode(): string {
@@ -89,6 +112,8 @@ const App: Component = () => {
   const [currentStep, setCurrentStep] = createSignal<Step>('language');
   const [targetLangLabel, setTargetLangLabel] = createSignal<string>('');
   const [uiLangCode, setUiLangCode] = createSignal<string>(getBestInitialLangCode());
+  // State for selected LLM provider
+  const [selectedProvider, setSelectedProvider] = createSignal<LLMProviderOption | null>(null);
   
   const [messagesData] = createResource(uiLangCode, fetchMessages);
   const initialNativeValue = uiLangCode(); 
@@ -113,39 +138,47 @@ const App: Component = () => {
     }
   };
 
-  // Simplified handler for continue button click
+  // Updated handler: Save languages and move to learning goal
   const handleLanguageComplete = async (selectedLangs: { targetValue: string; targetLabel: string }) => {
-    console.log('[App] Language Complete Callback Received (Continue clicked):', selectedLangs);
+    console.log('[App] Language Complete:', selectedLangs);
     setTargetLangLabel(selectedLangs.targetLabel);
     
-    // --- Save config --- 
-    // Need to get native language from uiLangCode signal now
     const currentConfig = await userConfigurationStorage.getValue();
     const updatedConfig = {
       ...currentConfig,
-      nativeLanguage: uiLangCode(), // Get final native lang from the UI state
+      nativeLanguage: uiLangCode(), 
       targetLanguage: selectedLangs.targetValue,
     };
     await userConfigurationStorage.setValue(updatedConfig);
     console.log('[App] Config after saving languages:', updatedConfig);
-    // --- End save config ---
-
-    // Proceed directly to next step
+    
     console.log('[App] Proceeding to learning goal step.');
-    setCurrentStep('learningGoal'); 
+    setCurrentStep('learningGoal'); // Go to learning goal next
   };
 
-  // handleLearningGoalComplete remains the same (saves config, closes tab)
-  const handleLearningGoalComplete = async (goalId: string) => {
-    console.log('[App] Learning Goal Complete Callback Received:', goalId);
+  // New handler: Store selected provider and move to LLM setup
+  const handleProviderSelectComplete = (provider: LLMProviderOption) => {
+    console.log('[App] Provider Selected:', provider);
+    setSelectedProvider(provider);
+    console.log('[App] Proceeding to LLM setup step.');
+    setCurrentStep('llmSetup'); 
+  };
+
+  // Updated handler: Now the FINAL step. Save LLM config, mark complete, close tab.
+  const handleLLMSetupComplete = async (config: LLMConfig) => {
+    console.log('[App] LLM Setup Complete (Final Step):', config);
     const currentConfig = await userConfigurationStorage.getValue();
-    const finalConfig = {
+    const updatedConfig = {
       ...currentConfig,
-      learningGoal: goalId,
-      onboardingComplete: true,
+      llmProvider: config.provider,
+      llmModel: config.model,
+      llmBaseUrl: config.baseUrl,
+      onboardingComplete: true, // Mark complete here
     };
-    await userConfigurationStorage.setValue(finalConfig);
-    console.log('[App] Final config after saving goal:', finalConfig);
+    await userConfigurationStorage.setValue(updatedConfig);
+    console.log('[App] Final config after saving LLM settings:', updatedConfig);
+    
+    // Close tab logic moved here
     console.log('[App] Onboarding complete, attempting to close tab.');
     browser.tabs.getCurrent().then(tab => {
       if (tab?.id) {
@@ -159,16 +192,31 @@ const App: Component = () => {
     });
   };
 
+  // Updated handler: Save goal and move to PROVIDER selection. Do NOT close tab.
+  const handleLearningGoalComplete = async (goalId: string) => {
+    console.log('[App] Learning Goal Complete:', goalId);
+    const currentConfig = await userConfigurationStorage.getValue();
+    const updatedConfig = {
+      ...currentConfig,
+      learningGoal: goalId,
+      // onboardingComplete: true, // Moved to LLM setup complete
+    };
+    await userConfigurationStorage.setValue(updatedConfig);
+    console.log('[App] Config after saving goal:', updatedConfig);
+    
+    console.log('[App] Proceeding to provider selection step.');
+    setCurrentStep('providerSelect'); // Go to provider select next
+  };
+
 
   const renderStep = () => {
     const currentMessages = i18n();
-    console.log("[App] RenderStep: Passing props with iSpeakLabel:", currentMessages.get('onboardingISpeak', '???'));
+    const provider = selectedProvider(); // Get potentially selected provider
 
     switch (currentStep()) {
       case 'language':
         return <Language 
                    onComplete={handleLanguageComplete} 
-                   // Pass the new immediate change handler
                    onNativeLangChange={handleNativeLanguageSelect} 
                    iSpeakLabel={currentMessages.get('onboardingISpeak', 'I speak')}
                    selectLanguagePlaceholder={currentMessages.get('onboardingSelectLanguage', 'Select language')}
@@ -177,8 +225,27 @@ const App: Component = () => {
                    initialNativeLangValue={initialNativeValue} 
                    availableNativeLanguages={nativeLanguagesList}
                    availableTargetLanguages={allTargetLanguagesList}
-                   messages={messagesData()} 
+                   messages={messagesData() || {}} 
                />;
+       case 'providerSelect': // Use the LLM component for provider selection
+         return <LLM 
+                    onComplete={handleProviderSelectComplete}
+                    selectProviderLabel={currentMessages.get('onboardingLLMProviderTitle', 'Choose your Local LLM Provider')}
+                    continueLabel={currentMessages.get('onboardingContinue', 'Continue')}
+                    availableProviders={availableProviders}
+                    messages={messagesData() || {}}
+                 />;
+       case 'llmSetup': // New Step: Configure Selected Provider
+         if (!provider) {
+            console.error("[App] Error: Reached llmSetup step without a selected provider.");
+            // Maybe redirect back or show an error message
+            return <div>Error: No LLM provider selected. Please go back.</div>;
+         }
+         return <SetupLLM
+                    selectedProvider={provider}
+                    onComplete={handleLLMSetupComplete}
+                    messages={messagesData() || {}}
+                 />;
       case 'learningGoal':
         return <LearningGoal 
                    onComplete={handleLearningGoalComplete} 
@@ -187,7 +254,7 @@ const App: Component = () => {
                    questionSuffix={currentMessages.get('onboardingLearningGoalQuestionSuffix', '?')}
                    fallbackLabel={currentMessages.get('onboardingTargetLanguageFallback', 'your selected language')}
                    continueLabel={currentMessages.get('onboardingContinue', 'Continue')}
-                   messages={messagesData()} 
+                   messages={messagesData() || {}} 
                />;
       default:
         console.error('Unknown onboarding step:', currentStep());
