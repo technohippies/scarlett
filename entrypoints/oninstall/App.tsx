@@ -42,7 +42,7 @@ const App: Component = () => {
   };
 
   return (
-    <div>
+    <div class="bg-background text-foreground min-h-screen">
       {renderStep()}
     </div>
   );

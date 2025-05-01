@@ -12,5 +12,6 @@ export default {
 
 // Basic render story, similar structure to Card.stories.tsx
 export const Default = {
-  // No specific args or render function needed if component handles its own state/defaults
+  // Reverted: Removed render function and wrapper div.
+  // The global background setting in preview.ts will handle the theme.
 }; 

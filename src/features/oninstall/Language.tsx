@@ -15,19 +15,25 @@ interface LanguageOption {
   label: string;
 }
 
-// Apply type to arrays
+// Apply type to arrays - Expanded list for native languages
 const nativeLanguages: LanguageOption[] = [
   { value: 'en', label: '🇺🇸 English' },
   { value: 'zh', label: '🇨🇳 Chinese' },
-  { value: 'vi', label: '🇻🇳 Vietnamese' },
+  { value: 'th', label: '🇹🇭 Thai' },
+  { value: 'id', label: '🇮🇩 Indonesian' }, // Bahasa Indonesia
+  { value: 'ar', label: '🇸🇦 Arabic' },
+  { value: 'ja', label: '🇯🇵 Japanese' },
+  { value: 'ko', label: '🇰🇷 Korean' },
+  { value: 'es', label: '🇪🇸 Spanish' },
+  // Add more native languages as needed
 ];
 
+// Target languages offered for learning (initially limited set)
 const allTargetLanguages: LanguageOption[] = [
   { value: 'en', label: '🇺🇸 English' },
-  { value: 'zh', label: '🇨🇳 Chinese' },
-  { value: 'vi', label: '🇻🇳 Vietnamese' },
+  { value: 'zh', label: '🇨🇳 Mandarin' },
   { value: 'ja', label: '🇯🇵 Japanese' },
-  // Add other potential languages here if needed
+  { value: 'ko', label: '🇰🇷 Korean' },
 ];
 
 // Define props for the component
@@ -93,7 +99,7 @@ export const Language: Component<LanguageProps> = (props) => {
             id="native-language"
             class="w-auto inline-block align-middle"
           >
-            <SelectTrigger class="font-semibold border-b border-border hover:border-primary pl-3 pr-1 py-0 focus:ring-0 min-w-[150px]">
+            <SelectTrigger class="font-semibold border-b border-border hover:border-primary pl-3 pr-1 py-0 focus:ring-0 min-w-[150px] cursor-pointer">
               <SelectValue<LanguageOption>>
                 {(state) => state.selectedOption()?.label || '...'}
               </SelectValue>
@@ -113,9 +119,10 @@ export const Language: Component<LanguageProps> = (props) => {
               onClick={() => setSelectedTargetLang(lang.value)}
               class={cn(
                 'h-auto p-4 flex flex-col items-center justify-center space-y-2 text-base border',
+                'cursor-pointer hover:bg-neutral-700 hover:border-neutral-600 focus:outline-none focus:ring-0',
                 selectedTargetLang() === lang.value
-                  ? 'bg-secondary text-secondary-foreground border-foreground'
-                  : 'border-border'
+                  ? 'bg-neutral-800 text-foreground border-neutral-700'
+                  : 'border-neutral-700'
               )}
             >
               <span class="text-4xl">{lang.label.split(' ')[0]}</span> {/* Emoji */}
