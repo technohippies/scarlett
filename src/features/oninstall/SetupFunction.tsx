@@ -9,6 +9,16 @@ import { CodeBlock } from '../../components/ui/CodeBlock';
 import { Switch, Match } from 'solid-js';
 import { Label } from '../../components/ui/label';
 import { Spinner } from '../../components/ui/spinner';
+import { 
+  Combobox, 
+  ComboboxContent, 
+  ComboboxControl, 
+  ComboboxInput, 
+  ComboboxItem, 
+  ComboboxItemIndicator, 
+  ComboboxItemLabel, 
+  ComboboxTrigger 
+} from '../../components/ui/combobox';
 import type { LLMConfig } from '../../services/llm/types';
 
 // Reusable interfaces (consider moving to a types file)
@@ -547,40 +557,38 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                   {/* Divider text */}
                   <div class="text-left text-muted-foreground my-2">or</div>
 
-                   {/* Remote/Downloadable Models Dropdown */}
-                   <div>
-                    <Label for="remote-model-select" class="text-sm font-medium text-muted-foreground mb-1 block">Remote LLM</Label>
-                    <Select<ModelOption>
-                       options={remoteModels()}
-                       optionValue="id"
-                       optionTextValue="name"
-                       onChange={(value: ModelOption | null) => {
-                         console.log("[SetupFunction] Jan Remote onChange triggered. Selected object:", value);
-                         setSelectedModelId(value?.id);
-                         console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
-                       }}
-                       value={remoteModels().find(m => m.id === selectedModelId()) || null}
-                       itemComponent={(props) => (
-                         <SelectItem item={props.item}>{props.item.rawValue.name}</SelectItem>
-                       )}
+                   {/* Remote/Downloadable Models Dropdown - Changed to Combobox */}
+                   <div class="w-full">
+                    <Label for="remote-model-combo" class="text-sm font-medium text-muted-foreground mb-1 block">Remote LLM</Label>
+                    <Combobox<ModelOption>
+                      id="remote-model-combo" // Add id for label association
+                      options={remoteModels().sort((a, b) => a.name.localeCompare(b.name))}
+                      optionValue="id"
+                      optionTextValue="name"
+                      placeholder="Search"
+                      value={remoteModels().find(m => m.id === selectedModelId()) || null}
+                      onChange={(value: ModelOption | null) => {
+                        console.log("[SetupFunction] Jan Remote Combobox onChange triggered. Selected object:", value);
+                        setSelectedModelId(value?.id);
+                        console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
+                      }}
+                      itemComponent={(props) => (
+                        <ComboboxItem item={props.item}>
+                          <ComboboxItemLabel>{props.item.rawValue.name}</ComboboxItemLabel>
+                          <ComboboxItemIndicator />
+                        </ComboboxItem>
+                      )}
                     >
-                      <SelectTrigger id="remote-model-select">
-                        <SelectValue>
-                          {(() => {
-                            const selectedName = remoteModels().find(m => m.id === selectedModelId())?.name;
-                            return selectedName 
-                              ? selectedName 
-                              : <span class="text-muted-foreground">Select Remote Model</span>;
-                          })()}
-                        </SelectValue>
-                      </SelectTrigger>
-                      {/* Apply scrolling classes here */}
-                      <SelectContent class="max-h-72 overflow-y-auto">
+                      <ComboboxControl aria-label="Remote Model">
+                        <ComboboxInput />
+                        <ComboboxTrigger />
+                      </ComboboxControl>
+                      <ComboboxContent class="max-h-72 overflow-y-auto"> 
                          <Show when={!remoteModels() || remoteModels().length === 0}>
-                           <div class="px-2 py-1.5 text-sm text-muted-foreground">No remote models found.</div>
+                            <div class="px-2 py-1.5 text-sm text-muted-foreground">No remote models found.</div>
                          </Show>
-                      </SelectContent>
-                    </Select>
+                      </ComboboxContent>
+                    </Combobox>
                    </div>
                 </Match>
 
