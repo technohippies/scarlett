@@ -39,7 +39,13 @@ export default {
         options: ['idle', 'loading', 'success', 'error'],
         description: 'Simulated fetch status (Storybook only)',
         name: 'Simulated Fetch Status'
-    }
+    },
+    _testStatus: {
+        control: { type: 'select' },
+        options: ['idle', 'testing', 'success', 'error'],
+        description: 'Simulated connection test status (Storybook only)',
+        name: 'Simulated Test Status'
+    },
     // Remove modelOptions from argTypes if it was ever added
   }
 };
@@ -132,14 +138,51 @@ export const ConnectionErrorLMStudio = {
   render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
 };
 
-// Optional: Story showing HTTP error state
-// Note: Needs enhancement in component to simulate HTTP error via props if desired
-export const HTTPError = {
-  name: "Connection Error (Simulated HTTP)",
-   args: {
-     ...ConnectionErrorOllama.args, // Inherit most args
-     _fetchStatus: 'error', // Still uses error status
-     // Need a way to tell the component *which* error to simulate if not TypeError
-   },
-   render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
- }; 
+// --- New Stories for Test Connection States ---
+
+// Story for successful fetch, ready to test (Jan)
+export const ReadyToTestJan = {
+  name: "Test Connection Ready (Jan)",
+  args: {
+    functionName: 'LLM',
+    providerOptions: mockLLMProviders,
+    title: 'Configure LLM',
+    description: "If you can't run Qwen3 4B or Gemma3 4B or larger locally, setup Jan with an OpenRouter model, many of which are free.",
+    initialProviderId: 'jan',
+    initialModelId: 'mock-model-1', // Pre-select mock model
+    _fetchStatus: 'success',
+    _testStatus: 'idle' // Test is ready but not run
+  },
+  render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
+};
+
+// Story showing the Test Connection error state for Jan
+export const TestConnectionErrorJan = {
+  name: "Test Connection Error (Jan)",
+  args: {
+    ...ReadyToTestJan.args, // Inherit setup
+    _testStatus: 'error' // Simulate test failure
+  },
+  render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
+};
+
+// Story showing the Test Connection error state for LMStudio
+export const TestConnectionErrorLMStudio = {
+  name: "Test Connection Error (LMStudio)",
+  args: {
+    ...ReadyToTestJan.args, // Inherit setup
+    initialProviderId: 'lmstudio',
+    _testStatus: 'error' // Simulate test failure
+  },
+  render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
+};
+
+// Story showing the Test Connection success state 
+export const TestConnectionSuccess = {
+  name: "Test Connection Success",
+  args: {
+    ...ReadyToTestJan.args, // Inherit setup
+    _testStatus: 'success' // Simulate test success
+  },
+  render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
+}; 

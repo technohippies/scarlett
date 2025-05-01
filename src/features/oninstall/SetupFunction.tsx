@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, createResource } from 'solid-js';
+import { Component, createSignal, createEffect, createResource, createMemo } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { cn } from '../../lib/utils';
@@ -50,6 +50,7 @@ interface SetupFunctionProps {
 }
 
 type FetchStatus = 'idle' | 'loading' | 'success' | 'error';
+type TestStatus = 'idle' | 'testing' | 'success' | 'error';
 
 export const SetupFunction: Component<SetupFunctionProps> = (props) => {
   const [selectedProviderId, setSelectedProviderId] = createSignal<string | undefined>(props.initialProviderId);
@@ -60,6 +61,27 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
   const [fetchStatus, setFetchStatus] = createSignal<FetchStatus>(props._fetchStatus || 'idle');
   const [fetchedModels, setFetchedModels] = createSignal<ModelOption[]>([]);
   const [fetchError, setFetchError] = createSignal<Error | null>(null);
+  const [testStatus, setTestStatus] = createSignal<TestStatus>('idle');
+  const [testError, setTestError] = createSignal<Error | null>(null);
+
+  // Memo to filter models based on function type
+  const displayModels = createMemo(() => {
+    const models = fetchedModels();
+    if (props.functionName !== 'Embedding') {
+      return models; // Show all models for LLM/Reader
+    }
+
+    // Filter for embedding models
+    const embeddingKeywords = ['embed', 'bge', 'minilm', 'paraphrase', 'granite'];
+    return models.filter(model => {
+        const lowerCaseId = model.id.toLowerCase();
+        // Check if model ID contains any known embedding keywords
+        const hasKeyword = embeddingKeywords.some(keyword => lowerCaseId.includes(keyword));
+        // Additionally, check Ollama's family details if available (might be redundant with keywords but safer)
+        const isOllamaEmbeddingFamily = (model as any).details?.family?.toLowerCase().includes('embedding'); 
+        return hasKeyword || isOllamaEmbeddingFamily;
+    });
+  });
 
   // Ensure fetchModels implementation remains as previously defined
   const fetchModels = async (provider: ProviderOption | undefined): Promise<ModelOption[]> => {
@@ -97,9 +119,13 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
 
       // Map response to ModelOption[] based on provider type
       if (provider.id === 'ollama' && data.models) {
-        return data.models.map((m: any) => ({ id: m.name, name: m.name, description: `${m.size_vram ? (m.size_vram / 1e9).toFixed(1) + 'B' : 'Size N/A'} - ${m.details?.family}` }));
+        return data.models.map((m: any) => ({
+          id: m.name,
+          name: m.name,
+          description: undefined // Ensure no description is added
+        }));
       } else if (data.data) { // OpenAI format
-        return data.data.map((m: any) => ({ id: m.id, name: m.id, description: m.object })); // Basic mapping
+        return data.data.map((m: any) => ({ id: m.id, name: m.id, description: undefined })); // Ensure no description is added
       } else {
           console.warn('[SetupFunction] Unexpected API response format:', data);
           throw new Error('Invalid response format from server.');
@@ -157,6 +183,77 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
     }
   });
 
+  // Reset test status when provider or model changes
+  createEffect(() => {
+    selectedProviderId(); // Depend on provider
+    selectedModelId(); // Depend on model
+    setTestStatus('idle');
+    setTestError(null);
+    console.log("[SetupFunction] Provider or model changed, resetting test status.");
+  });
+
+  // Effect to auto-select the most recent preferred Ollama model
+  createEffect(() => {
+    // Conditions: Ollama selected, models fetched successfully, no initial/current selection
+    if (
+      selectedProviderId() === 'ollama' && 
+      fetchStatus() === 'success' && 
+      !props.initialModelId && 
+      !selectedModelId()
+    ) {
+      const models = fetchedModels();
+      if (!models || models.length === 0) return;
+
+      const preferredFamilies = ['gemma', 'qwen', 'llama', 'phi', 'deepseek'];
+
+      const preferredModels = models
+        .map(m => ({ // Add parsed date for sorting, handle potential errors
+          ...m,
+          modifiedDate: m.modified_at ? new Date(m.modified_at) : null,
+        }))
+        .filter(m => {
+          const family = (m as any).details?.family?.toLowerCase();
+          // Check family and ensure date is valid
+          return family && preferredFamilies.includes(family) && m.modifiedDate && !isNaN(m.modifiedDate.getTime());
+        });
+
+      if (preferredModels.length > 0) {
+        // Sort by date descending (most recent first)
+        preferredModels.sort((a, b) => b.modifiedDate!.getTime() - a.modifiedDate!.getTime());
+        const mostRecentModel = preferredModels[0];
+        
+        console.log(`[SetupFunction] Auto-selecting most recent preferred Ollama model: ${mostRecentModel.id}`);
+        setSelectedModelId(mostRecentModel.id);
+      }
+    }
+  });
+
+  // Determine the correct label for the main action button
+  const buttonLabel = () => {
+    if (fetchStatus() === 'success' && selectedModelId()) {
+      if (testStatus() === 'idle' || testStatus() === 'error') {
+        return i18n().get('onboardingTestConnection', 'Test Connection');
+      } else if (testStatus() === 'testing') {
+        return i18n().get('onboardingTestingConnection', 'Testing...');
+      } else { // testStatus === 'success'
+        return props.continueLabel;
+      }
+    } 
+    // Default to continueLabel if models not fetched or selected yet (button will be disabled anyway)
+    return props.continueLabel;
+  };
+
+  // Determine the correct action for the main button click
+  const handleButtonClick = () => {
+     if (fetchStatus() === 'success' && selectedModelId()) {
+        if (testStatus() === 'idle' || testStatus() === 'error') {
+            handleTestConnection();
+        } else if (testStatus() === 'success') {
+            handleSubmit();
+        } // No action if testing
+     }
+  };
+
   const i18n = () => {
     const messages = props.messages;
     return {
@@ -184,7 +281,82 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
     }
   };
 
-  const canContinue = () => selectedProviderId() && selectedModelId() && fetchStatus() === 'success';
+  // We enable the main continue button only after a successful test
+  const canContinue = () => selectedProviderId() && selectedModelId() && fetchStatus() === 'success' && testStatus() === 'success';
+
+  // Function to test the actual inference endpoint
+  const handleTestConnection = async () => {
+    const provider = selectedProvider();
+    const modelId = selectedModelId();
+
+    if (!provider || !modelId) return;
+
+    setTestStatus('testing');
+    setTestError(null);
+
+    const baseUrl = provider.defaultBaseUrl.replace(/\/+$/, '');
+    let testApiUrl = '';
+    let requestBody: any = {};
+    let httpBaseUrl = baseUrl; // Default to original base URL
+
+    try {
+      if (provider.id === 'ollama') {
+        if (props.functionName === 'Embedding') {
+          testApiUrl = `${baseUrl}/api/embed`;
+          requestBody = { model: modelId, input: "test" }; 
+        } else { // LLM or Reader
+          testApiUrl = `${baseUrl}/api/generate`;
+          requestBody = { model: modelId, prompt: 'hi', stream: false, options: { num_predict: 1 } };
+        }
+      } else if (provider.id === 'lmstudio' || provider.id === 'jan') {
+        // Replace ws:// with http:// specifically for the test fetch call
+        httpBaseUrl = baseUrl.replace(/^ws:/, 'http:');
+        if (props.functionName === 'Embedding') {
+          testApiUrl = `${httpBaseUrl}/v1/embeddings`; // Standard OpenAI embed endpoint
+          requestBody = { model: modelId, input: "test" };
+        } else { // LLM or Reader
+          testApiUrl = `${httpBaseUrl}/v1/chat/completions`;
+          requestBody = { model: modelId, messages: [{ role: 'user', content: 'What is 2+2? Respond with nothing else.' }], max_tokens: 1 };
+        }
+      } else {
+        // Fallback or other providers might use OpenAI standard
+        if (props.functionName === 'Embedding') {
+           testApiUrl = `${baseUrl}/v1/embeddings`;
+           requestBody = { model: modelId, input: "test" };
+        } else { // LLM or Reader
+           testApiUrl = `${baseUrl}/v1/chat/completions`;
+           requestBody = { model: modelId, messages: [{ role: 'user', content: 'What is 2+2? Respond with nothing else.' }], max_tokens: 1 };
+        }
+      }
+
+      console.log(`[SetupFunction] Testing connection to ${provider.name} at ${testApiUrl} for ${props.functionName}`);
+
+      const response = await fetch(testApiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(7000) // Slightly longer timeout for inference test
+      });
+
+      if (!response.ok) {
+        let errorMsg = `HTTP error! status: ${response.status}`;
+        try {
+          const errorBody = await response.json();
+          errorMsg += ` - ${JSON.stringify(errorBody)}`;
+        } catch { /* Ignore if body isn't JSON */ }
+        throw new Error(errorMsg);
+      }
+
+      console.log(`[SetupFunction] Connection test to ${provider.name} successful.`);
+      setTestStatus('success');
+
+    } catch (error: any) {
+      console.error(`[SetupFunction] Connection test failed for ${provider.name} at ${testApiUrl}:`, error);
+      // Assume CORS or connectivity issue on TypeError or fetch failure
+      setTestError(error instanceof TypeError ? new Error("Connection/CORS Issue") : error);
+      setTestStatus('error');
+    }
+  };
 
   return (
     <div class="relative flex flex-col min-h-screen bg-background text-foreground">
@@ -208,7 +380,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
 
         {/* Main content block (text, providers, model select/status) */} 
         {/* This block remains centered due to parent's items-center */}
-        <div class="text-center w-full max-w-lg mb-6">
+        <div class="text-center w-full max-w-lg mb-2">
           <p class="text-xl md:text-2xl mb-2">
             {props.title || i18n().get(`onboardingSetup${props.functionName}Title`, `Configure ${props.functionName}`)}
           </p>
@@ -217,7 +389,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
           )}
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg mb-8">
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg mb-4">
             {props.providerOptions.map((provider) => {
                 const isSelected = () => selectedProviderId() === provider.id;
                 return (
@@ -245,18 +417,18 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         </div>
 
         {fetchStatus() === 'loading' && (
-            <div class="w-full max-w-lg mb-8 flex justify-center items-center space-x-2 text-muted-foreground">
+            <div class="w-full max-w-lg mb-6 flex justify-center items-center space-x-2 text-muted-foreground">
                 <Spinner /> 
             </div>
         )}
 
         {fetchStatus() === 'error' && (
-            <div class="w-full max-w-lg mb-8 space-y-4">
+            <div class="w-full max-w-lg space-y-4">
                 <Callout variant="error">
                     <CalloutContent>
                         {(fetchError() instanceof TypeError || (fetchError() as any)?.message?.includes('fetch')) ? (
                             <p class="text-lg">
-                                {i18n().get('onboardingErrorConnectionOrCORS', 'Error: Is the server running at')}{' '}{selectedProvider()?.defaultBaseUrl || ''}?
+                                {i18n().get('onboardingErrorFetchFailed', 'Error: Is the server running on')}{' '}{selectedProvider()?.defaultBaseUrl || ''}? Is CORS enabled?
                             </p>
                         ) : (fetchError() as any)?.status ? (
                             <p class="text-lg">
@@ -270,33 +442,32 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                     </CalloutContent>
                 </Callout>
 
-                {/* Provider-specific help BELOW the callout for TypeError */}
-                {(fetchError() instanceof TypeError || (fetchError() as any)?.message?.includes('fetch')) && (
-                    <div class="w-full max-w-lg text-sm"> {/* Container for help */}
-                        <Switch fallback={<p class="text-xs text-muted-foreground">Provider-specific instructions not available.</p>}>
+                {(fetchError() && (fetchError() instanceof TypeError || (fetchError() as any)?.message?.includes('fetch'))) && (
+                    <div class="w-full max-w-lg text-sm mt-4"> 
+                        <Switch fallback={<p class="text-xs text-muted-foreground">Instructions not available.</p>}>
                             <Match when={selectedProvider()?.id === 'ollama'}>
                                 <div class="space-y-2">
                                     <p>1. Open Terminal:</p>
                                     <CodeBlock language="bash" code="sudo systemctl edit ollama.service" />
                                     <p>2. Add these lines under [Service]:</p>
-                                    <CodeBlock language="ini" code={"[Service]\nEnvironment=\"OLLAMA_HOST=0.0.0.0\"\nEnvironment=\"OLLAMA_ORIGINS=*\""} />
+                                    <CodeBlock language="plaintext" code={"[Service]\nEnvironment=\"OLLAMA_HOST=0.0.0.0\"\nEnvironment=\"OLLAMA_ORIGINS=*\""} />
                                     <p>3. Save, exit, then run:</p>
                                     <CodeBlock language="bash" code="sudo systemctl restart ollama" />
                                 </div>
                             </Match>
                             <Match when={selectedProvider()?.id === 'jan'}>
-                                 <img 
-                                     src="/images/llm-providers/Jan-help.png" 
-                                     alt="Jan CORS setting location" 
-                                     class="rounded border border-neutral-700 max-w-sm mx-auto" 
-                                 />
+                                <img 
+                                    src="/images/llm-providers/Jan-help.png" 
+                                    alt="Jan CORS setting location" 
+                                    class="rounded border border-neutral-700 max-w-sm mx-auto" 
+                                />
                             </Match>
                             <Match when={selectedProvider()?.id === 'lmstudio'}>
                                 <img 
-                                     src="/images/llm-providers/LMStudio-help.png" 
-                                     alt="LM Studio CORS setting location" 
-                                     class="rounded border border-neutral-700 max-w-sm mx-auto" 
-                                 />
+                                    src="/images/llm-providers/LMStudio-help.png" 
+                                    alt="LM Studio CORS setting location" 
+                                    class="rounded border border-neutral-700 max-w-sm mx-auto" 
+                                />
                             </Match>
                         </Switch>
                     </div>
@@ -304,38 +475,105 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
             </div>
         )}
 
+        {/* --- Model Selection Dropdown (Show ONLY on fetch success) --- */} 
         {fetchStatus() === 'success' && (
-            <div class="w-full max-w-lg mb-8">
+            <div class="w-full max-w-lg">
                 <label for={`${props.functionName}-model-select`} class="block text-sm font-medium text-muted-foreground mb-1">
-                     {i18n().get(`onboarding${props.functionName}ModelLabel`, `${props.functionName} Model`)}
+                    {i18n().get(`onboarding${props.functionName}ModelLabel`, `${props.functionName} Model`)}
                 </label>
                 <Select<ModelOption>
-                     options={fetchedModels()}
-                     optionValue="id"
-                     optionTextValue="name"
-                     placeholder={i18n().get(`onboardingSelect${props.functionName}ModelPlaceholder`, `Select a ${props.functionName} model...`)}
-                     value={fetchedModels().find(m => m.id === selectedModelId())}
-                     onChange={(selected) => setSelectedModelId(selected?.id)}
-                     disabled={fetchStatus() !== 'success' || !selectedProviderId()}
-                     itemComponent={(props) => (
-                         <SelectItem item={props.item} class="cursor-pointer">
-                             <div class="flex flex-col">
-                                 <span class="font-medium">{props.item.rawValue.name}</span>
-                                 {props.item.rawValue.description && (
-                                     <span class="text-xs text-muted-foreground">{props.item.rawValue.description}</span>
-                                 )}
-                             </div>
-                         </SelectItem>
-                     )}
-                 >
-                     <SelectTrigger id={`${props.functionName}-model-select`} class="w-full" disabled={!selectedProviderId()}>
-                         <SelectValue<ModelOption>>{state => state.selectedOption()?.name}</SelectValue>
-                     </SelectTrigger>
-                     <SelectContent />
-                 </Select>
+                    options={displayModels()}
+                    optionValue="id"
+                    optionTextValue="name"
+                    placeholder={i18n().get(`onboardingSelect${props.functionName}ModelPlaceholder`, `Select a ${props.functionName} model...`)}
+                    value={displayModels().find(m => m.id === selectedModelId())}
+                    onChange={(selected) => setSelectedModelId(selected?.id)}
+                    disabled={fetchStatus() !== 'success' || !selectedProviderId()} // Already covered by outer conditional, but safe
+                    itemComponent={(itemProps) => (
+                        <SelectItem item={itemProps.item} class="cursor-pointer">
+                            <div class="flex flex-col">
+                                <span class="font-medium">{itemProps.item.rawValue.name}</span>
+                            </div>
+                        </SelectItem>
+                    )}
+                >
+                    <SelectTrigger id={`${props.functionName}-model-select`} class="w-full" disabled={!selectedProviderId()}>
+                        <SelectValue<ModelOption>>{state => state.selectedOption()?.name}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent />
+                </Select>
             </div>
         )}
 
+        {/* --- Test Connection Status Indicators (Show ONLY on fetch success AND model selected) --- */} 
+        {fetchStatus() === 'success' && selectedModelId() && (
+            <div class="w-full max-w-lg text-center space-y-4 mt-8">
+                 {/* Testing Spinner */} 
+                 {testStatus() === 'testing' && (
+                     <div class="flex justify-center items-center space-x-2 text-muted-foreground">
+                         <Spinner /> 
+                     </div>
+                 )}
+ 
+                 {/* Test Error Callout */} 
+                 {testStatus() === 'error' && (
+                     <>
+                         <Callout variant="error">
+                             <CalloutContent>
+                                 {/* Show specific error message based on error type */}
+                                 <p class="text-lg">
+                                     {testError()?.name === 'TimeoutError'
+                                         ? i18n().get('onboardingErrorTimeout', 'Error: Connection timed out. Is the server responding?')
+                                         : testError() instanceof TypeError 
+                                         ? i18n().get('onboardingErrorCORSCheck', 'Error: Is CORS enabled? Enable and restart')
+                                         : testError()?.message || i18n().get('onboardingErrorUnknown', 'An unknown error occurred')
+                                     }
+                                 </p>
+                             </CalloutContent>
+                         </Callout>
+                         {/* Show help images for TypeError (CORS) OR TimeoutError (Server Slow/Stuck) */}
+                         {(testError() instanceof TypeError || testError()?.name === 'TimeoutError') && (
+                             <div class="w-full max-w-lg text-sm mt-4">
+                                 <Switch fallback={<p class="text-xs text-muted-foreground">Instructions not available.</p>}>
+                                     <Match when={selectedProvider()?.id === 'ollama'}>
+                                         <div class="space-y-2">
+                                             <p>1. Open Terminal:</p>
+                                             <CodeBlock language="bash" code="sudo systemctl edit ollama.service" />
+                                             <p>2. Add these lines under [Service]:</p>
+                                             <CodeBlock language="plaintext" code={"[Service]\nEnvironment=\"OLLAMA_HOST=0.0.0.0\"\nEnvironment=\"OLLAMA_ORIGINS=*\""} />
+                                             <p>3. Save, exit, then run:</p>
+                                             <CodeBlock language="bash" code="sudo systemctl restart ollama" />
+                                         </div>
+                                     </Match>
+                                     <Match when={selectedProvider()?.id === 'jan'}>
+                                         <img 
+                                             src="/images/llm-providers/Jan-help.png" 
+                                             alt="Jan CORS setting location" 
+                                             class="rounded border border-neutral-700 max-w-sm mx-auto" 
+                                         />
+                                     </Match>
+                                     <Match when={selectedProvider()?.id === 'lmstudio'}>
+                                         <img 
+                                             src="/images/llm-providers/LMStudio-help.png" 
+                                             alt="LM Studio CORS setting location" 
+                                             class="rounded border border-neutral-700 max-w-sm mx-auto" 
+                                         />
+                                     </Match>
+                                 </Switch>
+                             </div>
+                         )}
+                     </>
+                 )}
+ 
+                 {/* Success Indicator */} 
+                 {testStatus() === 'success' && (
+                     <div class="flex justify-center items-center space-x-2 text-green-500">
+                         <span class="text-md">{i18n().get('onboardingTestConnectionSuccess', 'Success!')}</span>
+                     </div>
+                 )}
+             </div>
+        )}
+       
       </div>
 
       {/* Image 2: Positioned bottom-right only on lg screens */}
@@ -353,10 +591,16 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
           <Button
             size="lg"
             class="w-full"
-            onClick={handleSubmit}
-            disabled={!canContinue()}
+            onClick={handleButtonClick} // Use the dynamic handler
+            // Disable logic: fetching models, or no model selected, or currently testing
+            disabled={
+                fetchStatus() === 'loading' || 
+                (fetchStatus() === 'success' && !selectedModelId()) ||
+                testStatus() === 'testing'
+            }
           >
-            {props.continueLabel}
+            {/* Use the dynamic label */} 
+            {buttonLabel()}
           </Button>
         </div>
       </div>

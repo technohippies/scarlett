@@ -87,7 +87,7 @@ export const CodeBlock: Component<CodeBlockProps> = (props) => {
     >
       <pre
         class={cn(
-          'overflow-x-auto whitespace-pre-wrap break-words text-neutral-100 bg-transparent',
+          'overflow-x-auto whitespace-pre-wrap break-words text-neutral-100 bg-transparent text-left',
           isSingleLine() ? 'm-0 p-0 flex-grow' : 'm-0 p-0'
         )}
       >

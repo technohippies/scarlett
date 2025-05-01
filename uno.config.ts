@@ -57,6 +57,15 @@ export default defineConfig({
           box-shadow: none !important;
         }
       `
+    },
+    {
+      getCSS: () => `
+        body {
+          font-size: 100%; /* Override injected style */
+          -webkit-font-smoothing: antialiased; /* Common reset */
+          -moz-osx-font-smoothing: grayscale; /* Common reset */
+        }
+      `
     }
   ]
 }) 
