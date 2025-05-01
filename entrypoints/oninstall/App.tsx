@@ -8,6 +8,8 @@ import type { Messages } from '../../src/types/i18n';
 import { SetupLLM } from '../../src/features/oninstall/SetupLLM';
 // Import the Provider Setup component and type
 import { SetupProvider, ProviderOption } from '../../src/features/oninstall/SetupProvider'; // Updated import
+// Import the Model Setup component
+import { SetupModels } from '../../src/features/oninstall/SetupModels';
 import type { LLMConfig } from '../../src/services/llm/types'; // Import LLMConfig
 
 // Define language lists here (could also be moved)
@@ -24,7 +26,7 @@ const allTargetLanguagesList: LanguageOptionStub[] = [
   { value: 'ja', emoji: '🇯🇵' }, { value: 'ko', emoji: '🇰🇷' },
 ];
 
-// Define available LLM Providers
+// Define available LLM Providers (Chat/Completion)
 const availableProviders: ProviderOption[] = [ // Updated type
     {
       id: 'ollama',
@@ -47,8 +49,29 @@ const availableProviders: ProviderOption[] = [ // Updated type
     },
 ];
 
+// Define available Embedding Providers (can be the same for now)
+const availableEmbeddingProviders: ProviderOption[] = [
+    {
+      id: 'ollama',
+      name: 'Ollama',
+      defaultBaseUrl: 'http://localhost:11434',
+      logoUrl: '/images/llm-providers/ollama.png'
+    },
+    {
+      id: 'jan',
+      name: 'Jan',
+      defaultBaseUrl: 'http://localhost:1337',
+      logoUrl: '/images/llm-providers/jan.png'
+    },
+    {
+      id: 'lmstudio',
+      name: 'LM Studio',
+      defaultBaseUrl: 'ws://127.0.0.1:1234',
+      logoUrl: '/images/llm-providers/lmstudio.png'
+    },
+];
 
-type Step = 'language' | 'providerSelect' | 'llmSetup' | 'learningGoal'; // Added providerSelect and llmSetup
+type Step = 'language' | 'learningGoal' | 'providerSelect' | 'llmSetup' | 'embeddingProviderSelect' | 'modelSelect'; // Added model select step
 
 // Helper function modified to return the best determined language code
 function getBestInitialLangCode(): string {
@@ -120,7 +143,13 @@ const App: Component = () => {
   const [uiLangCode, setUiLangCode] = createSignal<string>(getBestInitialLangCode());
   // State for selected LLM provider
   const [selectedProvider, setSelectedProvider] = createSignal<ProviderOption | null>(null); // Updated type
+  // State for selected Embedding provider
+  const [selectedEmbeddingProvider, setSelectedEmbeddingProvider] = createSignal<ProviderOption | null>(null);
   
+  // State for selected Models
+  const [selectedEmbeddingModelId, setSelectedEmbeddingModelId] = createSignal<string | null>(null);
+  const [selectedReaderModelId, setSelectedReaderModelId] = createSignal<string | null>(null);
+
   const [messagesData] = createResource(uiLangCode, fetchMessages);
   const initialNativeValue = uiLangCode(); 
 
@@ -170,21 +199,56 @@ const App: Component = () => {
     setCurrentStep('llmSetup'); 
   };
 
-  // Updated handler: Now the FINAL step. Save LLM config, mark complete, close tab.
+  // Updated handler: Save LLM config and move to EMBEDDING provider selection.
   const handleLLMSetupComplete = async (config: LLMConfig) => {
-    console.log('[App] LLM Setup Complete (Final Step). Saving config and closing.');
+    console.log('[App] LLM Setup Complete. Saving config, proceeding to embedding provider selection.');
     const currentConfig = await userConfigurationStorage.getValue();
     const updatedConfig = {
       ...currentConfig,
       llmProvider: config.provider,
       llmModel: config.model,
       llmBaseUrl: config.baseUrl,
-      onboardingComplete: true, // Mark complete here
     };
     await userConfigurationStorage.setValue(updatedConfig);
-    // console.log('[App] Final config after saving LLM settings:', updatedConfig);
-    
-    // Close tab logic moved here
+    console.log('[App] Config after saving LLM settings:', updatedConfig);
+
+    setCurrentStep('embeddingProviderSelect'); // Go to embedding provider selection
+  };
+
+  // Updated handler: Save Embedding provider config and move to MODEL selection.
+  const handleEmbeddingProviderSelectComplete = async (provider: ProviderOption) => {
+    console.log('[App] Embedding Provider Selected. Saving config, proceeding to model selection.');
+    setSelectedEmbeddingProvider(provider); // Store selection just in case, though maybe not needed
+
+    const currentConfig = await userConfigurationStorage.getValue();
+    const updatedConfig = {
+      ...currentConfig,
+      embeddingProvider: provider.id, // Store provider ID
+      embeddingBaseUrl: provider.defaultBaseUrl, // Store base URL (might need a model selection later)
+    };
+    await userConfigurationStorage.setValue(updatedConfig);
+    console.log('[App] Config after saving Embedding provider:', updatedConfig);
+
+    setCurrentStep('modelSelect'); // Go to model selection
+  };
+
+  // New handler: The FINAL step. Save Model selections, mark complete, close tab.
+  const handleModelSelectComplete = async (models: { embeddingModelId: string; readerModelId: string }) => {
+    console.log('[App] Model Selection Complete (Final Step). Saving models and closing.');
+    setSelectedEmbeddingModelId(models.embeddingModelId);
+    setSelectedReaderModelId(models.readerModelId);
+
+    const currentConfig = await userConfigurationStorage.getValue();
+    const updatedConfig = {
+      ...currentConfig,
+      embeddingModel: models.embeddingModelId,
+      readerModel: models.readerModelId,
+      onboardingComplete: true, // Mark complete HERE
+    };
+    await userConfigurationStorage.setValue(updatedConfig);
+    console.log('[App] Final config after saving Models:', updatedConfig);
+
+    // Close tab logic HERE
     console.log('[App] Onboarding complete, attempting to close tab.');
     browser.tabs.getCurrent().then(tab => {
       if (tab?.id) {
@@ -205,7 +269,6 @@ const App: Component = () => {
     const updatedConfig = {
       ...currentConfig,
       learningGoal: goalId,
-      // onboardingComplete: true, // Moved to LLM setup complete
     };
     await userConfigurationStorage.setValue(updatedConfig);
     console.log('[App] Config after saving goal:', updatedConfig);
@@ -221,8 +284,12 @@ const App: Component = () => {
         setCurrentStep('language');
     } else if (step === 'providerSelect') {
         setCurrentStep('learningGoal');
-    } else if (step === 'llmSetup') {
+    } else if (step === 'llmSetup') { // Back from LLM setup goes to Provider Select
         setCurrentStep('providerSelect');
+    } else if (step === 'embeddingProviderSelect') { // Back from Embedding Select goes to LLM Setup
+        setCurrentStep('llmSetup');
+    } else if (step === 'modelSelect') { // Back from Model Select goes to Embedding Provider Select
+        setCurrentStep('embeddingProviderSelect');
     }
     console.log(`[App] Navigated back from ${step} to ${currentStep()}`);
   };
@@ -266,6 +333,24 @@ const App: Component = () => {
                     onBack={handleBack}
                     messages={messagesData() || {}}
                  />;
+      case 'embeddingProviderSelect': // New Step: Select Embedding Provider
+        return <SetupProvider
+                   onComplete={handleEmbeddingProviderSelectComplete}
+                   onBack={handleBack}
+                   // New title specific to embedding providers
+                   selectProviderLabel={currentMessages.get('onboardingEmbeddingProviderTitle', 'Select Embedding Provider')}
+                   // New description specific to embedding providers
+                   description={currentMessages.get('onboardingEmbeddingProviderDescription', 'Most computers can run an embedding model locally. I recommend bge-m3 or bge-large on Ollama!')}
+                   continueLabel={currentMessages.get('onboardingContinue', 'Continue')}
+                   availableProviders={availableEmbeddingProviders.filter(p => p.id !== 'jan')} // Filter out Jan for embeddings
+                   messages={messagesData() || {}}
+                />;
+      case 'modelSelect': // New Step: Select Specific Models
+        return <SetupModels
+                   onComplete={handleModelSelectComplete}
+                   onBack={handleBack}
+                   messages={messagesData() || {}}
+                />;
       case 'learningGoal':
         return <LearningGoal 
                    onComplete={handleLearningGoalComplete} 

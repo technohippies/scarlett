@@ -17,6 +17,7 @@ interface SetupProviderProps {
   onComplete: (selectedProvider: ProviderOption) => void;
   onBack: () => void;
   selectProviderLabel: string;
+  description?: string; // Added optional description prop
   continueLabel: string;
   availableProviders: ProviderOption[];
   messages?: Messages; // Optional
@@ -68,18 +69,12 @@ export const SetupProvider: Component<SetupProviderProps> = (props) => {
           <div class="text-center w-full max-w-lg mb-6">
               {/* Main Title */}
               <p class="text-xl md:text-2xl mb-2">{props.selectProviderLabel}</p>
-              {/* Added Description Text */}
-              <p class="text-lg text-muted-foreground">
-                If you can't run Qwen3 4B or Gemma3 4B or larger locally, 
-                <a 
-                  href="https://jan.ai/docs/remote-models/openrouter"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="underline text-primary hover:text-primary/90"
-                >
-                  setup Jan with an OpenRouter model
-                </a>, many of which are free.
-              </p>
+              {/* Conditionally render description */}
+              {props.description && (
+                <p class="text-lg text-muted-foreground">
+                  {props.description}
+                </p>
+              )}
           </div>
           <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg mb-6">
               <For each={props.availableProviders}>
