@@ -1,52 +1,76 @@
 import { Component, createSignal } from 'solid-js';
+// Removed unused storage import
 import { Language } from '../../src/features/oninstall/Language';
-// Import the new step
 import { LearningGoal } from '../../src/features/oninstall/LearningGoal';
-// Import other steps here later if needed
-// import { Permissions } from '../../src/features/oninstall/Permissions';
-// import { Final } from '../../src/features/oninstall/Final';
+// Import the storage item (removed unused type import)
+import { userConfigurationStorage } from '../../src/services/storage';
 
-type Step = 'language' | 'learningGoal' | 'permissions' | 'final';
+// Only include currently used steps
+type Step = 'language' | 'learningGoal';
 
 const App: Component = () => {
   const [currentStep, setCurrentStep] = createSignal<Step>('language');
+  // Add signal to store the target language label
+  const [targetLangLabel, setTargetLangLabel] = createSignal<string>('');
 
-  const goToNextStep = () => {
-    if (currentStep() === 'language') {
-      // TODO: Save language settings first
-      console.log("Proceeding from language step...");
-      setCurrentStep('learningGoal'); // Go to the new step
-    } else if (currentStep() === 'learningGoal') {
-      // TODO: Save learning goal
-      console.log("Proceeding from learning goal step...");
-      // TEMPORARY: Close tab after learning goal step for now
-       browser.tabs.getCurrent().then(tab => {
-        if (tab?.id) {
-          browser.tabs.remove(tab.id);
-        }
-      });
-      // In the future, might go to 'permissions'
-      // setCurrentStep('permissions');
-    } else if (currentStep() === 'permissions') {
-      // setCurrentStep('final');
-    } else if (currentStep() === 'final') {
-      // Close the tab
-      // browser.tabs.getCurrent().then(tab => { ... });
-    }
+  // Function to handle language selection completion
+  const handleLanguageComplete = async (selectedLangs: { native: string; target: string; targetLabel: string }) => {
+    console.log('[App] Language Complete Callback Received:', selectedLangs);
+    // Store the label in the signal
+    setTargetLangLabel(selectedLangs.targetLabel);
+
+    const currentConfig = await userConfigurationStorage.getValue();
+    const updatedConfig = {
+      ...currentConfig,
+      nativeLanguage: selectedLangs.native,
+      targetLanguage: selectedLangs.target,
+      // Note: We are not saving the label itself to storage, just the value
+    };
+    await userConfigurationStorage.setValue(updatedConfig);
+    console.log('[App] Config after saving languages:', updatedConfig);
+    setCurrentStep('learningGoal');
   };
+
+  // Function to handle learning goal selection completion
+  const handleLearningGoalComplete = async (goalId: string) => {
+    console.log('[App] Learning Goal Complete Callback Received:', goalId);
+    const currentConfig = await userConfigurationStorage.getValue();
+    const finalConfig = {
+      ...currentConfig,
+      learningGoal: goalId,
+      onboardingComplete: true,
+    };
+    await userConfigurationStorage.setValue(finalConfig);
+    console.log('[App] Final config after saving goal:', finalConfig);
+
+    console.log('[App] Onboarding complete, attempting to close tab.');
+    browser.tabs.getCurrent().then(tab => {
+      if (tab?.id) {
+        console.log(`[App] Closing tab with ID: ${tab.id}`);
+        browser.tabs.remove(tab.id);
+      } else {
+        console.log('[App] Could not get current tab ID to close.');
+      }
+    }).catch(error => {
+      console.error('[App] Error getting current tab:', error);
+    });
+  };
+
+  // Removed unused handlePermissionsComplete and handleFinalComplete functions
 
   const renderStep = () => {
     switch (currentStep()) {
       case 'language':
-        return <Language onComplete={goToNextStep} />;
-      case 'learningGoal': // Add case for the new step
-        return <LearningGoal onComplete={goToNextStep} />;
-      // case 'permissions':
-      //   return <Permissions onComplete={goToNextStep} />;
-      // case 'final':
-      //   return <Final onComplete={goToNextStep} />;
+        return <Language onComplete={handleLanguageComplete} />;
+      case 'learningGoal':
+        // Pass the target language label signal value as a prop
+        return <LearningGoal 
+                   onComplete={handleLearningGoalComplete} 
+                   targetLanguageLabel={targetLangLabel()} // Pass label here
+               />;
       default:
-        return <div>Unknown step</div>;
+        console.error('Unknown onboarding step:', currentStep());
+        return <div>Error: Unknown step</div>;
     }
   };
 

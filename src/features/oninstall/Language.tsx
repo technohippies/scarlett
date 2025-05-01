@@ -15,7 +15,7 @@ interface LanguageOption {
   label: string;
 }
 
-// Apply type to arrays - Expanded list for native languages
+// Keep language lists defined locally for now
 const nativeLanguages: LanguageOption[] = [
   { value: 'en', label: '🇺🇸 English' },
   { value: 'zh', label: '🇨🇳 Chinese' },
@@ -25,10 +25,8 @@ const nativeLanguages: LanguageOption[] = [
   { value: 'ja', label: '🇯🇵 Japanese' },
   { value: 'ko', label: '🇰🇷 Korean' },
   { value: 'es', label: '🇪🇸 Spanish' },
-  // Add more native languages as needed
 ];
 
-// Target languages offered for learning (initially limited set)
 const allTargetLanguages: LanguageOption[] = [
   { value: 'en', label: '🇺🇸 English' },
   { value: 'zh', label: '🇨🇳 Mandarin' },
@@ -38,7 +36,8 @@ const allTargetLanguages: LanguageOption[] = [
 
 // Define props for the component
 interface LanguageProps {
-  onComplete: () => void; // Function to call when setup is done
+  // Expect label in the callback object
+  onComplete: (selectedLangs: { native: string; target: string; targetLabel: string }) => void;
 }
 
 export const Language: Component<LanguageProps> = (props) => {
@@ -55,17 +54,13 @@ export const Language: Component<LanguageProps> = (props) => {
 
   const handleSubmit = () => {
     const nativeLang = selectedNativeLangObj()?.value;
-    const targetLang = selectedTargetLang();
-    if (!nativeLang || !targetLang) return; // Should be disabled, but double-check
+    const targetLangValue = selectedTargetLang();
+    if (!nativeLang || !targetLangValue) return;
 
-    console.log('Saving Native:', nativeLang);
-    console.log('Saving Target:', targetLang);
-    // TODO: Replace with actual storage service call
-    // await settingsService.setNativeLanguage(nativeLang);
-    // await settingsService.setTargetLanguage(targetLang);
+    // Find the label from the locally defined list
+    const targetLangLabel = allTargetLanguages.find(lang => lang.value === targetLangValue)?.label || targetLangValue;
 
-    // Call the completion callback provided by the parent
-    props.onComplete();
+    props.onComplete({ native: nativeLang, target: targetLangValue, targetLabel: targetLangLabel });
   };
 
   return (

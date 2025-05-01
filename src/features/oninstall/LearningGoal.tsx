@@ -4,16 +4,17 @@ import { cn } from '../../lib/utils';
 
 // Define props for the component
 interface LearningGoalProps {
-  onComplete: () => void; // Function to call when setup is done
+  onComplete: (goalId: string) => void; // Modify onComplete to pass the selected goal ID
+  targetLanguageLabel: string; // Add prop for the language label
 }
 
-// Define learning goal options
-const learningGoals = [
+// Corrected label For self growth
+const learningGoalsCorrected = [
   { id: 'work', label: '💼 For work' },
   { id: 'dating', label: '❤️ For dating' },
   { id: 'travel', label: '✈️ For traveling' },
   { id: 'school', label: '🎓 For school' },
-  { id: 'self', label: '🌱 For self growth' },
+  { id: 'self', label: '🌱 For self growth' }, // Corrected label
   { id: 'other', label: '🤔 Something else' },
 ];
 
@@ -28,8 +29,8 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
     // TODO: Replace with actual storage service call
     // await settingsService.setLearningGoal(goal);
 
-    // Call the completion callback provided by the parent
-    props.onComplete();
+    // Call the completion callback provided by the parent, passing the selected data
+    props.onComplete(goal);
   };
 
   return (
@@ -43,12 +44,12 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
 
       {/* Question */}
       <div class="text-center text-xl md:text-2xl space-y-4">
-        <p>Why are you learning [Target Language]?</p> {/* TODO: Dynamically insert target language */} 
+        <p>Why are you learning <span class="font-semibold">{props.targetLanguageLabel || 'your selected language'}</span>?</p> 
       </div>
 
-      {/* Learning Goal Grid Selector */}
+      {/* Learning Goal Grid Selector - Use corrected array */}
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg">
-        <For each={learningGoals}>
+        <For each={learningGoalsCorrected}>
           {(goal) => (
             <Button
               variant="outline"
