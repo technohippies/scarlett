@@ -1,4 +1,5 @@
 import 'virtual:uno.css'; // Import UnoCSS entry point
+import '../src/assets/theme.css'; // Import theme variables instead of popup styles
 
 const preview = {
   parameters: {

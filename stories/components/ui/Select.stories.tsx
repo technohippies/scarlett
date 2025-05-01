@@ -5,7 +5,6 @@ import { cn } from "../../../src/lib/utils";
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue
 } from "../../../src/components/ui/select";

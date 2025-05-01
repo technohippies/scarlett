@@ -1,15 +1,19 @@
 import { defineConfig } from "wxt";
-import UnoCSS from 'unocss/vite'; // Add this import
+// import UnoCSS from 'unocss/vite'; // Remove manual UnoCSS import
 import path from "node:path";
 // import { copyPgliteAssets } from './modules/pglite-assets'; // Import the new Vite plugin function
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
   // Use the Solid module provided by WXT instead of manually adding plugins
-  modules: ['@wxt-dev/module-solid'], 
+  modules: [
+    '@wxt-dev/module-solid',
+    '@wxt-dev/unocss', // Add this
+  ],
   vite: () => ({ // Keep vite as a function
     plugins: [
-      UnoCSS() as any, // Add UnoCSS plugin back (keep cast for now if needed)
+      // Remove manual UnoCSS plugin
+      // UnoCSS() as any, 
       // copyPgliteAssets() // Add the custom Vite plugin here
     ],
     resolve: {

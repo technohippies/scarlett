@@ -7,44 +7,39 @@ export default defineConfig({
   ],
   theme: {
     colors: {
-      border: "hsl(0 0% 89.8%)",
-      input: "hsl(0 0% 89.8%)",
-      ring: "hsl(0 0% 63.9%)",
-      background: "hsl(0 0% 100%)",
-      foreground: "hsl(0 0% 9%)",
+      border: "hsl(var(--border))",
+      input: "hsl(var(--input))",
+      ring: "hsl(var(--ring))",
+      background: "hsl(240 4.8% 9.8%)",
+      foreground: "hsl(var(--foreground))",
       primary: {
-        DEFAULT: "hsl(0 0% 9%)",
-        foreground: "hsl(0 0% 98%)",
+        DEFAULT: "hsl(var(--primary))",
+        foreground: "hsl(var(--primary-foreground))",
       },
       secondary: {
-        DEFAULT: "hsl(0 0% 96.1%)",
-        foreground: "hsl(0 0% 9%)",
+        DEFAULT: "hsl(var(--secondary))",
+        foreground: "hsl(var(--secondary-foreground))",
       },
       destructive: {
-        DEFAULT: "hsl(0 84.2% 60.2%)",
-        foreground: "hsl(0 0% 98%)",
+        DEFAULT: "hsl(var(--destructive))",
+        foreground: "hsl(var(--destructive-foreground))",
       },
       muted: {
-        DEFAULT: "hsl(0 0% 96.1%)",
-        foreground: "hsl(0 0% 45.1%)",
+        DEFAULT: "hsl(var(--muted))",
+        foreground: "hsl(var(--muted-foreground))",
       },
       accent: {
-        DEFAULT: "hsl(0 0% 96.1%)",
-        foreground: "hsl(0 0% 9%)",
+        DEFAULT: "hsl(var(--accent))",
+        foreground: "hsl(var(--accent-foreground))",
       },
       popover: {
-        DEFAULT: "hsl(0 0% 100%)",
-        foreground: "hsl(0 0% 9%)",
+        DEFAULT: "hsl(var(--popover))",
+        foreground: "hsl(var(--popover-foreground))",
       },
       card: {
-        DEFAULT: "hsl(0 0% 100%)",
-        foreground: "hsl(0 0% 9%)",
+        DEFAULT: "hsl(var(--card))",
+        foreground: "hsl(var(--card-foreground))",
       },
-    },
-    radius: {
-      lg: "0.5rem",
-      md: "calc(0.5rem - 2px)",
-      sm: "calc(0.5rem - 4px)",
     },
     // Add other theme properties like spacing, font sizes, etc. as needed
   }
