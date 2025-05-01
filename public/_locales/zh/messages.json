@@ -44,10 +44,10 @@
   "langNameKo": { "message": "韩语", "description": "语言名称：韩语" },
   "langNameEs": { "message": "西班牙语", "description": "语言名称：西班牙语" },
   "langNameVi": { "message": "越南语", "description": "语言名称：越南语" },
-  "learningGoalWork": { "message": "为了工作", "description": "学习目标选项：为了工作" },
-  "learningGoalDating": { "message": "为了约会", "description": "学习目标选项：为了约会" },
-  "learningGoalTravel": { "message": "为了旅行", "description": "学习目标选项：为了旅行" },
-  "learningGoalSchool": { "message": "为了上学", "description": "学习目标选项：为了上学" },
-  "learningGoalSelf": { "message": "为了自我提升", "description": "学习目标选项：为了自我提升" },
-  "learningGoalOther": { "message": "其他原因", "description": "学习目标选项：其他原因" }
+  "learningGoalWork": { "message": "工作", "description": "学习目标选项：工作" },
+  "learningGoalDating": { "message": "约会", "description": "学习目标选项：约会" },
+  "learningGoalTravel": { "message": "旅行", "description": "学习目标选项：旅行" },
+  "learningGoalSchool": { "message": "学习", "description": "学习目标选项：学习" },
+  "learningGoalSelf": { "message": "自我提升", "description": "学习目标选项：自我提升" },
+  "learningGoalOther": { "message": "其他", "description": "学习目标选项：其他" }
 } 
