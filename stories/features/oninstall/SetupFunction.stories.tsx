@@ -93,7 +93,8 @@ export const ReaderSetupSuccess = {
   args: {
     functionName: 'Reader',
     providerOptions: mockReaderProviders,
-    description: 'Select the provider and model for reading and summarizing content.',
+    title: "Go Faster with Reader LM",
+    description: "Converts HTML to Markdown fast! 1.5B model, 1.1 GB.",
     initialProviderId: 'ollama',
     // initialModelId: 'mock-model-1', // Can pre-select a mock model ID
     _fetchStatus: 'success'

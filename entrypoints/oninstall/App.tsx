@@ -325,8 +325,8 @@ const App: Component = () => {
                     // Models fetched internally by component
                     onComplete={handleReaderComplete}
                     onBack={handleBack}
-                    title={currentMessages.get('onboardingReaderFunctionTitle', 'Configure Reader')}
-                    description={currentMessages.get('onboardingReaderDescription', 'Select provider and model for reading content.')}
+                    title="Go Faster with Reader LM"
+                    description="Converts HTML to Markdown fast! 1.5B model, 1.1 GB."
                     // Use different label for final step
                     continueLabel={currentMessages.get('onboardingFinishSetup', 'Finish Setup')}
                     messages={messagesData() || {}}

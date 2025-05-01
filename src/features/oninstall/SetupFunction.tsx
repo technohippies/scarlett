@@ -1,9 +1,9 @@
-import { Component, createSignal, createEffect, createResource, createMemo } from 'solid-js';
+import { Component, createSignal, createEffect, createResource, createMemo, Show } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { cn } from '../../lib/utils';
 import type { Messages } from '../../types/i18n';
-import { ArrowLeft } from 'phosphor-solid';
+import { ArrowLeft, CaretRight } from 'phosphor-solid';
 import { Callout, CalloutContent } from '../../components/ui/callout';
 import { Spinner } from '../../components/ui/spinner';
 import { CodeBlock } from '../../components/ui/CodeBlock';
@@ -53,10 +53,14 @@ type FetchStatus = 'idle' | 'loading' | 'success' | 'error';
 type TestStatus = 'idle' | 'testing' | 'success' | 'error';
 
 export const SetupFunction: Component<SetupFunctionProps> = (props) => {
-  const [selectedProviderId, setSelectedProviderId] = createSignal<string | undefined>(props.initialProviderId);
-  const [selectedProvider, setSelectedProvider] = createSignal<ProviderOption | undefined>(
-    props.providerOptions.find(p => p.id === props.initialProviderId)
-  );
+  // Default selection logic for single-provider Reader
+  const initialDefaultProvider = 
+    props.functionName === 'Reader' && props.providerOptions.length === 1 
+      ? props.providerOptions[0] 
+      : props.providerOptions.find(p => p.id === props.initialProviderId);
+
+  const [selectedProviderId, setSelectedProviderId] = createSignal<string | undefined>(initialDefaultProvider?.id);
+  const [selectedProvider, setSelectedProvider] = createSignal<ProviderOption | undefined>(initialDefaultProvider);
   const [selectedModelId, setSelectedModelId] = createSignal<string | undefined>(props.initialModelId);
   const [fetchStatus, setFetchStatus] = createSignal<FetchStatus>(props._fetchStatus || 'idle');
   const [fetchedModels, setFetchedModels] = createSignal<ModelOption[]>([]);
@@ -119,11 +123,37 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
 
       // Map response to ModelOption[] based on provider type
       if (provider.id === 'ollama' && data.models) {
-        return data.models.map((m: any) => ({
+        let ollamaModels = data.models.map((m: any) => ({
           id: m.name,
           name: m.name,
           description: undefined // Ensure no description is added
         }));
+
+        // Filter specifically for Reader function
+        if (props.functionName === 'Reader') {
+          const readerModelName = 'milkey/reader-lm-v2:latest';
+          ollamaModels = ollamaModels.filter((model: ModelOption) => model.id === readerModelName);
+          if (ollamaModels.length === 0) {
+            console.log(`[SetupFunction] Reader model '${readerModelName}' not found in Ollama models.`);
+          }
+        }
+        // Filter specifically for LLM function (exclude embedding/reader models)
+        else if (props.functionName === 'LLM') {
+          const readerModelName = 'milkey/reader-lm-v2:latest';
+          const embeddingKeywords = ['embed', 'bge', 'minilm', 'paraphrase', 'granite', 'embedding']; // Added 'embedding' keyword
+          
+          ollamaModels = ollamaModels.filter((model: ModelOption) => {
+            const lowerCaseId = model.id.toLowerCase();
+            // Exclude the specific reader model
+            if (lowerCaseId === readerModelName) return false;
+            // Exclude models containing embedding keywords
+            const isEmbeddingModel = embeddingKeywords.some(keyword => lowerCaseId.includes(keyword));
+            return !isEmbeddingModel;
+          });
+        }
+
+        return ollamaModels;
+
       } else if (data.data) { // OpenAI format
         return data.data.map((m: any) => ({ id: m.id, name: m.id, description: undefined })); // Ensure no description is added
       } else {
@@ -244,10 +274,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
       });
     }
   };
-
-  // We enable the main continue button only after a successful test
-  const canContinue = () => selectedProviderId() && selectedModelId() && fetchStatus() === 'success' && testStatus() === 'success';
-
+  
   // Function to test the actual inference endpoint
   const handleTestConnection = async () => {
     const provider = selectedProvider();
@@ -299,7 +326,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(7000) // Slightly longer timeout for inference test
+        signal: AbortSignal.timeout(10000) // Adjusted timeout to 10 seconds
       });
 
       if (!response.ok) {
@@ -311,7 +338,23 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         throw new Error(errorMsg);
       }
 
+      // Parse response for potential markdown check
+      const responseData = await response.json();
+
       console.log(`[SetupFunction] Connection test to ${provider.name} successful.`);
+
+      // Enhanced check for Reader + Ollama
+      if (props.functionName === 'Reader' && provider.id === 'ollama') {
+        const ollamaResponseText = responseData?.response; // Ollama generate endpoint typically has a 'response' field
+        if (typeof ollamaResponseText === 'string') {
+          // Basic heuristic check for Markdown characters
+          const looksLikeMarkdown = /[#*\-\[\]]/.test(ollamaResponseText);
+          console.log(`[SetupFunction] Reader test (Ollama): Response ${looksLikeMarkdown ? 'appears to be' : 'does not appear to be'} Markdown.`);
+        } else {
+          console.log('[SetupFunction] Reader test (Ollama): Response format unexpected, could not check for Markdown.');
+        }
+      }
+
       setTestStatus('success');
 
     } catch (error: any) {
@@ -320,6 +363,16 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
       setTestError(error instanceof TypeError ? new Error("Connection/CORS Issue") : error);
       setTestStatus('error');
     }
+  };
+
+  // Handler for skip button
+  const handleSkip = () => {
+    console.log(`[SetupFunction] Skipping ${props.functionName} setup.`);
+    props.onComplete({
+      providerId: '', // Indicate skipped by empty values
+      modelId: '',
+      baseUrl: ''
+    });
   };
 
   return (
@@ -333,6 +386,18 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
       >
         <ArrowLeft class="h-6 w-6" />
       </Button>
+
+      <Show when={props.functionName === 'Reader'}>
+        <Button
+          variant="ghost"
+          onClick={handleSkip}
+          aria-label="Skip setup"
+          class="absolute top-4 right-4 text-muted-foreground hover:text-foreground z-10 flex items-center space-x-1 px-2"
+        >
+          <span>{i18n().get('onboardingSkip', 'Skip')}</span>
+          <CaretRight class="h-5 w-5" />
+        </Button>
+      </Show>
 
       <div class="flex-grow overflow-y-auto flex flex-col items-center p-4 pt-24 md:p-8 md:pt-24">
         {/* Image 1: Centered at top for sm/md, hidden on lg */}
@@ -349,11 +414,11 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
             {props.title || i18n().get(`onboardingSetup${props.functionName}Title`, `Configure ${props.functionName}`)}
           </p>
           {props.description && (
-            <p class="text-lg text-muted-foreground mb-4">{props.description}</p>
+            <p class="text-lg text-muted-foreground mb-6">{props.description}</p>
           )}
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg mb-4">
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg mb-6">
             {props.providerOptions.map((provider) => {
                 const isSelected = () => selectedProviderId() === provider.id;
                 return (
@@ -449,7 +514,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                     options={displayModels()}
                     optionValue="id"
                     optionTextValue="name"
-                    placeholder={i18n().get(`onboardingSelect${props.functionName}ModelPlaceholder`, `Select a ${props.functionName} model...`)}
+                    placeholder={i18n().get('onboardingSelectModelPlaceholder', 'Select')}
                     value={displayModels().find(m => m.id === selectedModelId())}
                     onChange={(selected) => setSelectedModelId(selected?.id)}
                     disabled={fetchStatus() !== 'success' || !selectedProviderId()} // Already covered by outer conditional, but safe
@@ -466,6 +531,13 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                     </SelectTrigger>
                     <SelectContent />
                 </Select>
+
+                {/* Conditionally show CodeBlock for Reader LM */}
+                <Show when={props.functionName === 'Reader'}>
+                  <div class="mt-4 text-sm text-muted-foreground text-center">
+                    <CodeBlock code="ollama run milkey/reader-lm-v2" language="bash" />
+                  </div>
+                </Show>
             </div>
         )}
 
