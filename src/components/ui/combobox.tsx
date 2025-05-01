@@ -94,7 +94,7 @@ const ComboboxControl = <T, U extends ValidComponent = "div">(
   const [local, others] = splitProps(props as ComboboxControlProps<T>, ["class"])
   return (
     <ComboboxPrimitive.Control
-      class={cn("flex h-10 items-center rounded-md border px-3 outline-none", local.class)}
+      class={cn("flex h-10 items-center rounded-md border border-input px-3 outline-none", local.class)}
       {...others}
     />
   )
