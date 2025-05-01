@@ -130,7 +130,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         <div class="w-full max-w-lg mb-8">
            {/* Changed heading to a label for the select */}
            <label for={`${props.functionName}-model-select`} class="block text-sm font-medium text-muted-foreground mb-1">
-                {i18n().get(`onboardingSelect${props.functionName}Label`, `Select ${props.functionName}`)}
+                {i18n().get(`onboarding${props.functionName}ModelLabel`, `${props.functionName} Model`)}
            </label>
            <Select<ModelOption>
                 options={currentModelOptions()} // Use reactive model options

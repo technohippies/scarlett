@@ -83,7 +83,7 @@ export const LLMSetup = {
     providerOptions: mockLLMProviders,
     modelOptions: mockLLMModels,
     title: 'Configure LLM', // Example custom title
-    description: 'Choose the provider and model for generating text responses.'
+    description: "If you can't run Qwen3 4B or Gemma3 4B or larger locally, setup Jan with an OpenRouter model, many of which are free."
   },
     render: (args: any) => (
         <div class="h-screen w-full">
