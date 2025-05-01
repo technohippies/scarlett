@@ -2,62 +2,20 @@ import { SetupFunction, ProviderOption, ModelOption } from '../../../src/feature
 import messagesEn from '../../../public/_locales/en/messages.json';
 
 // --- Mock Data ---
+// (Keep mock providers as they are needed for selection)
 const mockLLMProviders: ProviderOption[] = [
-  {
-    id: 'ollama',
-    name: 'Ollama',
-    defaultBaseUrl: 'http://localhost:11434',
-    logoUrl: '/images/llm-providers/ollama.png'
-  },
-  {
-    id: 'jan',
-    name: 'Jan',
-    defaultBaseUrl: 'http://localhost:1337',
-    logoUrl: '/images/llm-providers/jan.png'
-  },
-  {
-    id: 'lmstudio',
-    name: 'LM Studio',
-    defaultBaseUrl: 'ws://127.0.0.1:1234',
-    logoUrl: '/images/llm-providers/lmstudio.png'
-  }
+  { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
+  { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/llm-providers/jan.png' },
+  { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' }
 ];
-
-const mockLLMModels: ModelOption[] = [
-    { id: 'llama3:latest', name: 'llama3:latest', description: 'Recommended Llama 3 model.' },
-    { id: 'phi3:latest', name: 'phi3:latest', description: "Microsoft's latest small model." },
-    { id: 'gemma:7b', name: 'gemma:7b', description: "Google's Gemma 7B model." }
-];
-
 const mockEmbeddingProviders: ProviderOption[] = [
-  {
-    id: 'ollama',
-    name: 'Ollama',
-    defaultBaseUrl: 'http://localhost:11434',
-    logoUrl: '/images/llm-providers/ollama.png'
-  },
-   {
-    id: 'lmstudio', // Assuming LMStudio can also serve embeddings
-    name: 'LM Studio',
-    defaultBaseUrl: 'ws://127.0.0.1:1234',
-    logoUrl: '/images/llm-providers/lmstudio.png'
-  }
+  { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
+  { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' }
 ];
-
-const mockEmbeddingModels: ModelOption[] = [
-  { id: 'nomic-embed-text', name: 'nomic-embed-text', description: 'High-performing open embedding model.' },
-  { id: 'mxbai-embed-large', name: 'mxbai-embed-large', description: 'State-of-the-art large embedding model.' },
-  { id: 'bge-m3', name: 'bge-m3', description: 'BGE-M3: Versatile embedding model.' },
-];
-
 const mockReaderProviders: ProviderOption[] = [
     { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
-    // Add others if they can run the reader model
 ];
-
-const mockReaderModels: ModelOption[] = [
-  { id: 'milkey/reader-lm-v2', name: 'milkey/reader-lm-v2', description: 'HTML-to-Markdown conversion.' },
-];
+// We don't need mock model data here anymore, component simulates it
 // --- End Mock Data ---
 
 export default {
@@ -68,60 +26,98 @@ export default {
   },
   tags: ['autodocs'],
   args: { // Default args used across stories unless overridden
-    onComplete: (config: { providerId: string; modelId: string; baseUrl: string }) => {
-        console.log('Story: SetupFunction onComplete triggered with:', config);
+    onComplete: (config: { providerId: string; modelId: string; baseUrl: string }) => { 
+        console.log('Story: SetupFunction onComplete triggered with:', config); 
     },
     onBack: () => console.log('Story: SetupFunction onBack triggered'),
     messages: messagesEn,
+    continueLabel: messagesEn.onboardingContinue?.message || "Continue",
   },
+  argTypes: {
+    _fetchStatus: {
+        control: { type: 'select' },
+        options: ['idle', 'loading', 'success', 'error'],
+        description: 'Simulated fetch status (Storybook only)',
+        name: 'Simulated Fetch Status'
+    }
+    // Remove modelOptions from argTypes if it was ever added
+  }
 };
 
-// Story for LLM Setup
-export const LLMSetup = {
+// Story for LLM Setup - Initial state
+export const LLMSetupIdle = {
+  name: "LLM Setup (Idle)", // Clearer story name
   args: {
     functionName: 'LLM',
     providerOptions: mockLLMProviders,
-    modelOptions: mockLLMModels,
-    title: 'Configure LLM', // Example custom title
-    description: "If you can't run Qwen3 4B or Gemma3 4B or larger locally, setup Jan with an OpenRouter model, many of which are free."
+    title: 'Configure LLM',
+    description: "If you can't run Qwen3 4B or Gemma3 4B or larger locally, setup Jan with an OpenRouter model, many of which are free.",
+    _fetchStatus: 'idle' // Explicitly idle
   },
-    render: (args: any) => (
-        <div class="h-screen w-full">
-            <SetupFunction {...args} />
-        </div>
-    ),
+    render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
 };
 
-// Story for Embedding Setup
-export const EmbeddingSetup = {
+// Story for LLM Setup - Loading state
+export const LLMSetupLoading = {
+  name: "LLM Setup (Loading)",
+  args: {
+    ...LLMSetupIdle.args, // Inherit args
+    _fetchStatus: 'loading' // Set to loading
+  },
+    render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
+};
+
+
+// Story for Embedding Setup - Success state (shows mock models)
+export const EmbeddingSetupSuccess = {
+  name: "Embedding Setup (Success)",
   args: {
     functionName: 'Embedding',
     providerOptions: mockEmbeddingProviders,
-    modelOptions: mockEmbeddingModels,
-    // title: 'Configure Embedding' // Using default title construction
     description: 'Select the provider and model for creating text embeddings.',
-    initialProviderId: 'ollama' // Example initial selection
+    initialProviderId: 'ollama',
+    _fetchStatus: 'success' // Set to success
   },
-    render: (args: any) => (
-        <div class="h-screen w-full">
-            <SetupFunction {...args} />
-        </div>
-    ),
+    render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
 };
 
-// Story for Reader Setup
-export const ReaderSetup = {
+// Story for Reader Setup - Success state (shows mock models)
+export const ReaderSetupSuccess = {
+  name: "Reader Setup (Success)",
   args: {
     functionName: 'Reader',
     providerOptions: mockReaderProviders,
-    modelOptions: mockReaderModels,
     description: 'Select the provider and model for reading and summarizing content.',
-    initialProviderId: 'ollama', // Example initial selection
-    initialModelId: 'milkey/reader-lm-v2'
+    initialProviderId: 'ollama',
+    // initialModelId: 'mock-model-1', // Can pre-select a mock model ID
+    _fetchStatus: 'success'
   },
-    render: (args: any) => (
-        <div class="h-screen w-full">
-            <SetupFunction {...args} />
-        </div>
-    ),
-}; 
+    render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
+};
+
+// Story showing the Connection/CORS error state
+export const ConnectionError = {
+  name: "Connection Error (TypeError)",
+  args: {
+    functionName: 'LLM',
+    providerOptions: mockLLMProviders,
+    title: 'Configure LLM',
+    description: "If you can't run Qwen3 4B or Gemma3 4B or larger locally, setup Jan with an OpenRouter model, many of which are free.",
+    initialProviderId: 'ollama', // Need a provider selected to show error context
+    _fetchStatus: 'error' // Set to error
+    // _mockErrorType: 'TypeError' // Could add another control later to simulate different errors
+  },
+  render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
+};
+
+// Optional: Story showing HTTP error state
+// Note: Needs enhancement in component to simulate HTTP error via props if desired
+export const HTTPError = {
+  name: "Connection Error (Simulated HTTP)",
+   args: {
+     ...ConnectionError.args, // Inherit most args
+     _fetchStatus: 'error', // Still uses error status
+     // Need a way to tell the component *which* error to simulate if not TypeError
+   },
+   render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
+ }; 

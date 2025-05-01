@@ -1,45 +1,48 @@
 import { CodeBlock } from '../../../src/components/ui/CodeBlock';
 
+const multiLineCode = 
+`sudo systemctl edit ollama.service
+#[Service]
+#Environment="OLLAMA_HOST=0.0.0.0"
+#Environment="OLLAMA_ORIGINS=*"
+sudo service ollama restart`;
+
+const singleLineCode = `npm install @wxt-dev/vite-plugin-solid`;
+
 export default {
   title: 'Components/UI/CodeBlock',
   component: CodeBlock,
   parameters: {
-    layout: 'padded', // Use padded layout for better spacing
+    layout: 'padded', // Use padded to give it some space
   },
   tags: ['autodocs'],
   argTypes: {
-    code: { control: 'text' },
-    class: { control: 'text' },
-    language: { control: 'text' }, // Add language control
-  },
-  args: {
-    // Default to a single line example
-    code: `npx solidui-cli@latest add toast`,
-    class: 'w-full', // Removed max-w-xl for wider display
-    language: 'bash',
+    code: { control: 'text', description: 'The code string to display' },
+    language: { control: 'text', description: 'Highlight.js language (e.g., bash, javascript)' },
+    class: { control: 'text', description: 'Additional CSS classes for the container' },
   },
 };
 
-// Single Line Story
-export const SingleLine = {};
-
-// Multi Line Story
-export const MultiLine = {
+// Multi-line Bash Example
+export const MultiLineBash = {
     args: {
-        code: `launchctl setenv OLLAMA_ORIGINS '${window.location.origin}'\nlaunchctl setenv OLLAMA_HOST '0.0.0.0'`,
+        code: multiLineCode,
         language: 'bash',
-    }
+    },
 };
 
-// Longer Multi Line Story
-export const MultiLineLonger = {
+// Single-line Example
+export const SingleLine = {
     args: {
-        code: `[Service]
-Environment="OLLAMA_ORIGINS=${window.location.origin}"
-# Or Environment="OLLAMA_ORIGINS=*" for all
-Environment="OLLAMA_HOST=0.0.0.0" # Optional
+        code: singleLineCode,
+        // language: 'bash' // Language defaults to bash if not provided
+    },
+};
 
-sudo systemctl daemon-reload && sudo systemctl restart ollama`,
-        language: 'bash',
-    }
+// JavaScript Example
+export const JavaScript = {
+    args: {
+        code: `console.log('Hello, World!');\nconst x = 10;`,
+        language: 'javascript',
+    },
 }; 
