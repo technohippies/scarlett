@@ -3,7 +3,7 @@ import { Button } from '../../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { LLMProviderOption } from './LLM'; // Import the simplified type
 import { OllamaProvider } from '../../services/llm/providers/ollama';
-import { JanProvider } from '../../services/llm/providers/jan';
+import { JanProvider, loadJanModel } from '../../services/llm/providers/jan';
 // import { LMStudioProvider } from '../../services/llm/providers/lmstudio'; // Add when ready
 import type { ModelInfo, LLMConfig } from '../../services/llm/types';
 import type { Messages } from '../../types/i18n';
@@ -154,17 +154,39 @@ export const SetupLLM: Component<SetupLLMProps> = (incomingProps) => {
       baseUrl: props.selectedProvider.defaultBaseUrl,
     };
 
-    console.log(`[SetupLLM] Testing connection for ${providerId} at ${config.baseUrl}`);
+    console.log(`[SetupLLM] Testing connection for ${providerId} at ${config.baseUrl} with model ${modelId}`);
 
     try {
-      // Use listModels as a simple connectivity test
-      // In the future, could use a specific test endpoint or a dummy chat request
-      await OllamaProvider.listModels(config); // Assuming Ollama for example, adapt if needed
-       // switch (providerId) {
-       //   case 'ollama': await OllamaProvider.listModels(config); break;
-       //   case 'jan': await JanProvider.listModels(config); break;
-       //   default: throw new Error(`Cannot test connection for unsupported provider: ${providerId}`);
-       // }
+      // --- Jan Specific: Load Model First --- 
+      if (providerId === 'jan') {
+        try {
+            console.log(`[SetupLLM] Attempting to load Jan model: ${modelId}`);
+            console.log(`[SetupLLM] Value passed to loadJanModel: '${modelId}'`); 
+            await loadJanModel(config, modelId);
+            console.log(`[SetupLLM] Jan model ${modelId} loaded successfully.`);
+        } catch (loadError: any) {
+             console.error(`[SetupLLM] Error loading Jan model ${modelId}:`, loadError);
+             const errorMsg = loadError.message || 'Failed to load the selected model on the Jan server.';
+             setTestError(`${props.messages.onboardingLLMErrorPrefix?.message || 'Error testing connection:'} ${errorMsg}`);
+             setTestState('error');
+             setIsCorsError(false); // Loading error is unlikely CORS
+             return; // Stop testing if loading failed
+        }
+      }
+      // --- End Jan Specific --- 
+
+      // Use listModels as a simple connectivity test after potential load
+      // Adapt based on provider
+       switch (providerId) {
+         case 'ollama': 
+            await OllamaProvider.listModels(config); 
+            break;
+         case 'jan': 
+            await JanProvider.listModels(config); // Still test basic connectivity
+            break;
+         default: 
+            throw new Error(`Cannot test connection for unsupported provider: ${providerId}`);
+       }
 
       console.log(`[SetupLLM] Test connection successful for ${providerId}.`);
       setTestState('success');

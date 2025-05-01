@@ -48,5 +48,15 @@ export default defineConfig({
     //   sm: "calc(0.5rem - 4px)", // calc(var(--radius) - 4px)
     // },
     // Add other theme properties like spacing, font sizes, etc. as needed
-  }
+  },
+  preflights: [
+    {
+      getCSS: () => `
+        input[role="combobox"] {
+          outline: none !important;
+          box-shadow: none !important;
+        }
+      `
+    }
+  ]
 }) 

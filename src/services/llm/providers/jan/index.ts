@@ -28,12 +28,17 @@ async function listModels(config: Pick<LLMConfig, 'baseUrl'>): Promise<ModelInfo
        throw new Error('Invalid response structure from Jan /v1/models');
     }
 
-    const models: ModelInfo[] = data.data.map((model: any) => ({
-      id: model.id, 
-      provider: 'jan',
-      name: model.id,
-      // size: model.size, // Add if available and needed
-    }));
+    const models: ModelInfo[] = data.data.map((model: any) => {
+      // --- Log the full model object --- 
+      console.log('[Jan Provider] Raw model data from API:', JSON.stringify(model, null, 2));
+      // --- End Log ---
+      return {
+        id: model.id, 
+        provider: 'jan',
+        name: model.id,
+        // size: model.size, // Add if available and needed
+      };
+    });
     
     console.log(`[Jan Provider] Found ${models.length} models:`, models.map(m => m.id));
     return models;
@@ -44,6 +49,54 @@ async function listModels(config: Pick<LLMConfig, 'baseUrl'>): Promise<ModelInfo
     throw error; 
   }
 }
+
+// --- Function to Load a Model ---
+export async function loadJanModel(
+  config: Pick<LLMConfig, 'baseUrl'>,
+  modelId: string
+): Promise<void> {
+  const baseUrl = config.baseUrl || 'http://localhost:1337'; // Default Jan port
+  const url = new URL('/v1/models/start', baseUrl).toString();
+  const body = { model: modelId };
+
+  console.log(`[Jan Provider] Attempting to load model '${modelId}' via POST to ${url}`);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      let errorBody = '';
+      try { errorBody = await response.text(); } catch { /* Ignore */ }
+      console.error(`[Jan Provider] API request to ${url} failed: ${response.status} ${response.statusText}`, errorBody);
+      // Try to parse the error body if it's JSON
+      try {
+        const jsonError = JSON.parse(errorBody);
+        if (jsonError.message) {
+          throw new Error(`Jan API error loading model: ${jsonError.message}`);
+        }
+      } catch { /* Ignore JSON parse error */ }
+      // Fallback generic error
+      throw new Error(`Jan API request failed to load model: ${response.status} ${response.statusText}`);
+    }
+
+    // Jan API returns a simple message on success, we don't strictly need to parse it
+    // but we can log it.
+    const result = await response.json();
+    console.log(`[Jan Provider] Successfully requested to load model '${modelId}'. Response:`, result?.message || '(No message)');
+
+  } catch (error: any) {
+    console.error(`[Jan Provider] Error loading model '${modelId}' from ${url}:`, error);
+    // Re-throw the specific or generic error for UI handling
+    throw error;
+  }
+}
+// --- End Load Model Function ---
 
 // --- Re-added Embedding Function Placeholder ---
 async function janEmbed(
