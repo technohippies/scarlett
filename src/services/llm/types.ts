@@ -53,6 +53,11 @@ export interface LLMChatResponse {
 // For now, we can alias it or just use LLMChatResponse.
 export type JanChatResponse = LLMChatResponse;
 
+// Define the structure for parts yielded by a streaming chat response
+export type StreamedChatResponsePart = 
+  | { type: 'content'; content: string } 
+  | { type: 'error'; error: string };
+
 // --- Embedding Types (OpenAI compatible) --- 
 
 export type EmbeddingInput = string | string[];
@@ -79,10 +84,11 @@ export interface EmbeddingResponse {
 export interface LLMProvider {
   listModels: (config: Pick<LLMConfig, 'baseUrl' | 'apiKey'>) => Promise<ModelInfo[]>;
   // Chat can be non-streaming or streaming
+  // Updated signature: Accepts ChatMessage[], yields StreamedChatResponsePart
   chat: (
-    prompt: string, 
+    messages: ChatMessage[], 
     config: LLMConfig
-  ) => Promise<LLMChatResponse> | AsyncGenerator<string>;
+  ) => Promise<LLMChatResponse> | AsyncGenerator<StreamedChatResponsePart>; // Yield structured parts
   embed: (text: EmbeddingInput, config: LLMConfig) => Promise<EmbeddingResponse>;
   // Add other methods like tts, etc., if needed
   // tts?: (...) => Promise<any>;

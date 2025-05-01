@@ -1,26 +1,31 @@
-import type { LLMConfig, JanChatResponse } from '../../types'; // Correct path relative to chat.ts
+import type { 
+    LLMConfig, 
+    JanChatResponse, 
+    ChatMessage,
+    StreamedChatResponsePart
+} from '../../types'; // Correct path relative to chat.ts
 import { parseSseChunk } from '../../utils/sse'; // Correct path to utils where parseSseChunk is
 
 // Combined implementation
 export function janChat(
-  prompt: string,
+  messages: ChatMessage[],
   config: LLMConfig
-): Promise<JanChatResponse> | AsyncGenerator<string> {
+): Promise<JanChatResponse> | AsyncGenerator<StreamedChatResponsePart> {
   if (config.stream === true) {
-    return _janChatStream(prompt, config);
+    return _janChatStream(messages, config);
   } else {
-    return _janChatNonStream(prompt, config);
+    return _janChatNonStream(messages, config);
   }
 }
 
 // Non-streaming implementation
 export async function _janChatNonStream(
-  prompt: string,
+  messages: ChatMessage[],
   config: LLMConfig
 ): Promise<JanChatResponse> {
   const body = {
     model: config.model,
-    messages: [{ role: 'user', content: prompt }],
+    messages: messages,
     stream: false,
     ...(config.extraParams ? config.extraParams : {}),
   };
@@ -47,12 +52,12 @@ export async function _janChatNonStream(
 
 // Streaming implementation (extracted to helper)
 export async function* _janChatStream(
-  prompt: string,
+  messages: ChatMessage[],
   config: LLMConfig
-): AsyncGenerator<string> {
+): AsyncGenerator<StreamedChatResponsePart> {
   const body = {
     model: config.model,
-    messages: [{ role: 'user', content: prompt }],
+    messages: messages,
     stream: true,
     ...(config.extraParams ? config.extraParams : {}),
   };
@@ -105,16 +110,16 @@ export async function* _janChatStream(
           if (parsedData) {
             const content = parsedData.choices?.[0]?.delta?.content;
             if (content) {
-              yield content;
+              yield { type: 'content', content: content };
             }
           }
         }
         boundary = buffer.indexOf('\n\n');
       }
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error('[janChat] Error reading stream:', error);
-    throw new Error('Failed to read response stream');
+    yield { type: 'error', error: error.message || 'Failed to read response stream' };
   } finally {
     reader.releaseLock();
   }

@@ -11,7 +11,7 @@ import type {
 // Updated function to fetch available models from Jan
 async function listModels(config: Pick<LLMConfig, 'baseUrl'>): Promise<ModelInfo[]> {
   const baseUrl = config.baseUrl || 'http://localhost:1337'; // Default Jan port
-  const url = new URL('/v1/models', baseUrl).toString(); 
+  const url = new URL('/v1/models', baseUrl).toString(); // Correctly use the derived baseUrl
   console.log(`[Jan Provider] Fetching models from ${url}`);
   try {
     const response = await fetch(url);
@@ -29,9 +29,6 @@ async function listModels(config: Pick<LLMConfig, 'baseUrl'>): Promise<ModelInfo
     }
 
     const models: ModelInfo[] = data.data.map((model: any) => {
-      // --- Log the full model object --- 
-      console.log('[Jan Provider] Raw model data from API:', JSON.stringify(model, null, 2));
-      // --- End Log ---
       return {
         id: model.id, 
         provider: 'jan',
@@ -100,7 +97,7 @@ export async function loadJanModel(
 
 // --- Re-added Embedding Function Placeholder ---
 async function janEmbed(
-  text: EmbeddingInput, 
+  _text: EmbeddingInput, // Marked as unused
   config: LLMConfig
 ): Promise<EmbeddingResponse> {
    console.warn('[Jan Provider embed] Jan does not currently support OpenAI-compatible embeddings API.');

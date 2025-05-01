@@ -39,6 +39,12 @@ const availableProviders: LLMProviderOption[] = [
       logoUrl: '/images/llm-providers/jan.png' // Assuming logo path
     },
     // Add LMStudio or others here when ready
+    {
+      id: 'lmstudio',
+      name: 'LM Studio',
+      defaultBaseUrl: 'ws://127.0.0.1:1234', // Default LM Studio WebSocket URL
+      logoUrl: '/images/llm-providers/lmstudio.png' // Assuming logo path
+    },
 ];
 
 
@@ -120,9 +126,9 @@ const App: Component = () => {
 
   const i18n = () => {
     const messages = messagesData();
-    console.log(
-      `[App] Recalculating i18n object. Loading: ${messagesData.loading}, Error: ${!!messagesData.error}, Has Data: ${!!messages}, Lang: ${uiLangCode()}`
-    );
+    // console.log(
+    //   `[App] Recalculating i18n object. Loading: ${messagesData.loading}, Error: ${!!messagesData.error}, Has Data: ${!!messages}, Lang: ${uiLangCode()}`
+    // );
     return {
       get: (key: string, fallback: string) => messages?.[key]?.message || fallback,
     };
@@ -166,7 +172,7 @@ const App: Component = () => {
 
   // Updated handler: Now the FINAL step. Save LLM config, mark complete, close tab.
   const handleLLMSetupComplete = async (config: LLMConfig) => {
-    console.log('[App] LLM Setup Complete (Final Step):', config);
+    console.log('[App] LLM Setup Complete (Final Step). Saving config and closing.');
     const currentConfig = await userConfigurationStorage.getValue();
     const updatedConfig = {
       ...currentConfig,
@@ -176,7 +182,7 @@ const App: Component = () => {
       onboardingComplete: true, // Mark complete here
     };
     await userConfigurationStorage.setValue(updatedConfig);
-    console.log('[App] Final config after saving LLM settings:', updatedConfig);
+    // console.log('[App] Final config after saving LLM settings:', updatedConfig);
     
     // Close tab logic moved here
     console.log('[App] Onboarding complete, attempting to close tab.');

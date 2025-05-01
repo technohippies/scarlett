@@ -1,10 +1,22 @@
 import { Component, createSignal, onMount, createMemo } from 'solid-js';
 import { Button } from '../../components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger } from '../../components/ui/select';
+import * as SelectPrimitive from "@kobalte/core/select"; // Import primitives
+import { 
+    Combobox, 
+    ComboboxContent, 
+    ComboboxControl, 
+    ComboboxInput, 
+    ComboboxItem, 
+    ComboboxItemIndicator, 
+    ComboboxItemLabel, 
+    ComboboxTrigger 
+} from '../../components/ui/combobox';
+import { TextField, TextFieldInput } from '../../components/ui/text-field'; // Use TextField components for input
 import { LLMProviderOption } from './LLM'; // Import the simplified type
 import { OllamaProvider } from '../../services/llm/providers/ollama';
 import { JanProvider, loadJanModel } from '../../services/llm/providers/jan';
-// import { LMStudioProvider } from '../../services/llm/providers/lmstudio'; // Add when ready
+import { LMStudioProvider } from '../../services/llm/providers/lmstudio'; // Add when ready
 import type { ModelInfo, LLMConfig } from '../../services/llm/types';
 import type { Messages } from '../../types/i18n';
 import { getOperatingSystem } from '../../lib/os'; // Import the OS utility
@@ -87,6 +99,9 @@ export const SetupLLM: Component<SetupLLMProps> = (incomingProps) => {
         case 'jan':
           fetchedModels = await JanProvider.listModels(config);
           break;
+        case 'lmstudio':
+          fetchedModels = []; // No models to list
+          break;
         // Add other providers as needed
         default:
              console.warn('[SetupLLM] Unsupported provider for model listing:', providerId);
@@ -104,10 +119,21 @@ export const SetupLLM: Component<SetupLLMProps> = (incomingProps) => {
           console.log('[SetupLLM] Filtered Ollama models:', filteredModels.map(m => m.id));
       }
 
-       if (filteredModels.length === 0) {
-         console.warn(`[SetupLLM] Initial fetch: Connection successful to ${providerId} but no *allowed* models found.`);
-         // Updated error message
-         setInitialLoadError(props.messages.onboardingLLMErrorNoModels?.message || 'Error: No compatible models (Gemma, Qwen, Llama, Phi) found for the selected provider.');
+      // Specific handling for empty lists based on provider
+      if (filteredModels.length === 0 && providerId !== 'lmstudio') {
+          console.warn(`[SetupLLM] Initial fetch: Connection successful to ${providerId} but no *allowed* models found.`);
+          // Updated error message
+          setInitialLoadError(props.messages.onboardingLLMErrorNoModels?.message || 'Error: No compatible models (Gemma, Qwen, Llama, Phi) found for the selected provider.');
+      } else if (providerId === 'lmstudio') {
+          console.log(`[SetupLLM] Initial fetch: Provider is LM Studio. Setting up for manual input.`);
+          setModels([]); // Ensure model list is empty
+          setInitialLoadError(null); // Clear any potential error
+          // --- TEMP: Pre-fill for testing --- 
+          const testModelId = 'smollm-360M-instruct-v0.2-Q8_0-GGUF/smollm-360m-instruct-add-basics-q8_0.gguf';
+          setSelectedModelId(testModelId);
+          console.log(`[SetupLLM] TEMP: Pre-filled LM Studio model ID: ${testModelId}`);
+          // --- END TEMP --- 
+          setTestState('idle'); // Ensure test state is ready
       } else {
           console.log(`[SetupLLM] Initial fetch: Found allowed models for ${providerId}:`, filteredModels.map(m => m.id));
           setModels(filteredModels);
@@ -183,6 +209,9 @@ export const SetupLLM: Component<SetupLLMProps> = (incomingProps) => {
             break;
          case 'jan': 
             await JanProvider.listModels(config); // Still test basic connectivity
+            break;
+         case 'lmstudio':
+            await LMStudioProvider.listModels(config); 
             break;
          default: 
             throw new Error(`Cannot test connection for unsupported provider: ${providerId}`);
@@ -300,8 +329,7 @@ export const SetupLLM: Component<SetupLLMProps> = (incomingProps) => {
               {/* Initial Loading State */}
               {isLoadingModels() && (
                 <div class="flex flex-col items-center space-y-2 w-full">
-                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                    <span>{props.messages.onboardingLLMChecking?.message || 'Loading available models...'}</span>
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-4"></div>
                 </div>
               )}
 
@@ -323,40 +351,95 @@ export const SetupLLM: Component<SetupLLMProps> = (incomingProps) => {
                 </div>
               )}
 
-              {/* Model Selection */} 
+              {/* Model Selection - Conditional */} 
               {!isLoadingModels() && !initialLoadError() && (
                 <div class="w-full space-y-3 flex flex-col items-start">
                     <label for="model-select" class="block text-sm font-medium text-left self-start">
                         Choose Model: 
                     </label>
-                    <Select
-                      id="model-select"
-                      options={models()}
-                      value={models().find(m => m.id === selectedModelId())}
-                      onChange={(model) => {
-                          setSelectedModelId(model?.id);
+                    
+                    {/* --- Conditional Rendering for Model Selector --- */}
+                    {props.selectedProvider.id === 'lmstudio' ? (
+                      // --- LM Studio: Use Input Field --- 
+                      <TextField 
+                        value={selectedModelId() || ''} 
+                        onChange={(value: string) => {
+                          setSelectedModelId(value); 
                           setTestState('idle'); 
                           setTestError(null);
                           setIsCorsError(false);
-                      }}
-                      optionValue="id"
-                      optionTextValue="id" 
-                      placeholder={props.messages.onboardingLLMSelectPlaceholder?.message || 'Choose a model...'}
-                      itemComponent={(itemProps) => (
-                          <SelectItem item={itemProps.item}>
-                              {itemProps.item.rawValue.id}
-                          </SelectItem>
-                      )}
-                      multiple={false}
-                      class="w-full"
-                    >
-                      <SelectTrigger class="w-full">
-                          <SelectValue<ModelInfo>>
-                              {(state) => state.selectedOption()?.id || props.messages.onboardingLLMSelectPlaceholder?.message || 'Choose a model...'}
-                          </SelectValue>
-                      </SelectTrigger>
-                      <SelectContent class="max-h-72 overflow-y-auto" />
-                    </Select>
+                        }}
+                        class="w-full"
+                      >
+                        <TextFieldInput placeholder="Enter loaded model ID (e.g., Org/Model-GGUF)" />
+                      </TextField>
+                    ) : props.selectedProvider.id === 'jan' ? (
+                      // --- Jan: Use Combobox --- 
+                      <Combobox<ModelInfo>
+                         id="model-select" 
+                         options={models()}
+                         optionValue="id" 
+                         optionTextValue="id" 
+                         optionDisabled={(_option) => false} 
+                         placeholder={props.messages.onboardingLLMSelectPlaceholder?.message || 'Search or select a model...'}
+                         itemComponent={(itemProps) => (
+                           <ComboboxItem item={itemProps.item}>
+                             <ComboboxItemLabel>{itemProps.item.rawValue.id}</ComboboxItemLabel>
+                             <ComboboxItemIndicator />
+                           </ComboboxItem>
+                         )}
+                         multiple={false} 
+                         class="w-full"
+                         value={models().find(m => m.id === selectedModelId())}
+                         onChange={(model) => {
+                             setSelectedModelId(model?.id);
+                             setTestState('idle'); 
+                             setTestError(null);
+                             setIsCorsError(false);
+                         }}
+                       >
+                         <ComboboxControl aria-label="Model">
+                           <ComboboxInput value={selectedModelId() || ''} />
+                           <ComboboxTrigger />
+                         </ComboboxControl>
+                         <ComboboxContent class="max-h-72 overflow-y-auto" /> 
+                       </Combobox>
+                    ) : (
+                       // --- Ollama (and potentially others): Use Select --- 
+                       <Select
+                         id="model-select" 
+                         options={models()}
+                         value={models().find(m => m.id === selectedModelId())}
+                         onChange={(model) => {
+                             setSelectedModelId(model?.id);
+                             setTestState('idle'); 
+                             setTestError(null);
+                             setIsCorsError(false);
+                         }}
+                         optionValue="id"
+                         optionTextValue="id" 
+                         placeholder={props.messages.onboardingLLMSelectPlaceholder?.message || 'Choose a model...'}
+                         itemComponent={(itemProps) => (
+                             <SelectItem item={itemProps.item}>
+                                 {itemProps.item.rawValue.id}
+                             </SelectItem>
+                         )}
+                         multiple={false}
+                         class="w-full"
+                       >
+                         <SelectTrigger class="w-full" aria-label="Model">
+                           <SelectPrimitive.Value<ModelInfo> class="flex-grow text-left">
+                             {(state) => state.selectedOption()?.id || <span class="text-muted-foreground">{props.messages.onboardingLLMSelectPlaceholder?.message || 'Choose a model...'}</span>}
+                           </SelectPrimitive.Value>
+                           <SelectPrimitive.Icon as="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 opacity-50">
+                             <path d="M8 9l4 -4l4 4" />
+                             <path d="M16 15l-4 4l-4 -4" />
+                           </SelectPrimitive.Icon>
+                         </SelectTrigger>
+                         <SelectContent class="max-h-72 overflow-y-auto" />
+                       </Select>
+                    )}
+                    {/* --- End Conditional Rendering --- */}
                 </div>
               )}
 
@@ -367,7 +450,6 @@ export const SetupLLM: Component<SetupLLMProps> = (incomingProps) => {
                     {testState() === 'testing' && (
                         <div class="flex flex-col items-center space-y-2">
                           <div class="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-                          <span>{props.messages.onboardingLLMTesting?.message || 'Testing connection...'}</span>
                         </div>
                     )}
 
