@@ -1,49 +1,58 @@
 import { Component, createSignal, For } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
+import type { Messages } from '../../types/i18n'; // Import Messages type
 
 // Define props for the component
 interface LearningGoalProps {
-  onComplete: (goalId: string) => void; // Modify onComplete to pass the selected goal ID
-  targetLanguageLabel: string; // Add prop for the language label
-  // Add props for translated strings
+  onComplete: (goalId: string) => void;
+  targetLanguageLabel: string;
   questionPrefix: string;
   questionSuffix: string;
   fallbackLabel: string;
   continueLabel: string;
+  // Add messages prop
+  messages: Messages | undefined; 
 }
 
-// Corrected label For self growth
-const learningGoalsCorrected = [
-  { id: 'work', label: '💼 For work' },
-  { id: 'dating', label: '❤️ For dating' },
-  { id: 'travel', label: '✈️ For traveling' },
-  { id: 'school', label: '🎓 For school' },
-  { id: 'self', label: '🌱 For self growth' }, // Corrected label
-  { id: 'other', label: '🤔 Something else' },
+// Define stub type for goals (just id and emoji)
+interface LearningGoalStub {
+    id: string;
+    emoji: string;
+}
+
+// Goal list only needs id and emoji now
+const learningGoalsStubs: LearningGoalStub[] = [
+  { id: 'work', emoji: '💼' },
+  { id: 'dating', emoji: '❤️' },
+  { id: 'travel', emoji: '✈️' },
+  { id: 'school', emoji: '🎓' },
+  { id: 'self', emoji: '🌱' },
+  { id: 'other', emoji: '🤔' },
 ];
 
+// Helper function to get translated goal name
+const getGoalName = (id: string | undefined, messages: Messages | undefined): string => {
+  if (!id || !messages) return '';
+  const key = `learningGoal${id.charAt(0).toUpperCase() + id.slice(1)}`;
+  return messages[key]?.message || id; // Fallback to id
+};
+
 export const LearningGoal: Component<LearningGoalProps> = (props) => {
-  const [selectedGoal, setSelectedGoal] = createSignal<string | undefined>();
+  const [selectedGoalId, setSelectedGoalId] = createSignal<string | undefined>();
 
-  const handleSubmit = () => {
-    const goal = selectedGoal();
-    if (!goal) return; // Should be disabled, but double-check
-
-    console.log('Saving Learning Goal:', goal);
-    // TODO: Replace with actual storage service call
-    // await settingsService.setLearningGoal(goal);
-
-    // Call the completion callback provided by the parent, passing the selected data
+  const handleSubmit = () => { 
+    const goal = selectedGoalId();
+    if (!goal) return;
     props.onComplete(goal);
   };
 
-  // Helper to split the label into emoji and name
+  // Helper to split target language label (remains the same)
   const getLanguageParts = (label: string | undefined) => {
     if (!label) return { name: props.fallbackLabel, emoji: '' };
     const parts = label.split(' ');
     const emoji = parts[0] || ''; 
-    const name = parts.slice(1).join(' ') || label; // Fallback to full label if split fails
+    const name = parts.slice(1).join(' ') || label;
     return { name, emoji };
   };
 
@@ -71,26 +80,29 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
         </p> 
       </div>
 
-      {/* Learning Goal Grid Selector - Use corrected array */}
+      {/* Learning Goal Grid Selector - Use messages */} 
       <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg">
-        <For each={learningGoalsCorrected}>
-          {(goal) => (
-            <Button
-              variant="outline"
-              onClick={() => setSelectedGoal(goal.id)}
-              class={cn(
-                'h-auto p-4 flex flex-col items-center justify-center space-y-2 text-base border',
-                'cursor-pointer hover:bg-neutral-700 hover:border-neutral-600 focus:outline-none focus:ring-0',
-                selectedGoal() === goal.id
-                  ? 'bg-neutral-800 text-foreground border-neutral-700'
-                  : 'border-neutral-700'
-              )}
-            >
-              {/* Split label for potential styling if needed, like emoji vs text */}
-              <span class="text-2xl">{goal.label.split(' ')[0]}</span> {/* Emoji/Icon */}
-              <span>{goal.label.split(' ').slice(1).join(' ')}</span> {/* Text */}
-            </Button>
-          )}
+        <For each={learningGoalsStubs}> 
+          {(goalStub) => {
+            // Get translated name
+            const name = getGoalName(goalStub.id, props.messages);
+            return (
+              <Button
+                variant="outline"
+                onClick={() => setSelectedGoalId(goalStub.id)}
+                class={cn(
+                  'h-auto p-4 flex flex-col items-center justify-center space-y-2 text-base border',
+                  'cursor-pointer hover:bg-neutral-700 hover:border-neutral-600 focus:outline-none focus:ring-0',
+                  selectedGoalId() === goalStub.id
+                    ? 'bg-neutral-800 text-foreground border-neutral-700'
+                    : 'border-neutral-700'
+                )}
+              >
+                <span class="text-2xl">{goalStub.emoji}</span>
+                <span>{name}</span> 
+              </Button>
+            );
+          }}
         </For>
       </div>
 
@@ -100,10 +112,9 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
            size="lg"
            class="w-full"
            onClick={handleSubmit}
-           disabled={!selectedGoal()} // Disable if no goal selected
+           disabled={!selectedGoalId()}
          >
-           {/* Use prop */} 
-           {props.continueLabel} 
+           {props.continueLabel}
          </Button>
       </div>
     </div>

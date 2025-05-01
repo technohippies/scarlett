@@ -43,5 +43,11 @@
   "langNameJa": { "message": "Japanese", "description": "Language name: Japanese" },
   "langNameKo": { "message": "Korean", "description": "Language name: Korean" },
   "langNameEs": { "message": "Spanish", "description": "Language name: Spanish" },
-  "langNameVi": { "message": "Vietnamese", "description": "Language name: Vietnamese" }
+  "langNameVi": { "message": "Vietnamese", "description": "Language name: Vietnamese" },
+  "learningGoalWork": { "message": "For work", "description": "Learning goal option: For work" },
+  "learningGoalDating": { "message": "For dating", "description": "Learning goal option: For dating" },
+  "learningGoalTravel": { "message": "For traveling", "description": "Learning goal option: For traveling" },
+  "learningGoalSchool": { "message": "For school", "description": "Learning goal option: For school" },
+  "learningGoalSelf": { "message": "For self improvement", "description": "Learning goal option: For self improvement" },
+  "learningGoalOther": { "message": "Something else", "description": "Learning goal option: Something else" }
 } 

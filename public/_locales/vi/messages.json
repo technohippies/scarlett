@@ -43,5 +43,11 @@
   "langNameJa": { "message": "Tiếng Nhật", "description": "Tên ngôn ngữ: Tiếng Nhật" },
   "langNameKo": { "message": "Tiếng Hàn", "description": "Tên ngôn ngữ: Tiếng Hàn" },
   "langNameEs": { "message": "Tiếng Tây Ban Nha", "description": "Tên ngôn ngữ: Tiếng Tây Ban Nha" },
-  "langNameVi": { "message": "Tiếng Việt", "description": "Tên ngôn ngữ: Tiếng Việt" }
+  "langNameVi": { "message": "Tiếng Việt", "description": "Tên ngôn ngữ: Tiếng Việt" },
+  "learningGoalWork": { "message": "Cho công việc", "description": "Lựa chọn mục tiêu học tập: Cho công việc" },
+  "learningGoalDating": { "message": "Cho hẹn hò", "description": "Lựa chọn mục tiêu học tập: Cho hẹn hò" },
+  "learningGoalTravel": { "message": "Cho du lịch", "description": "Lựa chọn mục tiêu học tập: Cho du lịch" },
+  "learningGoalSchool": { "message": "Cho trường học", "description": "Lựa chọn mục tiêu học tập: Cho trường học" },
+  "learningGoalSelf": { "message": "Cho phát triển bản thân", "description": "Lựa chọn mục tiêu học tập: Cho phát triển bản thân" },
+  "learningGoalOther": { "message": "Lý do khác", "description": "Lựa chọn mục tiêu học tập: Lý do khác" }
 } 

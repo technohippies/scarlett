@@ -1,4 +1,4 @@
-import { Component, createSignal, createResource, createMemo } from 'solid-js';
+import { Component, createSignal, createResource } from 'solid-js';
 import { Language, LanguageOptionStub } from '../../src/features/oninstall/Language';
 import { LearningGoal } from '../../src/features/oninstall/LearningGoal';
 import { userConfigurationStorage } from '../../src/services/storage';
@@ -180,8 +180,6 @@ const App: Component = () => {
                    messages={messagesData()} 
                />;
       case 'learningGoal':
-         // Log props being passed to LearningGoal too
-         console.log("[App] RenderStep: Passing props to LearningGoal with prefix:", currentMessages.get('onboardingLearningGoalQuestionPrefix', '???'))
         return <LearningGoal 
                    onComplete={handleLearningGoalComplete} 
                    targetLanguageLabel={targetLangLabel()} 
@@ -189,6 +187,7 @@ const App: Component = () => {
                    questionSuffix={currentMessages.get('onboardingLearningGoalQuestionSuffix', '?')}
                    fallbackLabel={currentMessages.get('onboardingTargetLanguageFallback', 'your selected language')}
                    continueLabel={currentMessages.get('onboardingContinue', 'Continue')}
+                   messages={messagesData()} 
                />;
       default:
         console.error('Unknown onboarding step:', currentStep());
