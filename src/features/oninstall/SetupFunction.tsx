@@ -192,42 +192,6 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
     console.log("[SetupFunction] Provider or model changed, resetting test status.");
   });
 
-  // Effect to auto-select the most recent preferred Ollama model
-  createEffect(() => {
-    // Conditions: Ollama selected, models fetched successfully, no initial/current selection
-    if (
-      selectedProviderId() === 'ollama' && 
-      fetchStatus() === 'success' && 
-      !props.initialModelId && 
-      !selectedModelId()
-    ) {
-      const models = fetchedModels();
-      if (!models || models.length === 0) return;
-
-      const preferredFamilies = ['gemma', 'qwen', 'llama', 'phi', 'deepseek'];
-
-      const preferredModels = models
-        .map(m => ({ // Add parsed date for sorting, handle potential errors
-          ...m,
-          modifiedDate: m.modified_at ? new Date(m.modified_at) : null,
-        }))
-        .filter(m => {
-          const family = (m as any).details?.family?.toLowerCase();
-          // Check family and ensure date is valid
-          return family && preferredFamilies.includes(family) && m.modifiedDate && !isNaN(m.modifiedDate.getTime());
-        });
-
-      if (preferredModels.length > 0) {
-        // Sort by date descending (most recent first)
-        preferredModels.sort((a, b) => b.modifiedDate!.getTime() - a.modifiedDate!.getTime());
-        const mostRecentModel = preferredModels[0];
-        
-        console.log(`[SetupFunction] Auto-selecting most recent preferred Ollama model: ${mostRecentModel.id}`);
-        setSelectedModelId(mostRecentModel.id);
-      }
-    }
-  });
-
   // Determine the correct label for the main action button
   const buttonLabel = () => {
     if (fetchStatus() === 'success' && selectedModelId()) {
