@@ -146,7 +146,6 @@ const App: Component = () => {
   const [uiLangCode, setUiLangCode] = createSignal<string>(getBestInitialLangCode());
   
   const [messagesData] = createResource(uiLangCode, fetchMessages);
-  const initialNativeValue = uiLangCode(); 
 
   // Calculate progress values
   const progressValue = () => onboardingSteps.indexOf(currentStep()) + 1; // 1-based index
@@ -310,7 +309,7 @@ const App: Component = () => {
                    selectLanguagePlaceholder={currentMessages.get('onboardingSelectLanguage', 'Select language')}
                    wantToLearnLabel={currentMessages.get('onboardingIWantToLearn', 'and I want to learn...')}
                    continueLabel={currentMessages.get('onboardingContinue', 'Continue')}
-                   initialNativeLangValue={initialNativeValue} 
+                   initialNativeLangValue={uiLangCode()} 
                    availableNativeLanguages={nativeLanguagesList}
                    availableTargetLanguages={allTargetLanguagesList}
                    messages={messagesData() || {}} 

@@ -45,13 +45,19 @@ const getLangName = (value: string | undefined, messages: Messages | undefined):
 
 export const Language: Component<LanguageProps> = (props) => {
 
-  // Find the initial language stub based on the prop value
-  const initialNativeLangStub = props.availableNativeLanguages.find(lang => lang.value === props.initialNativeLangValue);
+  console.log(`[Language] Render Start. initialNativeLangValue prop: ${props.initialNativeLangValue}`);
+
+  // Removed redundant initial stub finding
+  // const initialNativeLangStub = props.availableNativeLanguages.find(lang => lang.value === props.initialNativeLangValue);
+  // console.log(`[Language] Initial native lang stub found:`, initialNativeLangStub);
   
-  // State now holds the LanguageOptionStub
+  // State now holds the LanguageOptionStub - Initialize directly using prop
   const [selectedNativeLangStub, setSelectedNativeLangStub] = createSignal<LanguageOptionStub | undefined>(
-    initialNativeLangStub || props.availableNativeLanguages.find(l => l.value === 'en') // Fallback to English stub
+    props.availableNativeLanguages.find(lang => lang.value === props.initialNativeLangValue) || 
+    props.availableNativeLanguages.find(l => l.value === 'en') // Fallback to English stub
   );
+  console.log(`[Language] Initial selectedNativeLangStub signal set to:`, selectedNativeLangStub());
+
   // State for target language VALUE
   const [selectedTargetLangValue, setSelectedTargetLangValue] = createSignal<string | undefined>();
 
@@ -61,11 +67,14 @@ export const Language: Component<LanguageProps> = (props) => {
   );
 
   const handleNativeChange = (stub: LanguageOptionStub | null) => {
+    console.log('[Language] handleNativeChange triggered. Received stub:', stub);
     const newValue = stub?.value;
-    console.log('[Language] handleNativeChange: New value:', newValue);
+    console.log('[Language] handleNativeChange: Derived newValue:', newValue);
     setSelectedNativeLangStub(stub ?? undefined);
+    console.log('[Language] handleNativeChange: Updated selectedNativeLangStub signal to:', selectedNativeLangStub());
     // Call the new prop if value is valid
     if (newValue) {
+      console.log(`[Language] handleNativeChange: Calling props.onNativeLangChange with ${newValue}`);
       props.onNativeLangChange(newValue);
     }
   };
@@ -108,6 +117,11 @@ export const Language: Component<LanguageProps> = (props) => {
               {/* Combine both sentences into one paragraph */}
               <p class="inline-flex items-center justify-center flex-wrap gap-2"> 
                 <span>{props.iSpeakLabel}</span>
+                {(() => {
+                    // Log value just before Select render
+                    console.log('[Language] Rendering Select. Current selectedNativeLangStub():', selectedNativeLangStub());
+                    return null; 
+                })()}
                 <Select<LanguageOptionStub>
                   options={props.availableNativeLanguages}
                   value={selectedNativeLangStub()}
