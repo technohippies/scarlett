@@ -60,6 +60,8 @@ interface SetupFunctionProps {
   initialModelId?: string; // For potential pre-selection
   // Prop specifically for Storybook control
   _fetchStatus?: FetchStatus; 
+  // Add the new prop for storybook control
+  _forceOSForOllamaInstructions?: 'linux' | 'macos' | 'windows' | 'unknown'; 
 }
 
 type FetchStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -91,48 +93,60 @@ const shouldShowCorsHelp = (error: Error | null): boolean => {
   );
 };
 
-// Reusable component for Ollama CORS instructions
-const OllamaCorsInstructions: Component = () => {
-  const os = getOS();
-  console.log(`[OllamaCorsInstructions] Detected OS: ${os}`); // Log the detected OS
+// --- Ollama CORS Instructions Component (Moved Outside) ---
+interface OllamaCorsInstructionsProps {
+  _forceOS?: 'linux' | 'macos' | 'windows' | 'unknown';
+}
+const OllamaCorsInstructions: Component<OllamaCorsInstructionsProps> = (props) => {
+  const os = props._forceOS || getOS();
+  console.log(`[OllamaCorsInstructions] Displaying instructions for OS: ${os}`);
   return (
     <div class="w-full max-w-lg mt-4">
       <Switch fallback={<p class="text-xs text-muted-foreground">Instructions not available.</p>}>
         <Match when={os === 'linux'}>
+          {/* Linux instructions */}
           <div class="space-y-2">
-            <p>1. Copy paste this into Terminal</p>
+            <p>1. Copy paste into Terminal</p>
             <CodeBlock language="bash" code="sudo systemctl edit ollama.service" />
             <p>2. Copy this and paste under [Service]</p>
-            <CodeBlock language="plaintext" code={"Environment=\"OLLAMA_HOST=0.0.0.0\"\nEnvironment=\"OLLAMA_ORIGINS=*\""} />
+            <CodeBlock language="plaintext" code={'Environment="OLLAMA_HOST=0.0.0.0"\nEnvironment="OLLAMA_ORIGINS=*"'} />
             <p>3. Save, exit, restart:</p>
             <CodeBlock language="bash" code="sudo systemctl restart ollama" />
           </div>
         </Match>
         <Match when={os === 'macos'}>
-           <div class="space-y-2">
-                <p>1. Copy paste this into Terminal</p>
-                <CodeBlock language="bash" code={'launchctl setenv OLLAMA_HOST "0.0.0.0"'} />
-                <CodeBlock language="bash" code={'launchctl setenv OLLAMA_ORIGINS "*"'} />
-                <p>2. Restart</p>
-                <p class="text-xs text-muted-foreground">(Note: This might reset after a reboot. For persistence, consider editing launchd plist or shell profile.)</p>
+          {/* macOS instructions */}
+          <div class="space-y-2">
+                <p>1. Copy paste into Terminal</p>
+                <div>
+                  <CodeBlock language="bash" code={'launchctl setenv OLLAMA_HOST "0.0.0.0" && launchctl setenv OLLAMA_ORIGINS "*"'} /> 
+                </div>
+                <p>2. Restart Ollama (quit and open)</p>
             </div>
         </Match>
         <Match when={os === 'windows'}>
-           <div class="space-y-2">
-                <p>1. Open System Properties &gt; Environment Variables.</p>
+          {/* Windows instructions */}
+          <div class="space-y-2">
+                <p>1. Open System Properties &gt; Environment Variables</p>
                 <p>2. Under "System variables", click "New...".</p>
-                <p>3. Add Variable name: <code class="text-xs bg-neutral-700 px-1 py-0.5 rounded">OLLAMA_HOST</code>, Value: <code class="text-xs bg-neutral-700 px-1 py-0.5 rounded">0.0.0.0</code></p>
-                <p>4. Add Variable name: <code class="text-xs bg-neutral-700 px-1 py-0.5 rounded">OLLAMA_ORIGINS</code>, Value: <code class="text-xs bg-neutral-700 px-1 py-0.5 rounded">*</code></p>
-                <p>5. Click OK, then restart the Ollama application.</p>
+                <p>3. Add Variable name: <code class="bg-neutral-700 px-1 py-0.5 rounded">OLLAMA_HOST</code>, Value: <code class="bg-neutral-700 px-1 py-0.5 rounded">0.0.0.0</code></p>
+                <p>4. Add Variable name: <code class="bg-neutral-700 px-1 py-0.5 rounded">OLLAMA_ORIGINS</code>, Value: <code class="bg-neutral-700 px-1 py-0.5 rounded">*</code></p>
+                <p>5. Click OK, then restart Ollama</p>
+                <img 
+                    src="/images/llm-providers/ollama-cors-windows.png"
+                    alt="Ollama Windows Environment Variables settings"
+                    class="mt-4 rounded border border-neutral-700"
+                />
             </div>
         </Match>
         <Match when={os === 'unknown'}>
-            <p class="text-xs text-muted-foreground">Could not detect OS for specific Ollama instructions. Please consult Ollama documentation for enabling CORS.</p>
+          <p class="text-xs text-muted-foreground">Could not detect OS for specific Ollama instructions. Please consult Ollama documentation for enabling CORS.</p>
         </Match>
       </Switch>
     </div>
   );
 };
+// --- End Ollama CORS Instructions Component ---
 
 export const SetupFunction: Component<SetupFunctionProps> = (props) => {
   // Default selection logic for single-provider Reader
@@ -574,20 +588,20 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                 {shouldShowCorsHelp(fetchError()) && (
                   <Switch fallback={<p class="text-muted-foreground">Ensure CORS is enabled on your LLM server.</p>}>
                     <Match when={selectedProvider()?.id === 'ollama'}>
-                      <OllamaCorsInstructions />
+                      <OllamaCorsInstructions _forceOS={props._forceOSForOllamaInstructions} />
                     </Match>
                     <Match when={selectedProvider()?.id === 'jan'}>
                       <img 
                         src="/images/llm-providers/Jan-help.png" 
                         alt="Jan CORS setting location" 
-                        class="rounded border border-neutral-700 max-w-sm mx-auto" 
+                        class="rounded border border-neutral-700"
                       />
                     </Match>
                     <Match when={selectedProvider()?.id === 'lmstudio'}>
                       <img 
                         src="/images/llm-providers/LMStudio-help.png" 
                         alt="LM Studio CORS setting location" 
-                        class="rounded border border-neutral-700 max-w-sm mx-auto" 
+                        class="rounded border border-neutral-700"
                       />
                     </Match>
                   </Switch>
@@ -775,25 +789,25 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                               {/* Show CORS Help based on error and provider */} 
                               {shouldShowCorsHelp(testError()) && (
                                 <Switch fallback={<p class="text-muted-foreground">Ensure CORS is enabled on your LLM server.</p>}>
-                                  <Match when={selectedProvider()?.id === 'ollama'}>
-                                    <OllamaCorsInstructions />
-                                  </Match>
-                                  <Match when={selectedProvider()?.id === 'jan'}>
-                                    <img 
-                                      src="/images/llm-providers/Jan-help.png" 
-                                      alt="Jan CORS setting location" 
-                                      class="rounded border border-neutral-700 max-w-sm mx-auto" 
-                                    />
-                                  </Match>
-                                  <Match when={selectedProvider()?.id === 'lmstudio'}>
-                                    <img 
-                                      src="/images/llm-providers/LMStudio-help.png" 
-                                      alt="LM Studio CORS setting location" 
-                                      class="rounded border border-neutral-700 max-w-sm mx-auto" 
-                                    />
-                                  </Match>
-                                </Switch>
-                              )}
+                                     <Match when={selectedProvider()?.id === 'ollama'}>
+                                    <OllamaCorsInstructions _forceOS={props._forceOSForOllamaInstructions} />
+                                     </Match>
+                                     <Match when={selectedProvider()?.id === 'jan'}>
+                                         <img 
+                                             src="/images/llm-providers/Jan-help.png" 
+                                             alt="Jan CORS setting location" 
+                                             class="rounded border border-neutral-700"
+                                         />
+                                     </Match>
+                                     <Match when={selectedProvider()?.id === 'lmstudio'}>
+                                         <img 
+                                             src="/images/llm-providers/LMStudio-help.png" 
+                                             alt="LM Studio CORS setting location" 
+                                             class="rounded border border-neutral-700"
+                                         />
+                                     </Match>
+                                 </Switch>
+                         )}
                             </>
                           )}
                       </Show>

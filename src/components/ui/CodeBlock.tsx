@@ -80,15 +80,17 @@ export const CodeBlock: Component<CodeBlockProps> = (props) => {
   return (
     <div
       class={cn(
-        'relative font-mono text-md bg-neutral-800 rounded-lg',
-        isSingleLine() ? 'flex items-center px-4 py-2' : 'p-4',
+        'flex font-mono text-md bg-neutral-800 rounded-lg',
+        isSingleLine()
+          ? 'items-center px-4 py-2'
+          : 'items-start p-4 justify-between',
         props.class
       )}
     >
       <pre
         class={cn(
           'overflow-x-auto whitespace-pre-wrap break-words text-neutral-100 bg-transparent text-left',
-          isSingleLine() ? 'm-0 p-0 flex-grow' : 'm-0 p-0'
+          'm-0 p-0 flex-grow'
         )}
       >
         <code
@@ -105,9 +107,7 @@ export const CodeBlock: Component<CodeBlockProps> = (props) => {
         variant="ghost"
         size="icon"
         class={cn(
-          isSingleLine()
-            ? 'ml-2'
-            : 'absolute top-3 right-3',
+          'ml-2 flex-shrink-0',
           'text-neutral-400 hover:bg-neutral-700/50 hover:text-neutral-100',
           'rounded-md',
           'h-8 w-8',

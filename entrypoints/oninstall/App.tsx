@@ -315,8 +315,8 @@ const App: Component = () => {
                     onBack={handleBack}
                     continueLabel={i18n().get('onboardingNext', 'Next')}
                     messages={messagesData()}
-                    title={i18n().get('onboardingSetupLLMTitle', 'Choose LLM')} 
-                    description={i18n().get('onboardingSetupLLMDescription', 'Select your preferred provider and model for general chat and tasks.')}
+                    title={i18n().get('onboardingSetupLLMTitle', 'Choose an LLM!')} 
+                    description={i18n().get('onboardingSetupLLMDescription', 'If you can\'t run a 4B+ model locally like Gemma3 or Qwen3, use Jan with an OpenRouter model, many are free!')}
                  />;
        case 'setupEmbedding':
          return <SetupFunction

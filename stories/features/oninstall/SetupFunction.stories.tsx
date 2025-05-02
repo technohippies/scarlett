@@ -32,6 +32,7 @@ export default {
     onBack: () => console.log('Story: SetupFunction onBack triggered'),
     messages: messagesEn,
     continueLabel: messagesEn.onboardingContinue?.message || "Continue",
+    _forceOSForOllamaInstructions: undefined, // Default to undefined
   },
   argTypes: {
     _fetchStatus: {
@@ -46,7 +47,12 @@ export default {
         description: 'Simulated connection test status (Storybook only)',
         name: 'Simulated Test Status'
     },
-    // Remove modelOptions from argTypes if it was ever added
+    _forceOSForOllamaInstructions: {
+      control: { type: 'select' },
+      options: [undefined, 'linux', 'macos', 'windows', 'unknown'],
+      description: 'Force display of specific Ollama instructions (Storybook only)',
+      name: 'Force Ollama OS View'
+    },
   }
 };
 
@@ -56,7 +62,7 @@ export const LLMSetupIdle = {
   args: {
     functionName: 'LLM',
     providerOptions: mockLLMProviders,
-    title: 'Choose LLM',
+    title: 'Choose an LLM',
     description: "If you can't run a 4B+ model like Gemma3 or Qwen3 locally, setup Jan with an OpenRouter model, many of which are free.",
     _fetchStatus: 'idle' // Explicitly idle
   },
@@ -102,26 +108,21 @@ export const ReaderSetupSuccess = {
     render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
 };
 
-// Story showing the Connection/CORS error state for Ollama
-export const ConnectionErrorOllama = {
-  name: "Connection Error (Ollama)",
-  args: {
-    functionName: 'LLM',
-    providerOptions: mockLLMProviders,
-    title: 'Choose LLM',
-    description: "If you can't run a 4B+ model like Gemma3 or Qwen3 locally, setup Jan with an OpenRouter model, many of which are free.",
-    initialProviderId: 'ollama', // Need a provider selected to show error context
-    _fetchStatus: 'error' // Set to error
-    // _mockErrorType: 'TypeError' // Could add another control later to simulate different errors
-  },
-  render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
+// Keep as a local constant for arg inheritance, but don't export as a story
+const ConnectionErrorOllamaArgs = {
+  functionName: 'LLM',
+  providerOptions: mockLLMProviders,
+  title: 'Choose an LLM',
+  description: "If you can't run a 4B+ model like Gemma3 or Qwen3 locally, setup Jan with an OpenRouter model, many of which are free.",
+  initialProviderId: 'ollama', 
+  _fetchStatus: 'error' 
 };
 
 // Story showing the Connection/CORS error state for Jan
 export const ConnectionErrorJan = {
   name: "Connection Error (Jan)",
   args: {
-    ...ConnectionErrorOllama.args, // Inherit common args
+    ...ConnectionErrorOllamaArgs, // Inherit common args
     initialProviderId: 'jan', // Set provider to Jan
     _fetchStatus: 'error',
   },
@@ -132,7 +133,7 @@ export const ConnectionErrorJan = {
 export const ConnectionErrorLMStudio = {
   name: "Connection Error (LMStudio)",
   args: {
-    ...ConnectionErrorOllama.args, // Inherit common args
+    ...ConnectionErrorOllamaArgs, // Inherit common args
     initialProviderId: 'lmstudio', // Set provider to LMStudio
     _fetchStatus: 'error',
   },
@@ -147,8 +148,8 @@ export const ReadyToTestJan = {
   args: {
     functionName: 'LLM',
     providerOptions: mockLLMProviders,
-    title: 'Choose LLM',
-    description: "If you can't run a 4B+ model like Gemma3 or Qwen3 locally, setup Jan with an OpenRouter model, many of which are free.",
+    title: 'Choose an LLM',
+    description: "If you can\'t run a 4B+ model locally like Gemma3 or Qwen3, use Jan with an OpenRouter model, many are free!",
     initialProviderId: 'jan',
     initialModelId: 'mock-model-1', // Pre-select mock model
     _fetchStatus: 'success',
@@ -186,4 +187,45 @@ export const TestConnectionSuccess = {
     _testStatus: 'success' // Simulate test success
   },
   render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
+};
+
+// --- New Stories for OS-Specific Ollama Errors (using _forceOS prop) ---
+
+export const ConnectionErrorOllamaLinuxView = {
+  name: "Connection Error (Ollama - Linux View)",
+  args: {
+    ...ConnectionErrorOllamaArgs, // Inherit Ollama error args
+    _forceOSForOllamaInstructions: 'linux', // Force Linux view
+  },
+  render: (args: any) => ( // No wrapper needed
+    <div class="h-screen w-full">
+      <SetupFunction {...args} />
+    </div>
+  ),
+};
+
+export const ConnectionErrorOllamaMacView = {
+  name: "Connection Error (Ollama - macOS View)",
+  args: {
+    ...ConnectionErrorOllamaArgs, // Inherit Ollama error args
+    _forceOSForOllamaInstructions: 'macos', // Force macOS view
+  },
+  render: (args: any) => (
+    <div class="h-screen w-full">
+      <SetupFunction {...args} />
+    </div>
+  ),
+};
+
+export const ConnectionErrorOllamaWindowsView = {
+  name: "Connection Error (Ollama - Windows View)",
+  args: {
+    ...ConnectionErrorOllamaArgs, // Inherit Ollama error args
+    _forceOSForOllamaInstructions: 'windows', // Force Windows view
+  },
+  render: (args: any) => (
+    <div class="h-screen w-full">
+      <SetupFunction {...args} />
+    </div>
+  ),
 }; 
