@@ -52,6 +52,7 @@ export default defineConfig({
   preflights: [
     {
       getCSS: () => `
+        /* Original preflights */
         input[role="combobox"] {
           outline: none !important;
           box-shadow: none !important;
