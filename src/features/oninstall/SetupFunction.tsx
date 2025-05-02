@@ -663,7 +663,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         <Presence>
           {/* Use For loop with provider ID as the item to force remounting */}
           <For each={selectedProviderId() ? [selectedProviderId()] : []}>
-            {(providerId, index) => (
+            {() => (
               // Ensure Motion.div and its entire content is returned as a single element
               <Motion.div
                 class="w-full max-w-lg"
