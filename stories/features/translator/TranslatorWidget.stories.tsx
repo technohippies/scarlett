@@ -1,11 +1,4 @@
 import TranslatorWidget from '../../../src/features/translator/TranslatorWidget';
-import { action } from '@storybook/addon-actions'; // Use addon-actions for callbacks
-
-// Mock TTS function for Storybook
-const mockTTS = (text: string, lang: string) => {
-  action('TTS Request')({ text, lang }); // Log action to Storybook UI
-  console.log(`[Storybook TTS] Request: "${text}" (${lang})`);
-};
 
 export default {
   title: 'Features/TranslatorWidget', // Categorize under Features
@@ -21,6 +14,7 @@ export default {
     sourceLang: { control: 'text', description: 'Source language code (e.g., en)' },
     targetLang: { control: 'select', options: ['en', 'zh-CN', 'zh-TW', 'es', 'fr', 'de', 'ja', 'ko'], description: 'Target language code' },
     onTTSRequest: { action: 'TTS Request', description: 'Callback function for TTS requests' },
+    alignment: { control: 'object' }, // Allow providing alignment via controls if needed
     // Add argType for onClose if you implement it in the component
     // onClose: { action: 'Close Requested', description: 'Callback when close is requested' },
   },
@@ -31,7 +25,7 @@ export default {
     sourceLang: 'en',
     targetLang: 'zh-CN',
     pronunciation: 'nǐ hǎo',
-    onTTSRequest: mockTTS, // Use the mock function
+    alignment: null,
   },
 };
 
@@ -84,38 +78,37 @@ export const NoTTS = {
 // New Story for Multi-line text
 export const MultiLineSentence = {
   args: {
-    hoveredWord: 'Esta es una frase de ejemplo más larga que debería ajustarse a varias líneas.', // Spanish example sentence
+    hoveredWord: 'Esta es una frase de ejemplo más larga que debería ajustarse a varias líneas.',
     originalWord: 'This is a longer example sentence that should wrap onto multiple lines.',
     sourceLang: 'en',
     targetLang: 'es',
     pronunciation: undefined,
-    onTTSRequest: mockTTS,
   },
 };
 
 // New Story for Multi-line Pinyin
 export const MultiLinePinyin = {
   args: {
-    hoveredWord: '你好世界，这是一个多行拼音的例子', // Example Chinese sentence
+    hoveredWord: '你好世界，这是一个多行拼音的例子',
     originalWord: 'Hello world, this is an example of multi-line pinyin.',
     sourceLang: 'en',
     targetLang: 'zh-CN',
-    // Longer pinyin string that might wrap
     pronunciation: 'nǐ hǎo shì jiè, zhè shì yī gè duō háng pīn yīn de lì zi',
-    onTTSRequest: mockTTS,
   },
 };
 
-// New Story demonstrating the loading state
-// Note: Loading is triggered by clicking the button due to internal simulation
+// Story demonstrating the loading/highlighting state
+// Note: Loading and highlighting are triggered internally by clicking the button
 export const GeneratingAudio = {
   args: {
-    // Use default props, or customize as needed
-    hoveredWord: '你好',
-    originalWord: 'Hello',
+    // Use args that match the internal simulation/highlighting if needed
+    // Or just default args, relying on clicking the button
+    hoveredWord: '你好 世界', // Example text for potential alignment
+    originalWord: 'Hello World',
     sourceLang: 'en',
     targetLang: 'zh-CN',
-    pronunciation: 'nǐ hǎo',
-    onTTSRequest: mockTTS,
+    pronunciation: 'nǐ hǎo shì jiè',
+    alignment: null, 
+    // onTTSRequest is handled by default args/argTypes action
   },
 }; 

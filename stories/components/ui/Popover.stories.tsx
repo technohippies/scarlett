@@ -23,7 +23,7 @@ export default {
 
 // Story to test the action menu layout and interaction
 export const ActionMenu = {
-  render: (props: any) => {
+  render: () => {
     // State for simulation within the story
     const [isPlaying, setIsPlaying] = createSignal(false);
     const [isGeneratingSlow, setIsGeneratingSlow] = createSignal(false);

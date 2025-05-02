@@ -1,10 +1,18 @@
-import { Component, Show, createSignal } from 'solid-js';
+import { Component, Show, For, createSignal, createEffect, on } from 'solid-js';
 import { Motion } from 'solid-motionone';
 import { Button } from '../../components/ui/button';
 import { Spinner } from '../../components/ui/spinner';
 import { Popover } from '@kobalte/core/popover';
 import { Play, ArrowClockwise } from 'phosphor-solid';
-import 'virtual:uno.css'; // Ensure UnoCSS is processed
+import { Dynamic } from 'solid-js/web';
+import 'virtual:uno.css';
+
+// --- Alignment Data Structure (Example based on ElevenLabs) ---
+interface AlignmentData {
+    characters: string[];
+    character_start_times_seconds: number[];
+    character_end_times_seconds: number[];
+}
 
 // --- Props Interface ---
 export interface TranslatorWidgetProps {
@@ -14,8 +22,16 @@ export interface TranslatorWidgetProps {
   sourceLang: string;       // Source language code (e.g., 'en')
   targetLang: string;       // Target language code (e.g., 'zh-CN')
   onTTSRequest: (text: string, lang: string, speed: number) => void; // Add speed param
-  // Optional: Add an onClose callback if needed for manual closing
-  // onClose?: () => void;
+  // Optional alignment data for highlighting
+  alignment?: AlignmentData | null;
+}
+
+// --- Word Data Structure ---
+interface WordInfo {
+    text: string;
+    startTime: number;
+    endTime: number;
+    index: number;
 }
 
 // --- Constants ---
@@ -23,8 +39,22 @@ const WIDGET_BASE_CLASSES = "fixed bottom-0 left-4 z-[2147483647] font-sans bg-b
 const TRANSITION_SETTINGS = { duration: 0.3, easing: "ease-out" } as const;
 const POPOVER_CONTENT_CLASS = "z-[2147483647] w-56 rounded-md border bg-popover p-1 text-popover-foreground shadow-md outline-none animate-in data-[expanded]:fade-in-0 data-[expanded]:zoom-in-95";
 const POPOVER_ITEM_CLASS_BASE = "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 cursor-pointer";
-// Refined item class for left alignment
 const POPOVER_ITEM_CLASS = `${POPOVER_ITEM_CLASS_BASE} justify-start`;
+// CSS for highlighting
+const HIGHLIGHT_STYLE_ID = "scarlett-word-highlight-styles";
+const HIGHLIGHT_CSS = `
+  .scarlett-word-span {
+    background-color: transparent;
+    transition: background-color 0.15s ease-in-out;
+    border-radius: 3px; /* Optional: slight rounding */
+    padding: 0 0.1em; /* Optional: slight padding */
+    margin: 0 0.02em; /* Optional: slight margin */
+    display: inline-block; /* Needed for padding/margin */
+  }
+  .scarlett-word-highlight {
+    background-color: hsla(var(--foreground), 0.15); /* Use theme color */
+  }
+`;
 
 // --- Component ---
 const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
@@ -32,6 +62,207 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   const [isGenerating, setIsGenerating] = createSignal(false);
   const [isAudioReady, setIsAudioReady] = createSignal(false);
   const [isPlaying, setIsPlaying] = createSignal(false);
+  const [wordMap, setWordMap] = createSignal<WordInfo[]>([]);
+  const [currentHighlightIndex, setCurrentHighlightIndex] = createSignal<number | null>(null);
+  const [isPopoverOpen, setIsPopoverOpen] = createSignal(false);
+  let highlightInterval: number | null = null;
+
+  // --- Effects ---
+  // Effect to process alignment data when it arrives (REMOVED auto-play from here)
+  createEffect(on(() => props.alignment, (alignmentData) => {
+    if (alignmentData && props.hoveredWord) {
+      const words = processAlignment(props.hoveredWord, alignmentData);
+      setWordMap(words);
+      setIsAudioReady(true); 
+      setIsGenerating(false);
+      // REMOVED: handlePlaySpeed(1.0, true); // Auto-play handled by simulation now
+    } else {
+      // Clear map but don't affect ready state here
+      // setWordMap([]); 
+    }
+  }));
+
+  // Effect to cleanup interval on unmount or when playback stops
+  createEffect(() => {
+      if (!isPlaying()) {
+          if (highlightInterval) clearInterval(highlightInterval);
+          highlightInterval = null;
+          setCurrentHighlightIndex(null); // Clear highlight when not playing
+      }
+      // Cleanup function
+      return () => {
+          if (highlightInterval) clearInterval(highlightInterval);
+      };
+  });
+
+  // --- Helper: Process Alignment Data ---
+  const processAlignment = (text: string, alignment: AlignmentData): WordInfo[] => {
+    const wordInfos: WordInfo[] = [];
+    const words = text.match(/\S+/g) || []; // Split by whitespace
+    let textIndex = 0;
+    let charIndex = 0;
+
+    console.log("[Align] Processing:", text, "Alignment:", alignment);
+
+    words.forEach((word, wordIdx) => {
+      const wordStartIndex = text.indexOf(word, textIndex);
+      if (wordStartIndex === -1) return; // Should not happen
+      const wordEndIndex = wordStartIndex + word.length;
+      textIndex = wordEndIndex;
+
+      let wordStartTime = Infinity;
+      let wordEndTime = 0;
+      let foundChar = false;
+
+      // Find corresponding characters in alignment data
+      // This is approximate and assumes alignment characters match text order
+      for (let i = charIndex; i < alignment.characters.length; i++) {
+        // Simple check: does alignment char roughly match text char?
+        // This is brittle - needs refinement based on actual data/normalization
+        if (word.includes(alignment.characters[i])) {
+           if (i >= charIndex && i < charIndex + word.length) { // Crude check if char belongs to this word
+                wordStartTime = Math.min(wordStartTime, alignment.character_start_times_seconds[i]);
+                wordEndTime = Math.max(wordEndTime, alignment.character_end_times_seconds[i]);
+                foundChar = true;
+           } else if (foundChar) {
+                // Moved past the characters likely belonging to this word
+                break;
+           }
+        } else if (foundChar) {
+            // Character mismatch after finding some matches, assume end of word in alignment data
+            break;
+        }
+        // Always advance charIndex if we checked it
+        if (i === alignment.characters.length - 1 || !foundChar || wordEndTime > 0) {
+             charIndex = i + 1; // Advance charIndex for next word search
+        }
+      }
+
+      if (foundChar && isFinite(wordStartTime)) {
+        wordInfos.push({
+          text: word,
+          startTime: wordStartTime,
+          endTime: wordEndTime,
+          index: wordIdx,
+        });
+      } else {
+         console.warn(`[Align] Could not find timing for word: "${word}"`);
+         // Add with dummy times? Or skip?
+         wordInfos.push({ text: word, startTime: 0, endTime: 0, index: wordIdx });
+      }
+    });
+    console.log("[Align] Word Map:", wordInfos);
+    return wordInfos;
+  };
+
+  // --- Handlers ---
+  const handleGenerate = () => {
+    if (isGenerating() || isPlaying()) return;
+    console.log('[Widget] Requesting Audio at 1x');
+    setIsGenerating(true);
+    setIsAudioReady(false);
+    setWordMap([]); 
+    setCurrentHighlightIndex(null);
+    setIsPlaying(false);
+    if (highlightInterval) clearInterval(highlightInterval);
+    // Trigger the external request (won't provide alignment in story)
+    props.onTTSRequest(props.hoveredWord, props.targetLang, 1.0); 
+
+    // --- Simulation Block (Re-added for Storybook interaction) ---
+    // Simulate generation finishing
+    setTimeout(() => {
+      console.log('[Widget Sim] Generation Complete, Audio Ready');
+      setIsGenerating(false);
+      setIsAudioReady(true);
+      // Create a basic word map for simulation if none provided by props
+      if (wordMap().length === 0) {
+          const dummyWords = props.hoveredWord.split(/(\s+)/).filter(Boolean).map((w, i) => ({ 
+              text: w, 
+              index: i, 
+              // Assign arbitrary increasing times for simulation 
+              startTime: i * 0.5, 
+              endTime: (i + 1) * 0.5 
+          }));
+          setWordMap(dummyWords);
+          console.log("[Widget Sim] Created dummy word map:", dummyWords);
+      }
+      // Start auto-play simulation
+      handlePlaySpeed(1.0); 
+    }, 1500); // Simulate 1.5s generation time
+    // --- End Simulation Block ---
+  };
+
+  const handlePlayAgain = () => {
+      handlePlaySpeed(1.0);
+  };
+
+  const handlePlaySpeed = (speed: number) => {
+    setIsPopoverOpen(false);
+    if (isPlaying()) {
+        // If already playing, maybe stop and restart?
+        if (highlightInterval) clearInterval(highlightInterval);
+        setIsPlaying(false);
+        setCurrentHighlightIndex(null);
+        // Add a small delay before restarting to avoid glitches
+        setTimeout(() => startPlaybackSimulation(speed), 50);
+        return;
+    }
+    if (!isAudioReady()) return; // Don't play if not ready
+
+    startPlaybackSimulation(speed);
+  };
+
+  // --- Simulation for Highlighting ---
+  const startPlaybackSimulation = (speed: number) => {
+     console.log(`[Widget Sim] Starting playback at ${speed}x`);
+     setIsPlaying(true);
+     setCurrentHighlightIndex(null);
+     if (highlightInterval) clearInterval(highlightInterval);
+
+     const words = wordMap();
+     if (words.length === 0) {
+         console.warn("[Widget Sim] No word map available for playback simulation.");
+         setIsPlaying(false);
+         return;
+     }
+
+     let simTime = 0;
+     const timeStep = 50; // Check every 50ms
+
+     highlightInterval = window.setInterval(() => {
+         simTime += timeStep / 1000 * speed; // Advance time based on speed
+         let activeWordIndex: number | null = null;
+
+         for (const word of words) {
+             if (simTime >= word.startTime && simTime < word.endTime) {
+                 activeWordIndex = word.index;
+                 break;
+             }
+         }
+         setCurrentHighlightIndex(activeWordIndex);
+
+         // Stop simulation if time exceeds last word's end time
+         const lastWord = words[words.length - 1];
+         if (simTime >= lastWord.endTime) {
+             console.log("[Widget Sim] Playback simulation finished.");
+             if (highlightInterval) clearInterval(highlightInterval);
+             highlightInterval = null;
+             setIsPlaying(false);
+             setCurrentHighlightIndex(null); // Ensure highlight is cleared
+         }
+
+     }, timeStep);
+
+     // TODO: Play actual audio here using the selected speed
+  };
+
+  const handleRegenerate = () => {
+      setIsPopoverOpen(false);
+      console.log('[Widget] Regenerating Audio');
+      handleGenerate();
+  };
+
+  const allDisabled = () => isPlaying() || isGenerating();
 
   const showPronunciation = () => {
     // Example: Show Pinyin for Chinese variants
@@ -44,59 +275,6 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
       return supportedLangs.some(lang => props.targetLang.toLowerCase().startsWith(lang));
   };
 
-  const handleGenerate = () => {
-    if (isGenerating() || isPlaying()) return;
-    console.log('[Widget] Requesting Audio at 1x');
-    setIsGenerating(true);
-    setIsAudioReady(false);
-    setIsPlaying(false);
-    props.onTTSRequest(props.hoveredWord, props.targetLang, 1.0);
-
-    // Simulation Block
-    setTimeout(() => {
-      console.log('[Widget] Simulating Audio Ready (1x)');
-      setIsGenerating(false);
-      setIsAudioReady(true);
-      setIsPlaying(true); // Auto-play
-      setTimeout(() => {
-        console.log('[Widget] Simulating Playback End');
-        setIsPlaying(false);
-      }, 1000);
-    }, 1500);
-    // End Simulation Block
-  };
-
-  const handlePlayAgain = (e?: MouseEvent) => {
-    // Prevent popover from closing immediately if triggered via button inside popover trigger
-    // e?.stopPropagation(); 
-    if (isPlaying()) return;
-    console.log(`[Widget] Playing Again at 1x`);
-    setIsPlaying(true);
-    // TODO: Play 1x audio
-    setTimeout(() => {
-      console.log('[Widget] Simulating Playback End (1x)');
-      setIsPlaying(false);
-    }, 1000);
-  };
-
-  const handlePlaySpeed = (speed: number) => {
-      if (isPlaying()) return;
-      console.log(`[Widget] Playing at ${speed}x`);
-      setIsPlaying(true);
-      // TODO: Play audio at specified speed
-      setTimeout(() => {
-          console.log(`[Widget] Simulating Playback End (${speed}x)`);
-          setIsPlaying(false);
-      }, 1000 / speed);
-  };
-
-  const handleRegenerate = () => {
-      console.log('[Widget] Regenerating Audio');
-      handleGenerate(); // Just re-trigger the generation process
-  };
-
-  const allDisabled = () => isPlaying() || isGenerating(); // Helper for disabling
-
   return (
     <Motion.div
       initial={{ opacity: 0, y: 20 }} // Start transparent and slightly down
@@ -107,6 +285,11 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
       // Add role for accessibility if appropriate, e.g., role="dialog" aria-modal="true"
       // Consider adding aria-labelledby referencing the main translated word
     >
+        {/* Inject CSS */}
+        <Dynamic component="style" id={HIGHLIGHT_STYLE_ID}>
+            {HIGHLIGHT_CSS}
+        </Dynamic>
+
         {/* Row 1: Pronunciation (Defaults to left-aligned) */}
         <Show when={showPronunciation()}>
             <div class="text-base text-muted-foreground/90">
@@ -114,10 +297,20 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
             </div>
         </Show>
 
-        {/* Row 2: Translated Word (Removed adjacent icon button) */}
+        {/* Row 2: Translated Word (with highlight spans) */}
         <div class="flex justify-between items-center gap-2">
             <span class="text-2xl font-semibold text-foreground">
-                {props.hoveredWord}
+                <For each={wordMap().length > 0 ? wordMap() : props.hoveredWord.split(/(\s+)/).filter(Boolean).map((w, i) => ({ text: w, index: i, startTime: 0, endTime: 0 })) }>
+                  {(word, _) => (
+                    <span
+                       class="scarlett-word-span"
+                       classList={{ 'scarlett-word-highlight': currentHighlightIndex() === word.index }}
+                       data-word-index={word.index}
+                    >
+                      {word.text.match(/\s+/) ? <>&nbsp;</> : word.text} {/* Render space or word */}
+                    </span>
+                  )}
+                </For>
             </span>
         </div>
 
@@ -155,8 +348,13 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                           {isPlaying() ? "Playing..." : "Play Again"}
                       </Button>
                       
-                      {/* Popover Trigger Button */}
-                      <Popover placement="top" gutter={4}>
+                      {/* Popover Trigger Button (Controlled) */}
+                      <Popover 
+                        placement="top" 
+                        gutter={4}
+                        open={isPopoverOpen()}
+                        onOpenChange={setIsPopoverOpen}
+                      >
                           <Popover.Trigger
                               aria-label="More options"
                               disabled={allDisabled()}
