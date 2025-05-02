@@ -7,6 +7,8 @@ import type { Messages } from '../../src/types/i18n';
 // Import the new SetupFunction component and its types
 import { SetupFunction, ProviderOption } from '../../src/features/oninstall/SetupFunction';
 // No longer need specific LLMConfig type here, handled by SetupFunction's onComplete
+// Import the Progress component
+import { Progress } from '../../src/components/ui/progress';
 
 // Define language lists here (could also be moved)
 const nativeLanguagesList: LanguageOptionStub[] = [
@@ -135,6 +137,8 @@ const fetchMessages = async (langCode: string): Promise<Messages> => {
   }
 };
 
+// Keep steps definition for progress calculation
+const onboardingSteps: Step[] = ['language', 'learningGoal', 'setupLLM', 'setupEmbedding', 'setupReader'];
 
 const App: Component = () => {
   const [currentStep, setCurrentStep] = createSignal<Step>('language');
@@ -143,6 +147,10 @@ const App: Component = () => {
   
   const [messagesData] = createResource(uiLangCode, fetchMessages);
   const initialNativeValue = uiLangCode(); 
+
+  // Calculate progress values
+  const progressValue = () => onboardingSteps.indexOf(currentStep()) + 1; // 1-based index
+  const progressMax = () => onboardingSteps.length;
 
   const i18n = () => {
     const messages = messagesData();
@@ -315,8 +323,8 @@ const App: Component = () => {
                     onBack={handleBack}
                     continueLabel={i18n().get('onboardingNext', 'Next')}
                     messages={messagesData()}
-                    title={i18n().get('onboardingSetupLLMTitle', 'Choose an LLM!')} 
-                    description={i18n().get('onboardingSetupLLMDescription', 'If you can\'t run a 4B+ model locally like Gemma3 or Qwen3, use Jan with an OpenRouter model, many are free!')}
+                    title={i18n().get('onboardingSetupLLMTitle', 'Choose an LLM')} 
+                    description={i18n().get('onboardingSetupLLMDescription', 'Can\'t run a 4B+ model locally like Gemma3 or Qwen3? Use Jan with an OpenRouter model, many are free!')}
                  />;
        case 'setupEmbedding':
          return <SetupFunction
@@ -327,7 +335,7 @@ const App: Component = () => {
                     continueLabel={i18n().get('onboardingNext', 'Next')}
                     messages={messagesData()}
                     title={i18n().get('onboardingSetupEmbeddingTitle', 'Choose Embedding')}
-                    description={i18n().get('onboardingSetupEmbeddingDescription', 'Select a provider and model for generating text embeddings (used for context search).')}
+                    description={i18n().get('onboardingSetupEmbeddingDescription', 'Bge-m3 or bge-large are best due to multi-language support.')}
                  />;
         case 'setupReader':
          return <SetupFunction
@@ -335,8 +343,8 @@ const App: Component = () => {
                     providerOptions={availableReaderProviders}
                     onComplete={handleReaderComplete}
                     onBack={handleBack}
-                    title="Go Faster with Reader LM"
-                    description="ReaderLM converts webpages to text  fast so I can better assist you! A 1.5B model, 1.1 GB."
+                    title="Go Faster with ReaderLM"
+                    description="ReaderLM 1.5B converts webpages to Markdown text."
                     continueLabel={currentMessages.get('onboardingFinishSetup', 'Finish Setup')}
                     messages={messagesData() || {}}
                    />;
@@ -358,8 +366,22 @@ const App: Component = () => {
   };
 
   return (
-    <div class="bg-background text-foreground min-h-screen">
-       {messagesData.loading ? <div>Loading...</div> : renderStep()} 
+    // Switch back to a simpler layout
+    // Enforce strict viewport height and prevent main container scroll
+    <div class="h-screen w-screen flex flex-col overflow-hidden bg-background text-foreground">
+      {/* Progress Bar Container */}
+      <div class="w-full p-0 flex-shrink-0"> {/* Added flex-shrink-0 */}
+        <Progress 
+          value={progressValue()} 
+          maxValue={progressMax()}
+          // Removed labels, using only the track
+        />
+      </div>
+
+      {/* Main Content Area - takes remaining space and scrolls */}
+      <div class="flex-grow overflow-y-auto">
+         {renderStep()}
+      </div>
     </div>
   );
 };

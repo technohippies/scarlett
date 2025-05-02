@@ -99,8 +99,8 @@ export const ReaderSetupSuccess = {
   args: {
     functionName: 'Reader',
     providerOptions: mockReaderProviders,
-    title: "Go Faster with Reader LM",
-    description: "ReaderLM converts webpages to text  fast so I can better assist you! A 1.5B model, 1.1 GB.",
+    title: "Go Faster with ReaderLM",
+    description: "ReaderLM converts webpages to text fast so I can better assist you! A 1.5B model, 1.1 GB.",
     initialProviderId: 'ollama',
     // initialModelId: 'mock-model-1', // Can pre-select a mock model ID
     _fetchStatus: 'success'
@@ -175,7 +175,7 @@ export const ReadyToTestJan = {
     functionName: 'LLM',
     providerOptions: mockLLMProviders,
     title: 'Choose an LLM',
-    description: "If you can\'t run a 4B+ model locally like Gemma3 or Qwen3, use Jan with an OpenRouter model, many are free!",
+    description: "Can't run a 4B+ model locally like Gemma3 or Qwen3? Use Jan with an OpenRouter model, many are free!",
     initialProviderId: 'jan',
     initialModelId: 'mock-model-1', // Pre-select mock model
     _fetchStatus: 'success',

@@ -122,8 +122,11 @@ const TimelineItem: Component<TimelineItemProps> = (props) => {
         <div
           class={cn(
             // Use z-10 or similar if needed to ensure bullet is above line
-            "z-10 flex items-center justify-center rounded-full border bg-background",
-            props.isActiveBullet ? "border-primary" : "border-border",
+            "z-10 flex items-center justify-center rounded-full border bg-background", // Base styles
+            // Conditional styles for active bullet
+            props.isActiveBullet 
+              ? "border-primary bg-primary" // Active: primary border and background (filled)
+              : "border-border", // Inactive: default border, background remains bg-background
             props.bulletClass
           )}
           style={{

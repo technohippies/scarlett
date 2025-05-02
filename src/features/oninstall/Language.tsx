@@ -91,8 +91,8 @@ export const Language: Component<LanguageProps> = (props) => {
   };
 
   return (
-    // Use flex column, full height
-    <div class="flex flex-col min-h-screen bg-background text-foreground">
+    // Remove min-h-screen, add h-full
+    <div class="relative flex flex-col h-full bg-background text-foreground">
       {/* Content Area: Remove justify-center, standardize top padding */}
       <div class="flex-grow overflow-y-auto flex flex-col items-center p-4 pt-24 md:p-8 md:pt-24">
           {/* Image: Centered by parent's items-center */} 
@@ -103,9 +103,10 @@ export const Language: Component<LanguageProps> = (props) => {
             class="w-32 h-32 md:w-48 md:h-48 object-contain mb-6 flex-shrink-0" 
           />
 
-          {/* Sentence Structure: Limit width, allow space */}
-          <div class="text-center text-xl md:text-2xl space-y-4 w-full max-w-lg mb-6">
-              <p class="inline-flex items-center justify-center flex-wrap gap-2"> {/* Added justify-center and flex-wrap */}
+          {/* Sentence Structure: Limit width, allow space - Remove text-center & space-y-4 */}
+          <div class="text-xl md:text-2xl w-full max-w-lg mb-6">
+              {/* Combine both sentences into one paragraph */}
+              <p class="inline-flex items-center justify-center flex-wrap gap-2"> 
                 <span>{props.iSpeakLabel}</span>
                 <Select<LanguageOptionStub>
                   options={props.availableNativeLanguages}
@@ -139,8 +140,9 @@ export const Language: Component<LanguageProps> = (props) => {
                   </SelectTrigger>
                   <SelectContent />
                 </Select>
+                {/* Add the second part of the sentence here */}
+                <span>{' '}{props.wantToLearnLabel}</span> 
               </p>
-              <p>{props.wantToLearnLabel}</p>
           </div>
 
           {/* Target Language Grid: Limit width */}

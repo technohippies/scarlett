@@ -108,9 +108,9 @@ const OllamaCorsInstructions: Component<OllamaCorsInstructionsProps> = (props) =
           <div class="space-y-2">
             <p>1. Copy paste into Terminal</p>
             <CodeBlock language="bash" code="sudo systemctl edit ollama.service" />
-            <p>2. Copy this and paste under [Service]</p>
+            <p>2. Copy and paste this under [Service]</p>
             <CodeBlock language="plaintext" code={'Environment="OLLAMA_HOST=0.0.0.0"\nEnvironment="OLLAMA_ORIGINS=*"'} />
-            <p>3. Save, exit, restart:</p>
+            <p>3. Save, exit, restart</p>
             <CodeBlock language="bash" code="sudo systemctl restart ollama" />
           </div>
         </Match>
@@ -188,7 +188,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
     console.log(`[SetupFunction] Fetching models for ${provider.name} from ${apiUrl}`);
 
     try {
-      const response = await fetch(apiUrl, { signal: AbortSignal.timeout(5000) }); // 5 second timeout
+      const response = await fetch(apiUrl, { signal: AbortSignal.timeout(15000) }); // 15 second timeout
 
       if (!response.ok) {
         // Throw an error with status for specific handling
@@ -355,10 +355,20 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         setFetchError(modelData.error); 
     } else if (modelData.state === 'ready') {
         setFetchStatus('success');
-        // fetchedModels is already set correctly by fetchModels for Jan (local only)
-        // For other providers, it sets all models. Remote models are handled separately.
-        setFetchedModels(modelData() || []); 
+        const models = modelData() || [];
+        setFetchedModels(models);
         setFetchError(null);
+
+        // Auto-select reader model if found
+        if (props.functionName === 'Reader' && models.length > 0) {
+            const readerModelName = 'milkey/reader-lm-v2:latest';
+            const readerModel = models.find(m => m.id === readerModelName);
+            if (readerModel) {
+                console.log(`[SetupFunction] Auto-selecting Reader model: ${readerModel.id}`);
+                setSelectedModelId(readerModel.id);
+            }
+        }
+
     } else { // Initial state or provider deselected
         setFetchStatus('idle');
         setFetchedModels([]);
@@ -464,7 +474,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
     try {
       // Call the provider-specific test method
       await provider.testConnection(testConfig, props.functionName as 'LLM' | 'Embedding' | 'Reader');
-      
+
       console.log(`[SetupFunction] ${providerId}.testConnection successful.`);
       setTestStatus('success');
 
@@ -487,7 +497,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
   };
 
   return (
-    <div class="flex flex-col bg-background text-foreground">
+    <div class="relative flex flex-col h-full bg-background text-foreground">
       <Button
         variant="ghost"
         size="icon"
@@ -520,7 +530,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
 
         {/* Main content block (text, providers, model select/status) */} 
         {/* This block remains centered due to parent's items-center */}
-        <div class="text-center w-full max-w-lg mb-2">
+        <div class="w-full max-w-lg mb-2">
           <p class="text-xl md:text-2xl mb-2">
             {props.title || i18n().get(`onboardingSetup${props.functionName}Title`, `Configure ${props.functionName}`)}
           </p>
@@ -558,9 +568,9 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
 
         {/* Restore spinner location: Show while loading, before errors/success */}
         <Show when={fetchStatus() === 'loading'}>
-          <div class="w-full max-w-lg mb-6 flex justify-center items-center space-x-2 text-muted-foreground">
+            <div class="w-full max-w-lg mb-6 flex justify-center items-center space-x-2 text-muted-foreground">
             <Spinner class="h-6 w-6"/>
-          </div>
+            </div>
         </Show>
 
         {/* --- Initial Fetch Error Handling --- */}
@@ -587,24 +597,24 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                 {/* Show CORS Help based on error and provider */} 
                 {shouldShowCorsHelp(fetchError()) && (
                   <Switch fallback={<p class="text-muted-foreground">Ensure CORS is enabled on your LLM server.</p>}>
-                    <Match when={selectedProvider()?.id === 'ollama'}>
+                            <Match when={selectedProvider()?.id === 'ollama'}>
                       <OllamaCorsInstructions _forceOS={props._forceOSForOllamaInstructions} />
-                    </Match>
-                    <Match when={selectedProvider()?.id === 'jan'}>
-                      <img 
-                        src="/images/llm-providers/Jan-help.png" 
-                        alt="Jan CORS setting location" 
+                            </Match>
+                            <Match when={selectedProvider()?.id === 'jan'}>
+                                <img 
+                                    src="/images/llm-providers/Jan-help.png" 
+                                    alt="Jan CORS setting location" 
                         class="rounded border border-neutral-700"
-                      />
-                    </Match>
-                    <Match when={selectedProvider()?.id === 'lmstudio'}>
-                      <img 
-                        src="/images/llm-providers/LMStudio-help.png" 
-                        alt="LM Studio CORS setting location" 
+                                />
+                            </Match>
+                            <Match when={selectedProvider()?.id === 'lmstudio'}>
+                                <img 
+                                    src="/images/llm-providers/LMStudio-help.png" 
+                                    alt="LM Studio CORS setting location" 
                         class="rounded border border-neutral-700"
-                      />
-                    </Match>
-                  </Switch>
+                                />
+                            </Match>
+                        </Switch>
                 )}
             </div>
         )}
@@ -612,6 +622,15 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         {/* --- Model Selection and Connection Test --- */}
         {/* Show this section only when a provider is selected */}
         <Show when={selectedProviderId()}>
+
+          {/* Show Download instructions specifically for Ollama Reader - Simplified */}
+          <Show when={props.functionName === 'Reader' && selectedProvider()?.id === 'ollama'}>
+            <div class="w-full max-w-lg mt-4 mb-4 space-y-2">
+                <p>Download</p> 
+                <CodeBlock language="bash" code="ollama run milkey/reader-lm-v2" />
+            </div>
+          </Show>
+
           <div class="w-full max-w-lg mt-6 space-y-4">
             {/* Show dropdowns and test section only *after* successful fetch */}
             <Show when={fetchStatus() === 'success'}>
@@ -622,10 +641,10 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                    {/* Local Models Dropdown */}
                    <div>
                     <Label for="local-model-select" class="font-medium text-muted-foreground mb-1 block">Local LLM</Label>
-                    <Select<ModelOption>
+                <Select<ModelOption>
                        options={fetchedModels()}
-                       optionValue="id"
-                       optionTextValue="name"
+                    optionValue="id"
+                    optionTextValue="name"
                        onChange={(value: ModelOption | null) => {
                          console.log("[SetupFunction] Jan Local onChange triggered. Selected object:", value);
                          setSelectedModelId(value?.id);
@@ -634,8 +653,8 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                        value={fetchedModels().find(m => m.id === selectedModelId()) || null}
                        itemComponent={(props) => (
                           <SelectItem item={props.item}>{props.item.rawValue.name}</SelectItem>
-                       )}
-                    >
+                    )}
+                >
                       <SelectTrigger id="local-model-select">
                         <SelectValue>
                           {(() => {
@@ -645,14 +664,14 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                               : <span class="text-muted-foreground">Select Local Model</span>;
                           })()}
                         </SelectValue>
-                      </SelectTrigger>
+                    </SelectTrigger>
                       <SelectContent>
                          <Show when={!fetchedModels() || fetchedModels().length === 0}>
                            <div class="px-2 py-1.5 text-muted-foreground">No local models found.</div>
                          </Show>
                       </SelectContent>
-                    </Select>
-                   </div>
+                </Select>
+            </div>
 
                   {/* Log length immediately before Show for remote section */}
                   {( () => {
@@ -704,38 +723,44 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
 
                 {/* Case: Other Providers (Ollama, LMStudio, etc.) */}
                 <Match when={selectedProvider()?.id !== 'jan'}>
-                  <Select<ModelOption>
-                     options={fetchedModels()}
-                     optionValue="id"
-                     optionTextValue="name"
-                     onChange={(value: ModelOption | null) => {
-                       console.log("[SetupFunction] Other Provider onChange triggered. Selected object:", value);
-                       setSelectedModelId(value?.id);
-                       console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
-                     }}
-                     value={fetchedModels().find(m => m.id === selectedModelId()) || null}
-                     itemComponent={(props) => (
+                  {/* Wrap Label and Select in a div for consistent structure */}
+                  <div> 
+                    {/* Use dynamic functionName for the Label */}
+                    <Label for="model-select-other" class="font-medium text-muted-foreground mb-1 block">{props.functionName}</Label>
+                    <Select<ModelOption>
+                       options={fetchedModels()}
+                       optionValue="id"
+                       optionTextValue="name"
+                       onChange={(value: ModelOption | null) => {
+                         console.log("[SetupFunction] Other Provider onChange triggered. Selected object:", value);
+                         setSelectedModelId(value?.id);
+                         console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
+                       }}
+                       value={fetchedModels().find(m => m.id === selectedModelId()) || null}
+                       itemComponent={(props) => (
                          <SelectItem item={props.item}>{props.item.rawValue.name}</SelectItem>
                      )}
-                  >
-                    <SelectTrigger>
-                      <SelectValue>
-                        {(() => {
-                          const selectedName = fetchedModels().find(m => m.id === selectedModelId())?.name;
-                          return selectedName 
-                            ? selectedName 
-                            : <span class="text-muted-foreground">Select Model</span>;
-                        })()}
-                      </SelectValue>
-                    </SelectTrigger>
-                    {/* Apply scrolling classes here too for consistency */}
-                    <SelectContent class="max-h-72 overflow-y-auto"> 
-                      {/* Remove manual mapping */}
-                      <Show when={!fetchedModels() || fetchedModels().length === 0}>
-                         <div class="px-2 py-1.5 text-muted-foreground">No models found for this provider.</div>
-                      </Show>
-                    </SelectContent>
-                  </Select>
+                    >
+                      {/* Add id to SelectTrigger */}
+                      <SelectTrigger id="model-select-other">
+                        <SelectValue>
+                          {(() => {
+                            const selectedName = fetchedModels().find(m => m.id === selectedModelId())?.name;
+                            return selectedName 
+                              ? selectedName 
+                              : <span class="text-muted-foreground">Select Model</span>;
+                          })()}
+                        </SelectValue>
+                      </SelectTrigger>
+                      {/* Apply scrolling classes here too for consistency */}
+                      <SelectContent class="max-h-72 overflow-y-auto"> 
+                        {/* Remove manual mapping */}
+                        <Show when={!fetchedModels() || fetchedModels().length === 0}>
+                           <div class="px-2 py-1.5 text-muted-foreground">No models found for this provider.</div>
+                        </Show>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </Match>
               </Switch>
               
@@ -761,7 +786,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                       <Show when={testStatus() === 'testing'}>
                          <div class="flex items-center text-muted-foreground">
                           <Spinner class="mr-2 h-4 w-4 animate-spin" />
-                          <span>Testing connection... (Max 10s)</span>
+                          <span>Testing connection... (Max {props.functionName === 'LLM' ? '15' : '5'}s)</span>
                          </div>
                       </Show>
                       <Show when={testStatus() === 'error' && testError()}>
@@ -808,8 +833,8 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                                      </Match>
                                  </Switch>
                          )}
-                            </>
-                          )}
+                     </>
+                 )}
                       </Show>
                       <Show when={testStatus() === 'success'}>
                           <div class="text-green-500 flex items-center">
@@ -817,16 +842,16 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                               <span>Connection successful!</span>
                           </div>
                       </Show>
-                  </div>
+                     </div>
               </Show>
             </Show>
-          </div>
+             </div>
         </Show>
-
+       
         {/* End of main content area */}
-      </div> 
+      </div>
 
-      {/* Image 2: Positioned bottom-right only on lg screens */} 
+      {/* Image 2: Positioned bottom-right only on lg screens */}
       {/* This should remain outside the main scrollable content */}
       {/* If it needs to scroll, move it inside the flex-grow div */} 
       <img 
@@ -844,11 +869,11 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
             onClick={handleButtonClick} // Use the dynamic handler
             // Corrected Disable Logic:
             // Disable if: loading models, OR (load succeeded BUT no model selected), OR actively testing.
-            disabled={ 
+            disabled={
                 !selectedProviderId() || // Disable if no provider selected
                 fetchStatus() === 'loading' || 
-                (fetchStatus() === 'success' && !selectedModelId()) || 
-                testStatus() === 'testing' 
+                (fetchStatus() === 'success' && !selectedModelId()) ||
+                testStatus() === 'testing'
             }
           >
             {/* Use the dynamic label */} 

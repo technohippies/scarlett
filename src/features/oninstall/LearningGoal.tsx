@@ -60,7 +60,7 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
 
   return (
     // Add relative positioning for the absolute back button
-    <div class="relative flex flex-col min-h-screen bg-background text-foreground">
+    <div class="relative flex flex-col h-full bg-background text-foreground">
       {/* Back Button (Top Left) */}
       <Button 
           variant="ghost"
@@ -80,8 +80,8 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
           class="w-32 h-32 md:w-48 md:h-48 object-contain mb-6"
         />
 
-        {/* Question - Limit width and center horizontally */}
-        <div class="text-center text-xl md:text-2xl space-y-4 w-full max-w-lg mb-6 mx-auto">
+        {/* Question - Limit width and center horizontally - Remove text-center */}
+        <div class="text-xl md:text-2xl space-y-4 w-full max-w-lg mb-6 mx-auto">
           <p>
             {props.questionPrefix}
             {' '}
@@ -91,6 +91,7 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
               {' '}{/* Add space before emoji */}
               {getLanguageParts(props.targetLanguageLabel).emoji}
             </span>
+            {' '}{/* Add space after emoji/span, before suffix */}
             {props.questionSuffix}
           </p> 
         </div>
