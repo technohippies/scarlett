@@ -698,87 +698,94 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                     <Switch>
                       {/* Case: Jan Provider */}
                       <Match when={selectedProvider()?.id === 'jan'}>
-                        {/* Local Models Dropdown */}
-                        <div>
-                          <Label for="local-model-select" class="font-medium text-muted-foreground mb-1 block">Local LLM</Label>
-                          <Select<ModelOption>
-                            options={fetchedModels()}
-                            optionValue="id"
-                            optionTextValue="name"
-                            onChange={(value: ModelOption | null) => {
-                              console.log("[SetupFunction] Jan Local onChange triggered. Selected object:", value);
-                              setSelectedModelId(value?.id);
-                              console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
-                            }}
-                            value={fetchedModels().find(m => m.id === selectedModelId()) || null}
-                            itemComponent={(props) => (
-                              <SelectItem item={props.item}>{props.item.rawValue.name}</SelectItem>
-                            )}
-                          >
-                            <SelectTrigger id="local-model-select">
-                              <SelectValue>
-                                {(() => {
-                                  const selectedName = fetchedModels().find(m => m.id === selectedModelId())?.name;
-                                  return selectedName
-                                    ? selectedName
-                                    : <span class="text-muted-foreground">Select Local Model</span>;
-                                })()}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent>
-                              <Show when={!fetchedModels() || fetchedModels().length === 0}>
-                                <div class="px-2 py-1.5 text-muted-foreground">No local models found.</div>
-                              </Show>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {/* Log length immediately before Show for remote section */}
-                        {( () => {
-                          console.log(`[JSX Render] remoteModels().length check: ${remoteModels().length}`);
-                          return null;
-                        })()}
-                        <Show when={remoteModels().length > 0}>
-                          {/* Divider text */}
-                          <div class="text-left text-muted-foreground my-2">or</div>
-
-                          {/* Remote/Downloadable Models Dropdown - Changed to Combobox */}
-                          <div class="w-full">
-                            <Label for="remote-model-combo" class="font-medium text-muted-foreground mb-1 block">Remote LLM</Label>
-                            <Combobox<ModelOption>
-                              id="remote-model-combo" // Add id for label association
-                              options={remoteModels().sort((a, b) => a.name.localeCompare(b.name))}
+                        {/* Add nested Motion.div for Jan-specific controls fade-in */}
+                        <Motion.div 
+                          initial={{ opacity: 0 }} 
+                          animate={{ opacity: 1 }} 
+                          transition={{ delay: 0.15, duration: 0.2 }} // Delay slightly after main animation
+                        >
+                          {/* Local Models Dropdown */}
+                          <div>
+                            <Label for="local-model-select" class="font-medium text-muted-foreground mb-1 block">Local LLM</Label>
+                            <Select<ModelOption>
+                              options={fetchedModels()}
                               optionValue="id"
                               optionTextValue="name"
-                              placeholder="Search"
-                              value={remoteModels().find(m => m.id === selectedModelId()) || null}
                               onChange={(value: ModelOption | null) => {
-                                console.log("[SetupFunction] Jan Remote Combobox onChange triggered. Selected object:", value);
+                                console.log("[SetupFunction] Jan Local onChange triggered. Selected object:", value);
                                 setSelectedModelId(value?.id);
                                 console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
                               }}
+                              value={fetchedModels().find(m => m.id === selectedModelId()) || null}
                               itemComponent={(props) => (
-                                <ComboboxItem item={props.item}>
-                                  <ComboboxItemLabel>{props.item.rawValue.name}</ComboboxItemLabel>
-                                  <ComboboxItemIndicator />
-                                </ComboboxItem>
+                                <SelectItem item={props.item}>{props.item.rawValue.name}</SelectItem>
                               )}
                             >
-                              <ComboboxControl aria-label="Remote Model">
-                                {/* Bind input value to selected model name or empty string */}
-                                <ComboboxInput
-                                  value={remoteModels().find(m => m.id === selectedModelId())?.name || ''}
-                                />
-                                <ComboboxTrigger />
-                              </ComboboxControl>
-                              <ComboboxContent class="max-h-72 overflow-y-auto">
-                                <Show when={!remoteModels() || remoteModels().length === 0}>
-                                  <div class="px-2 py-1.5 text-muted-foreground">No remote models found.</div>
+                              <SelectTrigger id="local-model-select">
+                                <SelectValue>
+                                  {(() => {
+                                    const selectedName = fetchedModels().find(m => m.id === selectedModelId())?.name;
+                                    return selectedName
+                                      ? selectedName
+                                      : <span class="text-muted-foreground">Select Local Model</span>;
+                                  })()}
+                                </SelectValue>
+                              </SelectTrigger>
+                              <SelectContent>
+                                <Show when={!fetchedModels() || fetchedModels().length === 0}>
+                                  <div class="px-2 py-1.5 text-muted-foreground">No local models found.</div>
                                 </Show>
-                              </ComboboxContent>
-                            </Combobox>
+                              </SelectContent>
+                            </Select>
                           </div>
-                        </Show>
+
+                          {/* Log length immediately before Show for remote section */}
+                          {( () => {
+                            console.log(`[JSX Render] remoteModels().length check: ${remoteModels().length}`);
+                            return null;
+                          })()}
+                          <Show when={remoteModels().length > 0}>
+                            {/* Divider text */}
+                            <div class="text-left text-muted-foreground my-2">or</div>
+
+                            {/* Remote/Downloadable Models Dropdown - Changed to Combobox */}
+                            <div class="w-full">
+                              <Label for="remote-model-combo" class="font-medium text-muted-foreground mb-1 block">Remote LLM</Label>
+                              <Combobox<ModelOption>
+                                id="remote-model-combo" // Add id for label association
+                                options={remoteModels().sort((a, b) => a.name.localeCompare(b.name))}
+                                optionValue="id"
+                                optionTextValue="name"
+                                placeholder="Search"
+                                value={remoteModels().find(m => m.id === selectedModelId()) || null}
+                                onChange={(value: ModelOption | null) => {
+                                  console.log("[SetupFunction] Jan Remote Combobox onChange triggered. Selected object:", value);
+                                  setSelectedModelId(value?.id);
+                                  console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
+                                }}
+                                itemComponent={(props) => (
+                                  <ComboboxItem item={props.item}>
+                                    <ComboboxItemLabel>{props.item.rawValue.name}</ComboboxItemLabel>
+                                    <ComboboxItemIndicator />
+                                  </ComboboxItem>
+                                )}
+                              >
+                                <ComboboxControl aria-label="Remote Model">
+                                  {/* Bind input value to selected model name or empty string */}
+                                  <ComboboxInput
+                                    value={remoteModels().find(m => m.id === selectedModelId())?.name || ''}
+                                  />
+                                  <ComboboxTrigger />
+                                </ComboboxControl>
+                                <ComboboxContent class="max-h-72 overflow-y-auto">
+                                  <Show when={!remoteModels() || remoteModels().length === 0}>
+                                    <div class="px-2 py-1.5 text-muted-foreground">No remote models found.</div>
+                                  </Show>
+                                </ComboboxContent>
+                              </Combobox>
+                            </div>
+                          </Show>
+                        </Motion.div> { /* End nested Motion.div */}
                       </Match>
 
                       {/* Case: Other Providers (Ollama, LMStudio, etc.) */}
