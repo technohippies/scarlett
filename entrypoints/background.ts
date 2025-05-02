@@ -3,6 +3,10 @@ import { browser } from 'wxt/browser';
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import type { DisplayTranslationPayload, GenerateTTSPayload, UpdateAlignmentPayload } from '../src/shared/messaging-types';
 import type { AlignmentData } from '../src/features/translator/TranslatorWidget';
+import { getDirectTranslationPrompt } from '../src/services/llm/prompts/translation';
+import { getMCQGenerationPrompt, type MCQExerciseData } from '../src/services/llm/prompts/exercises';
+import { ollamaChat } from '../src/services/llm/providers/ollama/chat'; // Assuming Ollama for now
+import type { LLMConfig, LLMChatResponse, ChatMessage } from '../src/services/llm/types'; // Use LLMChatResponse, add ChatMessage
 
 console.log('[Scarlett BG] Background script loaded.');
 
@@ -47,37 +51,102 @@ export default defineBackground(() => {
 
   // --- Context Menu Click Listener ---
   browser.contextMenus.onClicked.addListener(async (info, tab) => {
-    if (info.menuItemId === CONTEXT_MENU_ID) {
-      console.log(`[Scarlett BG] Context menu '${CONTEXT_MENU_ID}' clicked.`);
+    if (info.menuItemId === CONTEXT_MENU_ID && info.selectionText && tab?.id) {
+      const selectedText = info.selectionText;
+      const tabId = tab.id;
+      console.log(`[Scarlett BG] Context menu '${CONTEXT_MENU_ID}' clicked for text: "${selectedText.substring(0, 50)}..." on tab ${tabId}`);
 
-      if (tab && tab.id) {
-        // Prepare mock data for the widget
-        const mockPayload: DisplayTranslationPayload = {
-          originalText: info.selectionText || "Word", // Use selected text or default
-          translatedText: "你好 世界", // Mock translation
-          sourceLang: "en",
-          targetLang: "zh-CN",
-          pronunciation: "nǐ hǎo shì jiè", // Mock pronunciation
-          contextText: info.selectionText ? `Context around "${info.selectionText}"` : "Page context", // Mock context
-        };
+      // --- Hardcoded LLM Config (REMOVE LATER and use storage) ---
+      const mockLlmConfig: LLMConfig = {
+        provider: 'ollama',
+        model: 'gemma3:12b', // <<< Ensure this model is running in Ollama
+        baseUrl: 'http://localhost:11434', // Default Ollama URL
+        stream: false, // Ensure non-streaming response for simple await
+      };
+      const sourceLang = 'en'; // Assume English for now
+      const targetLang = 'zh-CN'; // Assume Chinese for now
+      // --- End Hardcoded Config ---
 
-        console.log('[Scarlett BG] Sending mock displayTranslationWidget message to tab:', tab.id, mockPayload);
+      let translatedText = '';
 
-        try {
-          // Now matches ProtocolMap definition
-          const response = await messaging.sendMessage('displayTranslationWidget', mockPayload, tab.id);
-          console.log('[Scarlett BG] Response from content script (displayTranslationWidget):', response);
-        } catch (error) {
-          console.error('[Scarlett BG] Error sending displayTranslationWidget message:', error);
-          if (browser.runtime.lastError) {
-            console.error('[Scarlett BG] browser.runtime.lastError:', browser.runtime.lastError);
-          }
-          // Potentially alert the user or log more details
-          // It might fail if the content script hasn't loaded yet on that page/tab
+      try {
+        // 1. Get Translation
+        console.log('[Scarlett BG] Requesting translation from LLM...');
+        const translationPrompt = getDirectTranslationPrompt(selectedText, sourceLang, targetLang);
+        // Wrap prompt in ChatMessage array
+        const translationMessages: ChatMessage[] = [{ role: 'user', content: translationPrompt }];
+        const translationResponse = await ollamaChat(translationMessages, mockLlmConfig) as LLMChatResponse;
+
+        translatedText = translationResponse?.choices?.[0]?.message?.content?.trim() || '';
+        if (!translatedText) {
+          throw new Error('LLM returned empty translation.');
         }
-      } else {
-        console.warn('[Scarlett BG] Context menu clicked but no valid tab found.');
+        console.log(`[Scarlett BG] Translation received: "${translatedText}"`);
+
+        // 2. Display Translation Widget via Content Script
+        const displayPayload: DisplayTranslationPayload = {
+          originalText: selectedText,
+          translatedText: translatedText,
+          sourceLang: sourceLang,
+          targetLang: targetLang,
+          // Add mock pronunciation or leave undefined
+        };
+        console.log('[Scarlett BG] Sending displayTranslationWidget to content script...');
+        await messaging.sendMessage('displayTranslationWidget', displayPayload, tabId);
+        console.log('[Scarlett BG] displayTranslationWidget message sent.');
+
+        // 3. Generate MCQ (async in background, don't block widget)
+        // Run this part without blocking the main flow
+        (async () => {
+            try {
+                console.log('[Scarlett BG] Requesting MCQ generation from LLM (background task)...');
+                const mcqPrompt = getMCQGenerationPrompt(selectedText, translatedText, sourceLang, targetLang);
+                // Wrap prompt in ChatMessage array
+                const mcqMessages: ChatMessage[] = [{ role: 'user', content: mcqPrompt }];
+                
+                // Await the promise directly since stream is false
+                const mcqResponse = await ollamaChat(mcqMessages, mockLlmConfig) as LLMChatResponse;
+                const mcqContent = mcqResponse?.choices?.[0]?.message?.content?.trim();
+
+                if (!mcqContent) {
+                  console.error('[Scarlett BG] LLM returned empty content for MCQ.');
+                  return;
+                }
+
+                console.log('[Scarlett BG] Raw MCQ Response:', mcqContent);
+                try {
+                    // Attempt to parse the JSON
+                    const mcqData: MCQExerciseData = JSON.parse(mcqContent);
+                    console.log('[Scarlett BG] Successfully parsed MCQ Data:', mcqData);
+                    // ---> TODO: Save mcqData to DB using createFlashcard <---
+                } catch (parseError) {
+                    console.error('[Scarlett BG] Failed to parse MCQ JSON response:', parseError);
+                    console.error('[Scarlett BG] Raw response was:', mcqContent);
+                }
+            } catch (mcqError: any) { // Add type annotation for error
+                 console.error('[Scarlett BG] Error requesting MCQ generation:', mcqError);
+            }
+        })(); // Immediately invoke the async function
+        
+        console.log('[Scarlett BG] MCQ generation initiated in background.');
+
+      } catch (error: any) { // Add type annotation for error
+        console.error('[Scarlett BG] Error during context menu flow:', error);
+        // Optionally send an error notification or message
+        try {
+           await browser.notifications.create({
+              type: 'basic',
+              // Use type assertion for icon path - ensure it's in public dir/web_accessible_resources
+              iconUrl: browser.runtime.getURL('icon/128.png' as any), 
+              title: 'Translation Failed',
+              message: `Error: ${error instanceof Error ? error.message : String(error)}`
+           });
+        } catch (notifyError) {
+           console.error('[Scarlett BG] Failed to send error notification:', notifyError);
+        }
       }
+    } else if (info.menuItemId === CONTEXT_MENU_ID) {
+        console.warn('[Scarlett BG] Context menu clicked but selectionText or tab ID missing.');
     }
   });
 

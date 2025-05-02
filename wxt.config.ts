@@ -1,7 +1,7 @@
 import { defineConfig } from "wxt";
 // import UnoCSS from 'unocss/vite'; // Remove manual UnoCSS import
 import path from "node:path";
-// import { copyPgliteAssets } from './modules/pglite-assets'; // Import the new Vite plugin function
+import { copyPgliteAssets } from './modules/pglite-assets'; // Import the new Vite plugin function
 
 // See https://wxt.dev/api/config.html
 export default defineConfig({
@@ -12,9 +12,7 @@ export default defineConfig({
   ],
   vite: () => ({ // Keep vite as a function
     plugins: [
-      // Remove manual UnoCSS plugin
-      // UnoCSS() as any, 
-      // copyPgliteAssets() // Add the custom Vite plugin here
+      copyPgliteAssets() // Add the custom Vite plugin here
     ],
     resolve: {
       alias: {
@@ -74,9 +72,7 @@ export default defineConfig({
         resources: [
             "postgres.wasm",
             "postgres.data",
-            "vector.tar.gz", // Ensure this is copied correctly by the plugin
-            "blockpage.html",
-            "content-scripts/content.css",
+            "vector.tar.gz",
             "assets/uno-bundle.css"
         ],
       }
