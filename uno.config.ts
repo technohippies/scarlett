@@ -21,7 +21,7 @@ export default defineConfig({
         foreground: "hsl(210 40% 98%)",
       },
       destructive: {
-        DEFAULT: "hsl(0 62.8% 30.6%)",
+        DEFAULT: "hsl(0 62.8% 55%)",
         foreground: "hsl(210 40% 98%)",
       },
       muted: {

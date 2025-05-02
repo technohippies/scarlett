@@ -20,6 +20,7 @@ import {
   ComboboxTrigger 
 } from '../../components/ui/combobox';
 import type { LLMConfig } from '../../services/llm/types';
+import { getOS } from '../../lib/os'; // Import OS detection
 
 // Reusable interfaces (consider moving to a types file)
 export interface ProviderOption {
@@ -76,6 +77,61 @@ const providerImplementations = {
   ollama: OllamaProvider,
   jan: JanProvider,
   lmstudio: LMStudioProvider, 
+};
+
+// Helper to check if error warrants showing CORS help
+const shouldShowCorsHelp = (error: Error | null): boolean => {
+  if (!error) return false;
+  const status = (error as any)?.status;
+  return (
+    error instanceof TypeError ||
+    error.message?.includes('fetch') ||
+    status === 403 // Explicitly include 403 Forbidden
+    // Add other statuses like 0 (network error) if needed
+  );
+};
+
+// Reusable component for Ollama CORS instructions
+const OllamaCorsInstructions: Component = () => {
+  const os = getOS();
+  console.log(`[OllamaCorsInstructions] Detected OS: ${os}`); // Log the detected OS
+  return (
+    <div class="w-full max-w-lg mt-4">
+      <Switch fallback={<p class="text-xs text-muted-foreground">Instructions not available.</p>}>
+        <Match when={os === 'linux'}>
+          <div class="space-y-2">
+            <p>1. Copy paste this into Terminal</p>
+            <CodeBlock language="bash" code="sudo systemctl edit ollama.service" />
+            <p>2. Copy this and paste under [Service]</p>
+            <CodeBlock language="plaintext" code={"Environment=\"OLLAMA_HOST=0.0.0.0\"\nEnvironment=\"OLLAMA_ORIGINS=*\""} />
+            <p>3. Save, exit, restart:</p>
+            <CodeBlock language="bash" code="sudo systemctl restart ollama" />
+          </div>
+        </Match>
+        <Match when={os === 'macos'}>
+           <div class="space-y-2">
+                <p>1. Copy paste this into Terminal</p>
+                <CodeBlock language="bash" code={'launchctl setenv OLLAMA_HOST "0.0.0.0"'} />
+                <CodeBlock language="bash" code={'launchctl setenv OLLAMA_ORIGINS "*"'} />
+                <p>2. Restart</p>
+                <p class="text-xs text-muted-foreground">(Note: This might reset after a reboot. For persistence, consider editing launchd plist or shell profile.)</p>
+            </div>
+        </Match>
+        <Match when={os === 'windows'}>
+           <div class="space-y-2">
+                <p>1. Open System Properties &gt; Environment Variables.</p>
+                <p>2. Under "System variables", click "New...".</p>
+                <p>3. Add Variable name: <code class="text-xs bg-neutral-700 px-1 py-0.5 rounded">OLLAMA_HOST</code>, Value: <code class="text-xs bg-neutral-700 px-1 py-0.5 rounded">0.0.0.0</code></p>
+                <p>4. Add Variable name: <code class="text-xs bg-neutral-700 px-1 py-0.5 rounded">OLLAMA_ORIGINS</code>, Value: <code class="text-xs bg-neutral-700 px-1 py-0.5 rounded">*</code></p>
+                <p>5. Click OK, then restart the Ollama application.</p>
+            </div>
+        </Match>
+        <Match when={os === 'unknown'}>
+            <p class="text-xs text-muted-foreground">Could not detect OS for specific Ollama instructions. Please consult Ollama documentation for enabling CORS.</p>
+        </Match>
+      </Switch>
+    </div>
+  );
 };
 
 export const SetupFunction: Component<SetupFunctionProps> = (props) => {
@@ -493,6 +549,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
           </div>
         </Show>
 
+        {/* --- Initial Fetch Error Handling --- */}
         {fetchStatus() === 'error' && (
             <div class="w-full max-w-lg space-y-4">
                 <Callout variant="error">
@@ -513,35 +570,27 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                     </CalloutContent>
                 </Callout>
 
-                {(fetchError() && (fetchError() instanceof TypeError || (fetchError() as any)?.message?.includes('fetch'))) && (
-                    <div class="w-full max-w-lg text-sm mt-4"> 
-                        <Switch fallback={<p class="text-xs text-muted-foreground">Instructions not available.</p>}>
-                            <Match when={selectedProvider()?.id === 'ollama'}>
-                                <div class="space-y-2">
-                                    <p>1. Open Terminal:</p>
-                                    <CodeBlock language="bash" code="sudo systemctl edit ollama.service" />
-                                    <p>2. Add these lines under [Service]:</p>
-                                    <CodeBlock language="plaintext" code={"[Service]\nEnvironment=\"OLLAMA_HOST=0.0.0.0\"\nEnvironment=\"OLLAMA_ORIGINS=*\""} />
-                                    <p>3. Save, exit, then run:</p>
-                                    <CodeBlock language="bash" code="sudo systemctl restart ollama" />
-                                </div>
-                            </Match>
-                            <Match when={selectedProvider()?.id === 'jan'}>
-                                <img 
-                                    src="/images/llm-providers/Jan-help.png" 
-                                    alt="Jan CORS setting location" 
-                                    class="rounded border border-neutral-700 max-w-sm mx-auto" 
-                                />
-                            </Match>
-                            <Match when={selectedProvider()?.id === 'lmstudio'}>
-                                <img 
-                                    src="/images/llm-providers/LMStudio-help.png" 
-                                    alt="LM Studio CORS setting location" 
-                                    class="rounded border border-neutral-700 max-w-sm mx-auto" 
-                                />
-                            </Match>
-                        </Switch>
-                    </div>
+                {/* Show CORS Help based on error and provider */} 
+                {shouldShowCorsHelp(fetchError()) && (
+                  <Switch fallback={<p class="text-muted-foreground">Ensure CORS is enabled on your LLM server.</p>}>
+                    <Match when={selectedProvider()?.id === 'ollama'}>
+                      <OllamaCorsInstructions />
+                    </Match>
+                    <Match when={selectedProvider()?.id === 'jan'}>
+                      <img 
+                        src="/images/llm-providers/Jan-help.png" 
+                        alt="Jan CORS setting location" 
+                        class="rounded border border-neutral-700 max-w-sm mx-auto" 
+                      />
+                    </Match>
+                    <Match when={selectedProvider()?.id === 'lmstudio'}>
+                      <img 
+                        src="/images/llm-providers/LMStudio-help.png" 
+                        alt="LM Studio CORS setting location" 
+                        class="rounded border border-neutral-700 max-w-sm mx-auto" 
+                      />
+                    </Match>
+                  </Switch>
                 )}
             </div>
         )}
@@ -558,7 +607,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                 <Match when={selectedProvider()?.id === 'jan'}>
                    {/* Local Models Dropdown */}
                    <div>
-                    <Label for="local-model-select" class="text-sm font-medium text-muted-foreground mb-1 block">Local LLM</Label>
+                    <Label for="local-model-select" class="font-medium text-muted-foreground mb-1 block">Local LLM</Label>
                     <Select<ModelOption>
                        options={fetchedModels()}
                        optionValue="id"
@@ -585,7 +634,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                       </SelectTrigger>
                       <SelectContent>
                          <Show when={!fetchedModels() || fetchedModels().length === 0}>
-                           <div class="px-2 py-1.5 text-sm text-muted-foreground">No local models found.</div>
+                           <div class="px-2 py-1.5 text-muted-foreground">No local models found.</div>
                          </Show>
                       </SelectContent>
                     </Select>
@@ -602,7 +651,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
 
                      {/* Remote/Downloadable Models Dropdown - Changed to Combobox */}
                      <div class="w-full">
-                      <Label for="remote-model-combo" class="text-sm font-medium text-muted-foreground mb-1 block">Remote LLM</Label>
+                      <Label for="remote-model-combo" class="font-medium text-muted-foreground mb-1 block">Remote LLM</Label>
                       <Combobox<ModelOption>
                         id="remote-model-combo" // Add id for label association
                         options={remoteModels().sort((a, b) => a.name.localeCompare(b.name))}
@@ -631,7 +680,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                         </ComboboxControl>
                         <ComboboxContent class="max-h-72 overflow-y-auto"> 
                            <Show when={!remoteModels() || remoteModels().length === 0}>
-                              <div class="px-2 py-1.5 text-sm text-muted-foreground">No remote models found.</div>
+                              <div class="px-2 py-1.5 text-muted-foreground">No remote models found.</div>
                            </Show>
                         </ComboboxContent>
                       </Combobox>
@@ -669,7 +718,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                     <SelectContent class="max-h-72 overflow-y-auto"> 
                       {/* Remove manual mapping */}
                       <Show when={!fetchedModels() || fetchedModels().length === 0}>
-                         <div class="px-2 py-1.5 text-sm text-muted-foreground">No models found for this provider.</div>
+                         <div class="px-2 py-1.5 text-muted-foreground">No models found for this provider.</div>
                       </Show>
                     </SelectContent>
                   </Select>
@@ -702,15 +751,51 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
                          </div>
                       </Show>
                       <Show when={testStatus() === 'error' && testError()}>
-                          <div class="text-destructive flex items-center">
-                              <WarningCircle class="mr-2 h-4 w-4" />
-                              <span>
-                                {testError()?.name === 'TimeoutError'
-                                  ? i18n().get('onboardingErrorTimeout', 'Connection failed: Timed out')
-                                  : `Connection test failed: ${testError()?.message || 'Unknown error'}`
-                                }
-                              </span>
-                          </div>
+                          {/* Test Error Message AND CORS Help */} 
+                          {testStatus() === 'error' && testError() && (
+                            <>
+                              {/* Original error message display - NOW MODIFIED for 403 */}
+                              <div class="text-destructive flex items-center">
+                                  <WarningCircle class="mr-2 h-4 w-4" />
+                                  <span>
+                                    {(() => {
+                                      const error = testError();
+                                      const status = (error as any)?.status;
+                                      if (status === 403) {
+                                        return 'Error: Connection failed (403)'; // Custom message for 403
+                                      } else if (error?.name === 'TimeoutError') {
+                                        return i18n().get('onboardingErrorTimeout', 'Connection failed: Timed out');
+                                      } else {
+                                        return `Connection test failed: ${error?.message || 'Unknown error'}`;
+                                      }
+                                    })()}
+                                  </span>
+                              </div>
+                              
+                              {/* Show CORS Help based on error and provider */} 
+                              {shouldShowCorsHelp(testError()) && (
+                                <Switch fallback={<p class="text-muted-foreground">Ensure CORS is enabled on your LLM server.</p>}>
+                                  <Match when={selectedProvider()?.id === 'ollama'}>
+                                    <OllamaCorsInstructions />
+                                  </Match>
+                                  <Match when={selectedProvider()?.id === 'jan'}>
+                                    <img 
+                                      src="/images/llm-providers/Jan-help.png" 
+                                      alt="Jan CORS setting location" 
+                                      class="rounded border border-neutral-700 max-w-sm mx-auto" 
+                                    />
+                                  </Match>
+                                  <Match when={selectedProvider()?.id === 'lmstudio'}>
+                                    <img 
+                                      src="/images/llm-providers/LMStudio-help.png" 
+                                      alt="LM Studio CORS setting location" 
+                                      class="rounded border border-neutral-700 max-w-sm mx-auto" 
+                                    />
+                                  </Match>
+                                </Switch>
+                              )}
+                            </>
+                          )}
                       </Show>
                       <Show when={testStatus() === 'success'}>
                           <div class="text-green-500 flex items-center">

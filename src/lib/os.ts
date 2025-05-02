@@ -1,3 +1,44 @@
+// Define an interface extending Navigator to include the experimental userAgentData
+interface NavigatorWithUAData extends Navigator {
+  userAgentData?: {
+    platform: string;
+    // Potentially add other userAgentData properties if needed in the future
+    // brands?: Array<{ brand: string; version: string }>;
+    // mobile?: boolean;
+  };
+}
+
+export type OperatingSystem = 'linux' | 'macos' | 'windows' | 'unknown';
+
+/**
+ * Detects the current operating system.
+ * Prefers `navigator.userAgentData` if available, otherwise falls back to `navigator.platform`.
+ * 
+ * @returns The detected operating system ('linux', 'macos', 'windows', 'unknown').
+ */
+export function getOS(): OperatingSystem {
+  const nav = navigator as NavigatorWithUAData;
+
+  // Modern approach: User-Agent Client Hints API
+  if (nav.userAgentData && nav.userAgentData.platform) {
+    const platform = nav.userAgentData.platform.toLowerCase();
+    if (platform.includes('win')) return 'windows';
+    if (platform.includes('mac')) return 'macos';
+    if (platform.includes('linux')) return 'linux'; 
+    // Add other specific checks if needed (e.g., 'android', 'ios')
+  }
+
+  // Fallback: navigator.platform (less reliable, might be deprecated)
+  if (nav.platform) { // Use the typed nav here too
+    const platform = nav.platform.toLowerCase();
+    if (platform.includes('win')) return 'windows';
+    if (platform.includes('mac')) return 'macos'; // Covers 'MacIntel', 'MacPPC', etc.
+    if (platform.includes('linux')) return 'linux';
+  }
+
+  return 'unknown'; // Fallback if detection fails
+}
+
 // Helper function to get OS
 export const getOperatingSystem = (): 'windows' | 'macos' | 'linux' | 'unknown' => {
   // Ensure running in a browser environment
