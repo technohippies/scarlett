@@ -14,7 +14,7 @@ export default {
     },
     size: {
       control: 'select',
-      options: ['default', 'sm', 'lg', 'icon'],
+      options: ['default', 'sm', 'lg', 'xl', 'xxl', 'icon'],
     },
     disabled: { control: 'boolean' },
     children: { control: 'text' },
@@ -101,6 +101,20 @@ export const Large = {
   args: {
     size: 'lg',
     children: 'Large Button',
+  },
+};
+
+export const XLarge = {
+  args: {
+    size: 'xl',
+    children: 'XLarge Button',
+  },
+};
+
+export const XXLarge = {
+  args: {
+    size: 'xxl',
+    children: 'XXLarge Button',
   },
 };
 
