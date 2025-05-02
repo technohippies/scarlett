@@ -102,7 +102,7 @@ const OllamaCorsInstructions: Component<OllamaCorsInstructionsProps> = (props) =
   const os = props._forceOS || getOS();
   console.log(`[OllamaCorsInstructions] Displaying instructions for OS: ${os}`);
   return (
-    <div class="w-full max-w-lg mt-4">
+    <div class="w-full max-w-lg">
       <Switch fallback={<p class="text-xs text-muted-foreground">Instructions not available.</p>}>
         <Match when={os === 'linux'}>
           {/* Linux instructions */}
@@ -165,6 +165,10 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
   const [fetchError, setFetchError] = createSignal<Error | null>(null);
   const [testStatus, setTestStatus] = createSignal<TestStatus>('idle');
   const [testError, setTestError] = createSignal<Error | null>(null);
+
+  // Signal to control spinner visibility with a delay
+  const [showSpinner, setShowSpinner] = createSignal(false);
+  let spinnerTimeoutId: number | undefined;
 
   // Ensure fetchModels implementation remains as previously defined
   const fetchModels = async (provider: ProviderOption | undefined): Promise<ModelOption[]> => {
@@ -323,10 +327,18 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
 
   // Effect to sync internal state with Storybook control OR resource state
   createEffect(() => {
+    // Clear any previous timeout when this effect re-runs or loading stops
+    if (spinnerTimeoutId) {
+      clearTimeout(spinnerTimeoutId);
+      spinnerTimeoutId = undefined;
+    }
+    // Ensure spinner is hidden by default unless loading state explicitly sets it
+    setShowSpinner(false);
+
     // --- Storybook Control Logic ---
     if (props._fetchStatus !== undefined) {
         // We are controlled by Storybook args
-        setFetchStatus(props._fetchStatus); 
+        setFetchStatus(props._fetchStatus);
         if (props._fetchStatus === 'success') {
             setFetchedModels(storybookMockModels); // Show mock models
             setFetchError(null);
@@ -334,10 +346,14 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
             setFetchedModels([]);
             // Allow simulating different errors via description or a dedicated arg later?
             // For now, default to TypeError simulation
-            setFetchError(storybookMockError); 
+            setFetchError(storybookMockError);
         } else { // idle or loading
             setFetchedModels([]);
             setFetchError(null);
+        }
+        // If storybook forces loading, show spinner immediately (no delay needed for testing)
+        if (props._fetchStatus === 'loading') {
+            setShowSpinner(true);
         }
         return; // Exit early, don't react to resource state
     }
@@ -348,17 +364,29 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         setFetchedModels([]); // Clear models while loading
         setRemoteModels([]); // Clear remote models too
         setFetchError(null);
+        // Start a timer to show the spinner after a short delay (e.g., 200ms)
+        spinnerTimeoutId = setTimeout(() => {
+          // Only show if still loading after the delay
+          if (modelData.loading) {
+            setShowSpinner(true);
+          }
+          spinnerTimeoutId = undefined; // Clear ID after timeout runs
+        }, 200); // 200ms delay
     } else if (modelData.error) {
         setFetchStatus('error');
-        setFetchedModels([]); 
+        setFetchedModels([]);
         setRemoteModels([]); // Clear remote models too
         // Store the actual error from the resource
-        setFetchError(modelData.error); 
+        setFetchError(modelData.error);
+        // Ensure spinner is hidden on error
+        setShowSpinner(false); 
     } else if (modelData.state === 'ready') {
         setFetchStatus('success');
         const models = modelData() || [];
         setFetchedModels(models);
         setFetchError(null);
+        // Ensure spinner is hidden on success
+        setShowSpinner(false); 
 
         // Auto-select reader model if found
         if (props.functionName === 'Reader' && models.length > 0) {
@@ -375,7 +403,16 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         setFetchedModels([]);
         setRemoteModels([]); // Clear remote models too
         setFetchError(null);
+        // Ensure spinner is hidden in idle state
+        setShowSpinner(false); 
     }
+
+    // Cleanup function for the effect
+    onCleanup(() => {
+        if (spinnerTimeoutId) {
+            clearTimeout(spinnerTimeoutId);
+        }
+    });
   });
 
   // Reset test status when provider or model changes
@@ -568,7 +605,8 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
         </div>
 
         {/* Restore spinner location: Show while loading, before errors/success */}
-        <Show when={fetchStatus() === 'loading'}>
+        {/* Spinner: Show only after a delay if still loading */}
+        <Show when={showSpinner()}>
             <div class="w-full max-w-lg mb-6 flex justify-center items-center space-x-2 text-muted-foreground">
             <Spinner class="h-6 w-6"/>
             </div>
@@ -627,7 +665,7 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
           <Show when={selectedProviderId()}>
             {/* Motion.div wraps the entire conditional content */}
             <Motion.div 
-              class="w-full max-w-lg mt-4" 
+              class="w-full max-w-lg" 
               initial={{ opacity: 0, y: -10 }} 
               animate={{ opacity: 1, y: 0 }}    
               transition={{ duration: 0.3, easing: "ease-out" }} 
