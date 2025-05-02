@@ -37,7 +37,7 @@ interface WordInfo {
 // --- Constants ---
 const WIDGET_BASE_CLASSES = "fixed bottom-0 left-4 z-[2147483647] font-sans bg-background text-foreground rounded-t-lg shadow-lg p-4 w-96 text-base flex flex-col gap-2";
 const TRANSITION_SETTINGS = { duration: 0.3, easing: "ease-out" } as const;
-const POPOVER_CONTENT_CLASS = "z-[2147483647] w-56 rounded-md border bg-popover p-1 text-popover-foreground shadow-md outline-none animate-in data-[expanded]:fade-in-0 data-[expanded]:zoom-in-95";
+const POPOVER_CONTENT_CLASS = "z-[2147483647] w-56 rounded-md bg-popover p-1 text-popover-foreground shadow-md outline-none animate-in data-[expanded]:fade-in-0 data-[expanded]:zoom-in-95";
 const POPOVER_ITEM_CLASS_BASE = "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 cursor-pointer";
 const POPOVER_ITEM_CLASS = `${POPOVER_ITEM_CLASS_BASE} justify-start`;
 // CSS for highlighting
@@ -382,7 +382,8 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                               disabled={allDisabled()}
                               data-popover-trigger="true"
                               onClick={(e) => e.stopPropagation()}
-                              class="inline-flex items-center justify-center whitespace-nowrap rounded-md border w-11 h-11 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border-input hover:bg-accent hover:text-accent-foreground cursor-pointer" 
+                              // <<< Apply split button classes >>>
+                              class="inline-flex items-center justify-center whitespace-nowrap rounded-l-none rounded-r-md border-l-0 w-11 h-11 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input hover:bg-accent hover:text-accent-foreground cursor-pointer"
                           >
                               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4"><path d="m6 9 6 6 6-6" /></svg>
                           </Popover.Trigger>
