@@ -386,11 +386,11 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                           >
                               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4"><path d="m6 9 6 6 6-6" /></svg>
                           </Popover.Trigger>
-                          <Popover.Portal mount={rootRef}>
+                          <Popover.Portal /* mount={rootRef} */ >
                               <Popover.Content 
                                 class={POPOVER_CONTENT_CLASS}
-                                // <<< Prevent default closing on outside interaction >>>
-                                onInteractOutside={(e) => e.preventDefault()}
+                                onPointerDownOutside={(e) => e.preventDefault()}
+                                onOpenAutoFocus={(e) => e.preventDefault()}
                               >
                                   <div class="flex flex-col">
                                       <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onClick={() => handlePlaySpeed(0.75)} disabled={allDisabled()}>
