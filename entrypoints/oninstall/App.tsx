@@ -1,4 +1,4 @@
-import { Component, createSignal, createResource } from 'solid-js';
+import { Component, createSignal, createResource, createEffect } from 'solid-js';
 import { Language, LanguageOptionStub } from '../../src/features/oninstall/Language';
 import { LearningGoal } from '../../src/features/oninstall/LearningGoal';
 import { userConfigurationStorage } from '../../src/services/storage';
@@ -6,9 +6,13 @@ import { userConfigurationStorage } from '../../src/services/storage';
 import type { Messages } from '../../src/types/i18n';
 // Import the new SetupFunction component and its types
 import { SetupFunction, ProviderOption } from '../../src/features/oninstall/SetupFunction';
+// Import the Redirects component
+import { Redirects } from '../../src/features/oninstall/Redirects';
 // No longer need specific LLMConfig type here, handled by SetupFunction's onComplete
 // Import the Progress component
 import { Progress } from '../../src/components/ui/progress';
+// Import necessary types from storage/types
+import type { RedirectSettings, RedirectServiceSetting, UserConfiguration } from '../../src/services/storage/types';
 
 // Define language lists here (could also be moved)
 const nativeLanguagesList: LanguageOptionStub[] = [
@@ -72,7 +76,7 @@ interface FunctionConfig {
 }
 
 // Simplified Step type for the new flow
-type Step = 'language' | 'learningGoal' | 'setupLLM' | 'setupEmbedding' | 'setupReader';
+type Step = 'language' | 'learningGoal' | 'setupLLM' | 'setupEmbedding' | 'setupReader' | 'redirects';
 
 // Helper function modified to return the best determined language code
 function getBestInitialLangCode(): string {
@@ -138,7 +142,7 @@ const fetchMessages = async (langCode: string): Promise<Messages> => {
 };
 
 // Keep steps definition for progress calculation
-const onboardingSteps: Step[] = ['language', 'learningGoal', 'setupLLM', 'setupEmbedding', 'setupReader'];
+const onboardingSteps: Step[] = ['language', 'learningGoal', 'setupLLM', 'setupEmbedding', 'setupReader', 'redirects'];
 
 const App: Component = () => {
   const [currentStep, setCurrentStep] = createSignal<Step>('language');
@@ -146,6 +150,29 @@ const App: Component = () => {
   const [uiLangCode, setUiLangCode] = createSignal<string>(getBestInitialLangCode());
   
   const [messagesData] = createResource(uiLangCode, fetchMessages);
+
+  // --- Redirects State Management START ---
+  // Resource to load initial redirect settings
+  const [initialRedirectSettingsData] = createResource(async () => {
+    console.log("[App] Fetching initial redirect settings from storage...");
+    // Revert to assuming UserConfiguration type is correct and includes redirectSettings
+    // Use type assertion on the awaited value
+    const config = (await userConfigurationStorage.getValue()) as UserConfiguration; 
+    return config?.redirectSettings || {}; 
+  }, { initialValue: {} });
+
+  // Signal to hold the current redirect settings state being modified
+  const [redirectSettings, setRedirectSettings] = createSignal<RedirectSettings>({});
+
+  // Effect to update the working signal when resource loads/reloads
+  createEffect(() => {
+    const loadedSettings = initialRedirectSettingsData();
+    if (!initialRedirectSettingsData.loading && loadedSettings) {
+        console.log("[App] Initial redirect settings loaded, updating signal:", loadedSettings);
+        setRedirectSettings(loadedSettings);
+    }
+  });
+  // --- Redirects State Management END ---
 
   // Calculate progress values
   const progressValue = () => onboardingSteps.indexOf(currentStep()) + 1; // 1-based index
@@ -242,32 +269,80 @@ const App: Component = () => {
     setCurrentStep('setupReader'); // Go to Reader setup
   };
 
-   // Handler for Reader setup step (FINAL STEP)
+   // Handler for Reader setup step
    const handleReaderComplete = async (config: FunctionConfig) => {
-    console.log('[App] Reader Setup Complete (Final Step). Saving config.', config);
+    console.log('[App] Reader Setup Complete. Saving config.', config);
 
-    const currentConfig = await userConfigurationStorage.getValue();
-    const updatedConfig = {
-      ...currentConfig,
-      readerProvider: config.providerId, // Assuming keys like readerProvider etc.
+    // Use type assertion here
+    const currentConfig = (await userConfigurationStorage.getValue() || {}) as UserConfiguration;
+    // Construct full config, providing defaults for potentially missing fields
+    const updatedConfig: UserConfiguration = {
+      nativeLanguage: currentConfig.nativeLanguage || null,
+      targetLanguage: currentConfig.targetLanguage || null,
+      learningGoal: currentConfig.learningGoal || null,
+      llmConfig: currentConfig.llmConfig || null,
+      embeddingConfig: currentConfig.embeddingConfig || null,
+      readerProvider: config.providerId, // Set reader info
       readerModel: config.modelId,
       readerBaseUrl: config.baseUrl,
-      onboardingComplete: true, // Mark complete HERE
+      redirectSettings: currentConfig.redirectSettings || null, // Preserve existing or null
+      onboardingComplete: false, // Ensure false before final step
     };
     await userConfigurationStorage.setValue(updatedConfig);
-    console.log('[App] Final config after saving Reader:', updatedConfig);
+    console.log('[App] Config after saving Reader:', updatedConfig);
+    
+    // Proceed to Redirects step
+    console.log('[App] Proceeding to Redirects setup step.');
+    setCurrentStep('redirects'); 
+  };
 
-    // Close tab logic
-    console.log('[App] Onboarding complete, attempting to close tab.');
-    browser.tabs.getCurrent().then(tab => {
-        if (tab?.id) {
-            console.log(`[App] Closing tab with ID: ${tab.id}`);
-            browser.tabs.remove(tab.id);
-        } else {
-            console.log('[App] Could not get current tab ID to close.');
-        }
-    }).catch(error => {
-        console.error('[App] Error getting current tab:', error);
+  // Handler for Redirects setup step (FINAL STEP)
+  const handleRedirectsComplete = async () => {
+      console.log('[App] Redirects Setup Complete (Final Step). Saving final settings.');
+      const finalRedirectSettings = redirectSettings();
+      
+      // Use type assertion here
+      const currentConfig = (await userConfigurationStorage.getValue() || {}) as UserConfiguration;
+      // Construct full config, providing defaults for potentially missing fields
+      const updatedConfig: UserConfiguration = {
+          nativeLanguage: currentConfig.nativeLanguage || null,
+          targetLanguage: currentConfig.targetLanguage || null,
+          learningGoal: currentConfig.learningGoal || null,
+          llmConfig: currentConfig.llmConfig || null,
+          embeddingConfig: currentConfig.embeddingConfig || null,
+          readerProvider: currentConfig.readerProvider || null, // Preserve existing reader info
+          readerModel: currentConfig.readerModel || null,
+          readerBaseUrl: currentConfig.readerBaseUrl || null,
+          redirectSettings: finalRedirectSettings, // Save the latest redirect settings
+          onboardingComplete: true, // Mark complete HERE
+      };
+      await userConfigurationStorage.setValue(updatedConfig);
+      console.log('[App] Final config after saving Redirects:', updatedConfig);
+
+      // Close tab logic
+      console.log('[App] Onboarding complete, attempting to close tab.');
+      try {
+          const tab = await browser.tabs.getCurrent();
+          if (tab?.id) {
+              console.log(`[App] Closing tab with ID: ${tab.id}`);
+              browser.tabs.remove(tab.id);
+          }
+      } catch (error) {
+          console.error('[App] Error closing current tab:', error);
+      }
+  };
+
+  // Handler for changes within the Redirects component
+  const handleRedirectSettingChange = (serviceName: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => {
+    setRedirectSettings(prev => {
+      const currentServiceSetting = prev[serviceName] || { isEnabled: true, chosenInstance: '' }; // Default to enabled based on component logic
+      return {
+        ...prev,
+        [serviceName]: {
+          ...currentServiceSetting,
+          isEnabled: update.isEnabled,
+        },
+      };
     });
   };
 
@@ -286,7 +361,10 @@ const App: Component = () => {
         setCurrentStep('setupLLM'); // Go back to LLM setup
         break;
       case 'setupReader':
-        setCurrentStep('setupEmbedding'); // Go back to Embedding setup
+        setCurrentStep('setupEmbedding');
+        break;
+      case 'redirects': // Added case for redirects
+        setCurrentStep('setupReader');
         break;
       // Add cases for other steps if needed
       default:
@@ -344,7 +422,7 @@ const App: Component = () => {
                     onBack={handleBack}
                     title="Go Faster with ReaderLM"
                     description="ReaderLM 1.5B converts webpages to Markdown text."
-                    continueLabel={currentMessages.get('onboardingFinishSetup', 'Finish Setup')}
+                    continueLabel={currentMessages.get('onboardingNext', 'Next')} 
                     messages={messagesData() || {}}
                    />;
        case 'learningGoal':
@@ -357,6 +435,17 @@ const App: Component = () => {
                     fallbackLabel={currentMessages.get('onboardingTargetLanguageFallback', 'your selected language')}
                     continueLabel={currentMessages.get('onboardingContinue', 'Continue')}
                     messages={messagesData() || {}} 
+                />;
+       case 'redirects': // Added redirects case
+        return <Redirects 
+                    allRedirectSettings={redirectSettings} // Pass signal accessor
+                    isLoading={() => initialRedirectSettingsData.loading} 
+                    onSettingChange={handleRedirectSettingChange}
+                    onComplete={handleRedirectsComplete}
+                    onBack={handleBack}
+                    title={i18n().get('onboardingRedirectsTitle', 'Bypass Censorship & Paywalls')}
+                    description={i18n().get('onboardingRedirectsDescription', 'Use privacy-preserving frontends with many mirrors.')}
+                    continueLabel={i18n().get('onboardingFinishSetup', 'Finish Setup')}
                 />;
       default:
         console.error('Unknown onboarding step:', currentStep());
