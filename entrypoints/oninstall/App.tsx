@@ -336,7 +336,7 @@ const App: Component = () => {
                     onComplete={handleReaderComplete}
                     onBack={handleBack}
                     title="Go Faster with Reader LM"
-                    description="Converts HTML to Markdown fast! 1.5B model, 1.1 GB."
+                    description="ReaderLM converts webpages to text  fast so I can better assist you! A 1.5B model, 1.1 GB."
                     continueLabel={currentMessages.get('onboardingFinishSetup', 'Finish Setup')}
                     messages={messagesData() || {}}
                    />;

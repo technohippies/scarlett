@@ -100,12 +100,38 @@ export const ReaderSetupSuccess = {
     functionName: 'Reader',
     providerOptions: mockReaderProviders,
     title: "Go Faster with Reader LM",
-    description: "Converts HTML to Markdown fast! 1.5B model, 1.1 GB.",
+    description: "ReaderLM converts webpages to text  fast so I can better assist you! A 1.5B model, 1.1 GB.",
     initialProviderId: 'ollama',
     // initialModelId: 'mock-model-1', // Can pre-select a mock model ID
     _fetchStatus: 'success'
   },
     render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
+};
+
+// --- New Story for Embedding Function (Idle State) ---
+export const EmbeddingSetupIdle = {
+  name: "Embedding Setup (Idle)",
+  args: {
+    ...LLMSetupIdle.args, // Inherit base idle args
+    functionName: 'Embedding',
+    providerOptions: mockEmbeddingProviders,
+    title: 'Configure Embedding Model',
+    description: 'Select a provider and model to generate text embeddings.',
+  },
+  render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
+};
+
+// --- New Story for Reader Function (Idle State) ---
+export const ReaderSetupIdle = {
+  name: "Reader Setup (Idle)",
+  args: {
+    ...LLMSetupIdle.args, // Inherit base idle args
+    functionName: 'Reader',
+    providerOptions: mockReaderProviders,
+    title: 'Configure Reader Model',
+    description: 'Select the Ollama model used for reading web pages (or skip).',
+  },
+  render: (args: any) => (<div class="h-screen w-full"><SetupFunction {...args} /></div>),
 };
 
 // Keep as a local constant for arg inheritance, but don't export as a story
