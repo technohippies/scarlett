@@ -3,6 +3,7 @@ import { CopySimple, Check } from 'phosphor-solid';
 import hljs from 'highlight.js/lib/core';
 import bash from 'highlight.js/lib/languages/bash';
 import 'highlight.js/styles/atom-one-dark.css';
+import { Label } from './label';
 
 // Mock cn utility for Tailwind class merging
 const cn = (...classes: (string | undefined | false)[]) => 
@@ -40,6 +41,7 @@ interface CodeBlockProps {
   code: string;
   language?: string;
   class?: string;
+  label?: string;
 }
 
 export const CodeBlock: Component<CodeBlockProps> = (props) => {
@@ -78,51 +80,55 @@ export const CodeBlock: Component<CodeBlockProps> = (props) => {
   const isSingleLine = () => !props.code.includes('\n');
 
   return (
-    <div
-      class={cn(
-        'flex font-mono text-md bg-neutral-800 rounded-lg',
-        isSingleLine()
-          ? 'items-center px-4 py-2'
-          : 'items-start p-4 justify-between',
-        props.class
+    <div class={cn('space-y-1.5', props.class)}>
+      {props.label && (
+        <Label class="font-medium text-muted-foreground">{props.label}</Label>
       )}
-    >
-      <pre
+      <div
         class={cn(
-          'overflow-x-auto whitespace-pre-wrap break-words text-neutral-100 bg-transparent text-left',
-          'm-0 p-0 flex-grow'
+          'flex font-mono text-md bg-neutral-800 rounded-lg',
+          isSingleLine()
+            ? 'items-center px-4 py-2'
+            : 'items-start p-4 justify-between'
         )}
       >
-        <code
-          ref={codeElement}
-          style="background: transparent !important; color: inherit; padding: 0 !important;"
+        <pre
           class={cn(
-            props.language ? `language-${props.language}` : 'language-bash'
+            'overflow-x-auto whitespace-pre-wrap break-words text-neutral-100 bg-transparent text-left',
+            'm-0 p-0 flex-grow'
           )}
         >
-          {props.code}
-        </code>
-      </pre>
-      <Button
-        variant="ghost"
-        size="icon"
-        class={cn(
-          'ml-2 flex-shrink-0',
-          'text-neutral-400 hover:bg-neutral-700/50 hover:text-neutral-100',
-          'rounded-md',
-          'h-8 w-8',
-          'inline-flex items-center justify-center',
-          'cursor-pointer'
-        )}
-        onClick={copyToClipboard}
-        aria-label="Copy code to clipboard"
-      >
-        {isCopied() ? (
-          <Check class="h-5 w-5 text-emerald-400" />
-        ) : (
-          <CopySimple class="h-5 w-5" />
-        )}
-      </Button>
+          <code
+            ref={codeElement}
+            style="background: transparent !important; color: inherit; padding: 0 !important;"
+            class={cn(
+              props.language ? `language-${props.language}` : 'language-bash'
+            )}
+          >
+            {props.code}
+          </code>
+        </pre>
+        <Button
+          variant="ghost"
+          size="icon"
+          class={cn(
+            'ml-2 flex-shrink-0',
+            'text-neutral-400 hover:bg-neutral-700/50 hover:text-neutral-100',
+            'rounded-md',
+            'h-8 w-8',
+            'inline-flex items-center justify-center',
+            'cursor-pointer'
+          )}
+          onClick={copyToClipboard}
+          aria-label="Copy code to clipboard"
+        >
+          {isCopied() ? (
+            <Check class="h-5 w-5 text-emerald-400" />
+          ) : (
+            <CopySimple class="h-5 w-5" />
+          )}
+        </Button>
+      </div>
     </div>
   );
 };

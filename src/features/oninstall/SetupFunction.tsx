@@ -626,8 +626,22 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
           {/* Show Download instructions specifically for Ollama Reader - Simplified */}
           <Show when={props.functionName === 'Reader' && selectedProvider()?.id === 'ollama'}>
             <div class="w-full max-w-lg mt-4 mb-4 space-y-2">
-                <p>Download</p> 
-                <CodeBlock language="bash" code="ollama run milkey/reader-lm-v2" />
+                <CodeBlock 
+                  language="bash" 
+                  code="ollama run milkey/reader-lm-v2" 
+                  label="Download" 
+                />
+            </div>
+          </Show>
+
+          {/* Show Download instructions specifically for Ollama Embedding */}
+          <Show when={props.functionName === 'Embedding' && selectedProvider()?.id === 'ollama'}>
+            <div class="w-full max-w-lg mt-4 mb-4 space-y-2">
+              <CodeBlock 
+                language="bash" 
+                code="ollama pull bge-m3" 
+                label="Download" 
+              />
             </div>
           </Show>
 

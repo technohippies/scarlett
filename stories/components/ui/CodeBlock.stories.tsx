@@ -20,6 +20,7 @@ export default {
     code: { control: 'text', description: 'The code string to display' },
     language: { control: 'text', description: 'Highlight.js language (e.g., bash, javascript)' },
     class: { control: 'text', description: 'Additional CSS classes for the container' },
+    label: { control: 'text', description: 'Optional label text displayed above the code block' },
   },
 };
 
@@ -44,5 +45,14 @@ export const JavaScript = {
     args: {
         code: `console.log('Hello, World!');\nconst x = 10;`,
         language: 'javascript',
+    },
+};
+
+// Example with Label
+export const WithLabel = {
+    args: {
+        code: 'ollama run mistral',
+        label: 'Run this command:',
+        language: 'bash',
     },
 }; 
