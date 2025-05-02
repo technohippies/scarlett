@@ -8,7 +8,7 @@ import { Dynamic } from 'solid-js/web';
 import 'virtual:uno.css';
 
 // --- Alignment Data Structure (Example based on ElevenLabs) ---
-interface AlignmentData {
+export interface AlignmentData {
     characters: string[];
     character_start_times_seconds: number[];
     character_end_times_seconds: number[];
@@ -66,6 +66,13 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   const [currentHighlightIndex, setCurrentHighlightIndex] = createSignal<number | null>(null);
   const [isPopoverOpen, setIsPopoverOpen] = createSignal(false);
   let highlightInterval: number | null = null;
+  let rootRef: HTMLDivElement | undefined;
+
+  // <<< Add logging handler for popover state changes >>>
+  const handlePopoverOpenChange = (isOpen: boolean) => {
+      console.log(`[Widget Popover] onOpenChange called with: ${isOpen}`);
+      setIsPopoverOpen(isOpen);
+  };
 
   // --- Effects ---
   // Effect to process alignment data when it arrives (REMOVED auto-play from here)
@@ -193,7 +200,19 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   };
 
   const handlePlayAgain = () => {
-      handlePlaySpeed(1.0);
+      // If already playing, stop and restart after a delay
+      if (isPlaying()) {
+          if (highlightInterval) clearInterval(highlightInterval);
+          setIsPlaying(false);
+          setCurrentHighlightIndex(null);
+          setTimeout(() => startPlaybackSimulation(1.0), 50); 
+          return;
+      }
+      // If not playing but audio is ready, start playback
+      if (isAudioReady()) {
+          startPlaybackSimulation(1.0);
+      }
+      // --- REMOVED: No longer calls handlePlaySpeed, which closed the popover ---
   };
 
   const handlePlaySpeed = (speed: number) => {
@@ -281,6 +300,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
       animate={{ opacity: 1, y: 0 }}   // Animate to opaque and original position
       exit={{ opacity: 0, y: 20 }}     // Animate out similarly
       transition={TRANSITION_SETTINGS}
+      ref={rootRef}
       class={WIDGET_BASE_CLASSES}
       // Add role for accessibility if appropriate, e.g., role="dialog" aria-modal="true"
       // Consider adding aria-labelledby referencing the main translated word
@@ -348,22 +368,30 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                           {isPlaying() ? "Playing..." : "Play Again"}
                       </Button>
                       
-                      {/* Popover Trigger Button (Controlled) */}
+                      {/* Popover Trigger Button (Standalone for testing) */}
                       <Popover 
                         placement="top" 
                         gutter={4}
+                        // <<< Restore controlled state props >>>
                         open={isPopoverOpen()}
-                        onOpenChange={setIsPopoverOpen}
+                        // <<< Use logging handler >>>
+                        onOpenChange={handlePopoverOpenChange}
                       >
                           <Popover.Trigger
                               aria-label="More options"
                               disabled={allDisabled()}
-                              class="inline-flex items-center justify-center whitespace-nowrap rounded-l-none rounded-r-md border-l-0 w-11 h-11 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                              data-popover-trigger="true"
+                              onClick={(e) => e.stopPropagation()}
+                              class="inline-flex items-center justify-center whitespace-nowrap rounded-md border w-11 h-11 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border-input hover:bg-accent hover:text-accent-foreground cursor-pointer" 
                           >
                               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4"><path d="m6 9 6 6 6-6" /></svg>
                           </Popover.Trigger>
-                          <Popover.Portal>
-                              <Popover.Content class={POPOVER_CONTENT_CLASS}>
+                          <Popover.Portal mount={rootRef}>
+                              <Popover.Content 
+                                class={POPOVER_CONTENT_CLASS}
+                                // <<< Prevent default closing on outside interaction >>>
+                                onInteractOutside={(e) => e.preventDefault()}
+                              >
                                   <div class="flex flex-col">
                                       <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onClick={() => handlePlaySpeed(0.75)} disabled={allDisabled()}>
                                           <Play weight="regular" class="mr-2 size-4" /> Play at 0.75x
