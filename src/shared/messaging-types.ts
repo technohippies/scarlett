@@ -60,8 +60,37 @@ export interface GetDistractorsResponse {
 export interface SubmitReviewRequest {
   learningId: number;
   grade: Grade;
+  incorrectChoiceText?: string | null;
 }
 export interface SubmitReviewResponse {
   success: boolean;
   error?: string;
-} 
+}
+
+// Cache Distractors
+export interface CacheDistractorsRequest {
+  translationId: number;
+  distractors: string[];
+}
+export interface CacheDistractorsResponse {
+  success: boolean;
+  error?: string;
+}
+
+// Generate LLM Distractors (New)
+export interface GenerateLLMDistractorsRequest {
+  sourceText: string;
+  targetText: string;
+  targetLang: string;
+  count: number; // How many distractors to aim for
+  // Optional context can be added if needed by the prompt
+  // context?: string;
+}
+export interface GenerateLLMDistractorsResponse {
+  distractors: string[]; // Array of generated distractors
+  error?: string;
+}
+
+// --- Content Script -> Background Communication --- 
+// (Example - if content script needed to send data)
+// ...

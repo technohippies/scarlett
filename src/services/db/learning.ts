@@ -214,6 +214,31 @@ export async function addOrUpdateLexemeAndTranslation(
     }
 }
 
+/**
+ * Updates the cached distractors for a specific translation.
+ */
+export async function updateCachedDistractors(
+    db: PGlite,
+    translationId: number,
+    distractors: string[]
+): Promise<void> {
+    console.log(`[DB Learning] Caching ${distractors.length} distractors for translation ID: ${translationId}`);
+    try {
+        // PGlite's query doesn't expose rowCount directly for UPDATE
+        // If translationId doesn't exist, the query simply won't update anything, which is acceptable.
+        await db.query(
+            `UPDATE lexeme_translations
+             SET cached_distractors = $1
+             WHERE translation_id = $2;`,
+            [distractors, translationId]
+        );
+        // Removed rowCount check
+    } catch (error) {
+        console.error(`[DB Learning] Error updating cached distractors for translation ID ${translationId}:`, error);
+        throw error; // Re-throw
+    }
+}
+
 // TODO: Add functions later for:
 // - Getting due learning items
 // - Getting potential distractors for a target lexeme

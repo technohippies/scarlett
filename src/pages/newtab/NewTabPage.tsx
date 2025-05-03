@@ -1,25 +1,33 @@
-import { Component, createSignal, onMount, createMemo } from 'solid-js'; // Added createMemo
+import { Component, createSignal, createResource, createMemo, Show } from 'solid-js'; // Added createResource, Show
 import { defineExtensionMessaging } from "@webext-core/messaging";
 import type {
     GetDueItemsRequest,
     GetDueItemsResponse,
     SubmitReviewRequest,
-    SubmitReviewResponse
-} from '../../shared/messaging-types'; // Adjusted path
-import type { DueLearningItem } from '../../services/srs/types'; // Adjusted path
-import { Grade, Rating } from 'ts-fsrs';
-
-// Import MCQ component and types
-import { MCQ } from '../../features/exercises/MCQ'; // Corrected import (named)
-import type { MCQProps, Option } from '../../features/exercises/MCQ'; // Corrected import (types)
+    SubmitReviewResponse,
+    CacheDistractorsRequest,     // Added
+    CacheDistractorsResponse,    // Added
+    GenerateLLMDistractorsRequest, // Added
+    GenerateLLMDistractorsResponse,// Added
+    GetDistractorsRequest,       // Added (for DB fallback)
+    GetDistractorsResponse       // Added (for DB fallback)
+} from '../../shared/messaging-types';
+import type { DueLearningItem } from '../../services/srs/types';
+import { Rating } from 'ts-fsrs';
+import { MCQ } from '../../features/exercises/MCQ';
+import type { MCQProps, Option } from '../../features/exercises/MCQ';
+import nlp from 'compromise'; // Added compromise
 
 // Define the protocol map for messages SENT TO the background
 interface BackgroundProtocol {
     getDueItems(data: GetDueItemsRequest): Promise<GetDueItemsResponse>;
     submitReviewResult(data: SubmitReviewRequest): Promise<SubmitReviewResponse>;
+    cacheDistractors(data: CacheDistractorsRequest): Promise<CacheDistractorsResponse>; // Added
+    generateLLMDistractors(data: GenerateLLMDistractorsRequest): Promise<GenerateLLMDistractorsResponse>; // Added
+    getDistractorsForItem(data: GetDistractorsRequest): Promise<GetDistractorsResponse>; // Added (for DB fallback)
 }
 
-// Initialize messaging client for this page
+// Initialize messaging client
 const messaging = defineExtensionMessaging<BackgroundProtocol>();
 
 // Helper function to shuffle an array (Fisher-Yates)
@@ -34,65 +42,176 @@ function shuffleArray<T>(array: T[]): T[] {
   return array;
 }
 
+// --- Main Component ---
 const NewTabPage: Component = () => {
-  // Use currentItem signal instead of dueItems array
   const [currentItem, setCurrentItem] = createSignal<DueLearningItem | null>(null);
-  const [isLoading, setIsLoading] = createSignal(true);
-  const [error, setError] = createSignal<string | null>(null);
-  const [showMcq, setShowMcq] = createSignal(false); // Control MCQ visibility
+  const [itemError, setItemError] = createSignal<string | null>(null);
 
-  const fetchDueItems = async () => {
-    console.log('[NewTab] Fetching next due item...');
-    setIsLoading(true);
-    setError(null);
-    setCurrentItem(null); // Clear current item
-    setShowMcq(false); // Hide MCQ while loading
+  // --- Fetching Due Item Resource ---
+  const [dueItemResource, { refetch: fetchDueItems }] = createResource(async () => {
+    console.log('[NewTab] Fetching next due item resource...');
+    setItemError(null);
+    setCurrentItem(null); // Clear current item while fetching
     try {
-        const response = await messaging.sendMessage('getDueItems', { limit: 1 });
-        console.log('[NewTab] Received due item(s):', response.dueItems);
-        if (response.dueItems && response.dueItems.length > 0) {
-            setCurrentItem(response.dueItems[0]);
-            // setShowMcq(true); // Let the memo handle this based on currentItem
-        } else {
-             setCurrentItem(null); // No items due
-        }
+      const response = await messaging.sendMessage('getDueItems', { limit: 1 });
+      console.log('[NewTab] Received due item(s):', response.dueItems);
+      if (response.dueItems && response.dueItems.length > 0) {
+        setCurrentItem(response.dueItems[0]); // Set the raw item
+        return response.dueItems[0]; // Return for the resource
+      } else {
+        setCurrentItem(null);
+        return null; // No items due
+      }
     } catch (err: any) {
-        console.error('[NewTab] Error fetching due items:', err);
-        setError(err.message || 'Failed to fetch due items.');
-    } finally {
-        setIsLoading(false);
+      console.error('[NewTab] Error fetching due items:', err);
+      setItemError(err.message || 'Failed to fetch due items.');
+      return null;
     }
-  };
+  });
 
-  onMount(fetchDueItems);
+  // --- Generating Distractors (Async Logic Moved Here) ---
+  const [distractorResource] = createResource(currentItem, async (item) => {
+    if (!item) return null; // No item, no distractors needed
 
-  // Memo to compute MCQ props only when currentItem changes
+    console.log('[NewTab Distractors] Generating/fetching distractors for:', item.sourceText);
+
+    const requiredDistractors = 3;
+    let finalDistractors: string[] = [];
+    const correctTargetText = item.targetText;
+
+    // 1. Check Cache
+    if (item.cachedDistractors && item.cachedDistractors.length >= requiredDistractors) {
+      console.log('[NewTab Distractors] Using cached distractors.', item.cachedDistractors);
+      // Select based on last incorrect choice if applicable
+      const pool = [...item.cachedDistractors];
+      if (item.lastIncorrectChoice && pool.includes(item.lastIncorrectChoice)) {
+        finalDistractors.push(item.lastIncorrectChoice);
+      } 
+      // Fill remaining slots randomly from pool, avoiding duplicates and the correct answer
+      const remainingPool = pool.filter(d => d !== item.lastIncorrectChoice && d !== correctTargetText);
+      while (finalDistractors.length < requiredDistractors && remainingPool.length > 0) {
+           const randomIndex = Math.floor(Math.random() * remainingPool.length);
+           finalDistractors.push(remainingPool.splice(randomIndex, 1)[0]);
+      }
+      // If still not enough (e.g., cache had duplicates), handle later
+
+    } else {
+      console.log('[NewTab Distractors] No valid cached distractors found. Generating...');
+      // 2. Attempt LLM Generation
+      try {
+        const llmResponse = await messaging.sendMessage('generateLLMDistractors', {
+          sourceText: item.sourceText,
+          targetText: correctTargetText,
+          targetLang: item.targetLang, // Use the actual target language from the item
+          count: requiredDistractors
+        });
+
+        if (llmResponse.distractors && llmResponse.distractors.length > 0) {
+          console.log('[NewTab Distractors] Received distractors from LLM:', llmResponse.distractors);
+          finalDistractors = [...new Set(llmResponse.distractors)] // Ensure unique
+                              .filter(d => d !== correctTargetText); // Filter out correct answer just in case
+          
+          // Cache the LLM results if successful and we got enough
+          if (finalDistractors.length >= requiredDistractors) {
+             console.log('[NewTab Distractors] Caching LLM distractors...');
+             // Fire-and-forget caching, no need to await
+             messaging.sendMessage('cacheDistractors', { 
+                 translationId: item.translationId, 
+                 distractors: finalDistractors.slice(0, requiredDistractors) // Cache only needed amount
+             }).catch(cacheErr => console.error('[NewTab] Error caching distractors:', cacheErr));
+          }
+        }
+        if (llmResponse.error) {
+          console.warn('[NewTab Distractors] LLM generation failed:', llmResponse.error);
+        }
+      } catch (llmError) {
+        console.error('[NewTab Distractors] Error calling generateLLMDistractors:', llmError);
+      }
+
+      // 3. Fallback 1: Compromise.js (if still needed)
+      if (finalDistractors.length < requiredDistractors) {
+          console.log('[NewTab Distractors] Using Compromise.js fallback...');
+          try {
+              const doc = nlp(correctTargetText);
+              // Get nouns/verbs/adjectives related to the target word
+              const relatedWords = doc.terms().out('terms'); 
+              let compromiseDistractors = relatedWords
+                  .map((t: any) => t.text.toLowerCase()) // Assuming terms have text property
+                  .filter((w: string) => w !== correctTargetText.toLowerCase() && !finalDistractors.includes(w)); 
+              
+              // Get synonyms more directly if possible (Compromise structure might vary)
+              // This is a basic example, might need refinement based on library version/structure
+              // let synonyms = doc.nouns().out('terms'); // Or verbs(), adjectives() etc.
+
+              compromiseDistractors = [...new Set(compromiseDistractors)]; // Unique
+
+              while(finalDistractors.length < requiredDistractors && compromiseDistractors.length > 0) {
+                   finalDistractors.push(compromiseDistractors.shift()!); // Add unique related words
+              }
+              console.log('[NewTab Distractors] Added from Compromise:', finalDistractors);
+          } catch(compromiseError) {
+              console.error('[NewTab Distractors] Error using Compromise:', compromiseError);
+          }
+      }
+
+      // 4. Fallback 2: DB Learned Words (if still needed)
+      if (finalDistractors.length < requiredDistractors) {
+          console.log('[NewTab Distractors] Using DB fallback...');
+          try {
+              const needed = requiredDistractors - finalDistractors.length;
+              const dbResponse = await messaging.sendMessage('getDistractorsForItem', {
+                  correctTargetLexemeId: item.targetLexemeId, // Use the ID of the correct English word
+                  targetLanguage: 'en', // Target is English
+                  count: needed
+              });
+              const dbDistractors = dbResponse.distractors.filter(d => !finalDistractors.includes(d) && d !== correctTargetText);
+              finalDistractors.push(...dbDistractors);
+              console.log('[NewTab Distractors] Added from DB:', finalDistractors);
+          } catch (dbError) {
+               console.error('[NewTab Distractors] Error fetching DB distractors:', dbError);
+          }
+      }
+    }
+
+    // 5. Final Selection & Placeholder Fill (if needed)
+    let selectedDistractors: string[] = [];
+    const pool = [...new Set(finalDistractors)].filter(d => d !== correctTargetText);
+    
+    // Prioritize last incorrect choice
+    if (item.lastIncorrectChoice && pool.includes(item.lastIncorrectChoice)) {
+        selectedDistractors.push(item.lastIncorrectChoice);
+        pool.splice(pool.indexOf(item.lastIncorrectChoice), 1); // Remove from pool
+    }
+    // Fill remaining randomly from pool
+    while (selectedDistractors.length < requiredDistractors && pool.length > 0) {
+         const randomIndex = Math.floor(Math.random() * pool.length);
+         selectedDistractors.push(pool.splice(randomIndex, 1)[0]);
+    }
+     // Add placeholders if absolutely necessary
+    while (selectedDistractors.length < requiredDistractors) {
+         selectedDistractors.push(`Placeholder ${String.fromCharCode(65 + selectedDistractors.length)}`);
+    }
+
+    console.log('[NewTab Distractors] Final selected distractors:', selectedDistractors);
+    return selectedDistractors;
+  });
+
+  // --- Memo for Final MCQ Props ---
   const mcqProps = createMemo<MCQProps | null>(() => {
     const item = currentItem();
-    // Only proceed if we have an item and are not loading/in error
-    if (!item || isLoading() || error()) {
-        setShowMcq(false);
-        return null;
+    const distractors = distractorResource();
+
+    // Need item and successfully generated distractors
+    if (!item || distractorResource.loading || !distractors || distractors.length < 3) {
+      return null;
     }
 
     const correctOptionText = item.targetText;
-    let distractors = item.llmDistractors && Array.isArray(item.llmDistractors) && item.llmDistractors.length >= 3
-        ? item.llmDistractors.slice(0, 3) // Use first 3 LLM distractors
-        : [`${correctOptionText} B`, `${correctOptionText} C`, `${correctOptionText} D`]; // Basic placeholders if needed
-
-    // Ensure distractors don't include the correct answer and are unique
-    distractors = [...new Set(distractors)].filter(d => d !== correctOptionText).slice(0, 3);
-    
-    // If we still don't have 3 unique distractors, add more placeholders
-    while (distractors.length < 3) {
-        distractors.push(`Placeholder ${String.fromCharCode(68 + distractors.length)}`); // D, E, F...
-    }
-
-    // Combine correct answer + distractors and shuffle
+    // Combine correct answer + finalized distractors and shuffle
     const rawOptions = [correctOptionText, ...distractors];
     const shuffledOptions = shuffleArray(rawOptions);
 
-    // Create options with IDs (use index as ID for simplicity here)
+    // Create options with IDs
     let correctOptionId: number = -1;
     const options: Option[] = shuffledOptions.map((text, index) => {
         if (text === correctOptionText) {
@@ -103,16 +222,14 @@ const NewTabPage: Component = () => {
 
     if (correctOptionId === -1) {
         console.error("[NewTab] Couldn't find correct option ID after shuffling!", item);
-        setError("Internal error preparing exercise.");
-        setShowMcq(false);
-        return null; 
+        // Avoid setting global error here, maybe handle differently
+        return null;
     }
-    
-    console.log("[NewTab] Generated MCQ Props:", { instruction: "Translate:", sentence: item.sourceText, options, correctId: correctOptionId });
-    setShowMcq(true); // Ready to show MCQ
+
+    console.log("[NewTab] Generated Final MCQ Props:", { instruction: "Translate:", sentence: item.sourceText, options, correctId: correctOptionId });
 
     return {
-        instructionText: "Translate the following word:",
+        instructionText: "Translate:",
         sentenceToTranslate: item.sourceText,
         options: options,
         correctOptionId: correctOptionId,
@@ -120,79 +237,98 @@ const NewTabPage: Component = () => {
     };
   });
 
-  // Renamed from submitTestReview for clarity
+  // --- Handle MCQ Completion ---
   const handleMcqComplete = async (selectedOptionId: string | number, isCorrect: boolean) => {
     console.log(`[NewTab] MCQ Complete. Correct: ${isCorrect}, Selected ID: ${selectedOptionId}`);
-    const item = currentItem(); // Get the item that was just reviewed
+    const item = currentItem();
     if (!item) {
-        console.error("[NewTab] No current item found when MCQ completed.");
-        setError("Error submitting review: Item not found.")
-        return;
+      console.error("[NewTab] No current item found when MCQ completed.");
+      setItemError("Error submitting review: Item not found.")
+      return;
     }
 
-    // Don't hide MCQ here, let fetchDueItems handle it
-    // setShowMcq(false);
+    const grade = isCorrect ? Rating.Good : Rating.Again;
+    let incorrectChoiceText: string | null = null;
+    if (!isCorrect) {
+        const finalProps = mcqProps(); // Get the props used for the completed MCQ
+        const selectedOption = finalProps?.options.find(opt => opt.id === Number(selectedOptionId));
+        if (selectedOption && selectedOption.id !== finalProps?.correctOptionId) {
+             incorrectChoiceText = selectedOption.text;
+        }
+    }
 
-    // Determine FSRS grade based on correctness
-    const grade = isCorrect ? Rating.Good : Rating.Again; // Simple mapping
-
-    console.log(`[NewTab] Submitting review for Learning ID: ${item.learningId} with Grade: ${grade}`);
+    console.log(`[NewTab] Submitting review for Learning ID: ${item.learningId} with Grade: ${grade}. Incorrect choice: ${incorrectChoiceText ?? 'N/A'}`);
 
     try {
-        setIsLoading(true); // Show loading state during submission/fetch
-        const response = await messaging.sendMessage('submitReviewResult', {
-            learningId: item.learningId,
-            grade
-        });
-        console.log('[NewTab] Submit review response:', response);
-        if (!response.success) {
-             // Show error, fetch next item anyway
-             setError(`Failed to submit review: ${response.error || 'Unknown error'}`);
-             console.warn("[NewTab] Review submission failed, but fetching next item.");
-        }
-        // Fetch the next item after submission attempt
-        fetchDueItems(); 
+      const response = await messaging.sendMessage('submitReviewResult', {
+        learningId: item.learningId,
+        grade,
+        incorrectChoiceText // Send the incorrect choice text
+      });
+      console.log('[NewTab] Submit review response:', response);
+      if (!response.success) {
+        setItemError(`Failed to submit review: ${response.error || 'Unknown error'}`);
+        console.warn("[NewTab] Review submission failed, but fetching next item.");
+      }
+      // Refetch the next item *after* submission attempt
+      fetchDueItems();
     } catch (err: any) {
-         console.error('[NewTab] Error submitting review:', err);
-         setError(`Error submitting review: ${err.message}`);
-         // Still try to fetch next item to avoid getting stuck
-         fetchDueItems();
+      console.error('[NewTab] Error submitting review:', err);
+      setItemError(`Error submitting review: ${err.message}`);
+      // Still try to refetch
+      fetchDueItems();
     } 
-    // setIsLoading(false) will be handled by fetchDueItems finally block
   }
 
+  // --- Render ---
   return (
-    // Use flex column and center items for better layout
     <div class="newtab-page-container p-8 font-sans bg-gray-50 min-h-screen flex flex-col items-center">
       <h1 class="text-3xl font-bold mb-6 text-gray-800">Scarlett Study Session</h1>
 
-      {/* Loading and Error States */} 
-      <div class="h-10 mb-4"> {/* Placeholder for height consistency */}
-        {isLoading() && <p class="text-gray-600 text-lg animate-pulse">Loading review item...</p>}
-        {error() && <p class="text-red-600 font-semibold text-lg">Error: {error()}</p>}
+      {/* Loading / Error for Item Fetching */} 
+      <div class="h-10 mb-4">
+        <Show when={dueItemResource.loading}> 
+          <p class="text-gray-600 text-lg animate-pulse">Loading review item...</p>
+        </Show>
+        <Show when={itemError()}>
+          {(errorMsgAccessor) => <p class="text-red-600 font-semibold text-lg">Error: {errorMsgAccessor()}</p>}
+        </Show>
       </div>
 
-      {/* MCQ Area - Render based on showMcq and mcqProps */} 
-      <div class="exercise-area mt-4 w-full max-w-md flex-grow flex items-center justify-center">
-        {(showMcq() && mcqProps()) ? (
-           <MCQ {...mcqProps()!} />
-        ) : (
-            // Show no items due message only if not loading and no error
-            !isLoading() && !error() && !currentItem() && (
-                <p class="text-gray-600 text-lg text-center">
-                    🎉 No items due for review right now! Great job! 🎉
-                </p>
-            )
-        )}
+      {/* MCQ Area - Centered container with width constraints */}
+      <div class="exercise-area mt-4 w-full max-w-md flex-grow flex flex-col items-center justify-center">
+        <Show when={!dueItemResource.loading && !itemError() && currentItem()} 
+              fallback={
+                  !dueItemResource.loading && !itemError() && (
+                      <p class="text-gray-600 text-lg text-center">
+                          🎉 No items due for review right now! Great job! 🎉
+                      </p>
+                  )
+              }
+        >
+            <Show when={!distractorResource.loading && mcqProps()} 
+                   fallback={
+                       <p class="text-gray-600 text-lg animate-pulse">Preparing exercise...</p>
+                   }
+            >
+                {(props) => <MCQ {...mcqProps()!} />}
+            </Show>
+            {/* Conditionally render the error paragraph if error exists */}
+            {distractorResource.error && (
+                 <p class="text-orange-600 font-semibold text-sm">
+                    Warning: Could not generate optimal distractors ({String(distractorResource.error)})
+                 </p>
+            )}
+         </Show>
       </div>
 
-      {/* Optional: Button to manually fetch next (useful for debugging or skipping) */} 
+      {/* Skip Button */} 
       <button
         onClick={fetchDueItems}
-        disabled={isLoading()}
+        disabled={dueItemResource.loading}
         class="mt-8 px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50 transition-colors"
       >
-        {isLoading() ? 'Loading...' : 'Skip / Get Next'}
+        {dueItemResource.loading ? 'Loading...' : 'Skip / Get Next'}
       </button>
 
     </div>

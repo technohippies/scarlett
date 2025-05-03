@@ -8,8 +8,12 @@ export interface DueLearningItem {
   targetLexemeId: number;
   sourceText: string;      // The text of the source lexeme (e.g., English word)
   targetText: string;      // The text of the target lexeme (e.g., Chinese translation)
-  // Add LLM distractors field
-  llmDistractors: string[] | null; // Array of strings or null
+  targetLang: string;      // The language code of the target lexeme (e.g., 'zh')
+  // Deprecated - Use cachedDistractors
+  // llmDistractors: string[] | null;
+  // Added fields for adaptive MCQ
+  cachedDistractors: string[] | null; // Distractors generated during review (if any)
+  lastIncorrectChoice: string | null; // Text of the last incorrect choice made (if any)
   // Include current SRS state if needed for UI or logic (optional for now)
   // currentState: number;
   // currentStability: number;

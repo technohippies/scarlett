@@ -18,7 +18,7 @@ export async function getDueLearningItems(limit: number = 10): Promise<DueLearni
     try {
         const db = await getDbInstance();
 
-        // Note: We need llm_distractors from lexeme_translations
+        // Added lt.cached_distractors and ul.last_incorrect_choice to SELECT
         const query = `
             SELECT
                 ul.learning_id AS "learningId",
@@ -27,7 +27,9 @@ export async function getDueLearningItems(limit: number = 10): Promise<DueLearni
                 lt.target_lexeme_id AS "targetLexemeId",
                 src_lex.text AS "sourceText",
                 tgt_lex.text AS "targetText",
-                lt.llm_distractors AS "llmDistractors" -- Retrieve distractors
+                tgt_lex.language AS "targetLang",
+                lt.cached_distractors AS "cachedDistractors",
+                ul.last_incorrect_choice AS "lastIncorrectChoice"
             FROM
                 user_learning ul
             JOIN
@@ -42,25 +44,22 @@ export async function getDueLearningItems(limit: number = 10): Promise<DueLearni
                 ul.due ASC
             LIMIT $1
         `;
-        console.log('[SRS Scheduler] Executing query:', query, [limit]);
+        console.log('[SRS Scheduler] Executing query:', query.trim(), [limit]);
         const result = await db.query<DueLearningItem>(query, [limit]);
 
-        // Ensure llmDistractors is parsed correctly (PGlite might return JSON string)
+        // Ensure cachedDistractors is an array or null (PGlite handles TEXT[] correctly usually)
         const processedResults = result.rows.map(item => {
-            let distractors = item.llmDistractors;
-            if (typeof distractors === 'string') {
-                try {
-                    distractors = JSON.parse(distractors);
-                } catch (e) {
-                    console.error(`[SRS Scheduler] Failed to parse llmDistractors for item ${item.learningId}:`, distractors, e);
-                    distractors = null; // Set to null if parsing fails
-                }
+            // PGlite should return TEXT[] as array, but double-check
+            if (item.cachedDistractors && !Array.isArray(item.cachedDistractors)) {
+                console.warn(`[SRS Scheduler] cachedDistractors for item ${item.learningId} was not an array, setting to null.`, item.cachedDistractors);
+                return { ...item, cachedDistractors: null };
             }
-            // Ensure it's an array or null
-            if (!Array.isArray(distractors)) {
-                distractors = null;
+            // Ensure lastIncorrectChoice is string or null
+            if (item.lastIncorrectChoice !== null && typeof item.lastIncorrectChoice !== 'string') {
+                 console.warn(`[SRS Scheduler] lastIncorrectChoice for item ${item.learningId} was not a string or null, setting to null.`, item.lastIncorrectChoice);
+                 return { ...item, lastIncorrectChoice: null };
             }
-            return { ...item, llmDistractors: distractors };
+            return item; 
         });
 
         console.log(`[SRS Scheduler] Found ${processedResults.length} due items.`);
@@ -160,16 +159,18 @@ interface UserLearningState {
  * @param learningId The ID of the user_learning record to update.
  * @param grade The user's grade for the review (0-4, corresponding to FSRS grades).
  * @param reviewTime The time the review occurred (defaults to now).
+ * @param incorrectChoiceText The text of the incorrect choice (if any)
  * @returns A promise that resolves when the update is complete.
  * @throws If the learning item is not found or if the DB update fails.
  */
 export async function updateSRSState(
     learningId: number,
     grade: Grade,
-    reviewTime: Date = new Date() 
+    reviewTime: Date = new Date(),
+    incorrectChoiceText: string | null = null
 ): Promise<void> {
     const db = await getDbInstance();
-    console.log(`[SRS Scheduler] Updating state for learningId ${learningId} with grade ${grade} at ${reviewTime.toISOString()}`);
+    console.log(`[SRS Scheduler] Updating state for learningId ${learningId} with grade ${grade} at ${reviewTime.toISOString()}. Incorrect choice: ${incorrectChoiceText ?? 'N/A'}`);
 
     try {
         // Start transaction
@@ -209,7 +210,6 @@ export async function updateSRSState(
 
 
             // 4. Update the database record
-            // We don't check rowCount, rely on transaction/query errors
             await tx.query(
                 `UPDATE user_learning
                  SET 
@@ -221,9 +221,10 @@ export async function updateSRSState(
                     reps = $6,
                     lapses = $7,
                     state = $8,
-                    last_review = $9
+                    last_review = $9,
+                    last_incorrect_choice = $10
                     -- updated_at is handled by trigger
-                 WHERE learning_id = $10;`,
+                 WHERE learning_id = $11;`,
                 [
                     newCardState.due,
                     newCardState.stability,
@@ -233,7 +234,8 @@ export async function updateSRSState(
                     newCardState.reps,
                     newCardState.lapses,
                     newCardState.state,
-                    reviewTime, // Set last_review to the current review time
+                    reviewTime,
+                    incorrectChoiceText,
                     learningId
                 ]
             );

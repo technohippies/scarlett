@@ -1,12 +1,8 @@
 import { defineBackground } from '#imports';
-import { browser } from 'wxt/browser';
 import { ensureDbInitialized } from '../src/services/db/init';
 import { setupContextMenu } from '../src/background/setup/context-menu-setup';
 import { registerMessageHandlers } from '../src/background/handlers/message-handlers';
 import { loadDictionaries } from '../src/background/setup/dictionary-setup';
-
-// Import setup functions
-import { setupDatabase } from '../src/background/setup/db-setup';
 
 // Import handler registration functions
 import { registerContextMenuHandlers } from '../src/background/handlers/context-menu-handler';
@@ -36,6 +32,10 @@ export default defineBackground(async () => {
   // 4. Register message listeners
   registerMessageHandlers();
   console.log('[Scarlett BG Entrypoint] Message handlers registered.');
+
+  // Register Context Menu Click Handler
+  registerContextMenuHandlers();
+  console.log('[Scarlett BG Entrypoint] Context menu handlers registered.');
 
   // --- Event-specific logic (like onInstalled) --- 
   // onInstalled listener might still be useful for one-time setup tasks 

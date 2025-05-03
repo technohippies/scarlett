@@ -4,7 +4,6 @@ import { addOrUpdateLexemeAndTranslation } from '../../services/db/learning';
 import { getDbInstance } from '../../services/db/init';
 import compromise from 'compromise';
 import { getLLMAnalysisPrompt } from '../../services/llm/prompts/analysis';
-import { userConfigurationStorage } from '../../services/storage';
 import { getDictionaryEntry } from '../setup/dictionary-setup';
 
 // Define LLMAnalysisResult locally (matching original structure)

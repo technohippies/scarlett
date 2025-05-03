@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS lexeme_translations (
     translation_id SERIAL PRIMARY KEY,
     source_lexeme_id INTEGER NOT NULL REFERENCES lexemes(lexeme_id) ON DELETE CASCADE,
     target_lexeme_id INTEGER NOT NULL REFERENCES lexemes(lexeme_id) ON DELETE CASCADE,
-    llm_distractors TEXT[] NULL, -- Added: Store LLM suggestions
+    llm_distractors TEXT[] NULL, -- DEPRECATED: Use cached_distractors instead
+    cached_distractors TEXT[] NULL, -- Added: Store distractors generated during review
     llm_context_hint TEXT NULL, 
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     -- Usually one primary translation, but allow multiple if context differs significantly?
@@ -56,6 +57,9 @@ CREATE TABLE IF NOT EXISTS user_learning (
     lapses INTEGER DEFAULT 0,       -- Number of times forgotten
     state INTEGER DEFAULT 0,        -- FSRS state (0:New, 1:Learning, 2:Review, 3:Relearning)
     last_review TIMESTAMPTZ NULL,   -- Timestamp of the last review
+
+    -- Adaptive learning fields
+    last_incorrect_choice TEXT NULL, -- Added: Store text of last incorrect MCQ choice
 
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- Keep track of updates

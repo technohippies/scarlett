@@ -1,5 +1,6 @@
 import { render } from 'solid-js/web';
-import App from '../../src/pages/newtab/App'; // Import the new root component
+// Import the local App root component for this entrypoint
+import App from './App'; 
 import 'virtual:uno.css';
 
 // Render the App component

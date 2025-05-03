@@ -24,6 +24,7 @@ export function getMCQGenerationPrompt(
 
   Generate a multiple-choice question (MCQ) to test if the user knows the ${targetLang} translation of "${sourceWord}".
   Include the correct answer ("${translatedWord}") and 3 plausible but incorrect options in ${targetLang}.
+  The 'text' for each option should contain ONLY the characters of the ${targetLang} language, without any additional annotations like pinyin, pronunciation guides, or translations.
 
   Respond ONLY with a valid JSON object adhering to this exact structure (include the 'question' field formatted as shown):
   {
