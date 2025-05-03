@@ -66,6 +66,11 @@ export default defineConfig({
     optional_permissions: [
       "history",
     ],
+    // --- Add Chrome URL Overrides for New Tab --- 
+    chrome_url_overrides: {
+        "newtab": "newtab.html"
+    },
+    // --- End Chrome URL Overrides ---
     web_accessible_resources: [
       {
         matches: ["<all_urls>"], // Or restrict further if needed
