@@ -2,14 +2,20 @@ import { Component, createSignal, For } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { ExerciseFooter } from './ExerciseFooter';
 
-// Renamed interface
-interface MCQProps {
+// Define and export the Option type
+export interface Option {
+  id: string | number;
+  text: string;
+}
+
+// Export the props interface
+export interface MCQProps {
   sentenceToTranslate: string;
   instructionText?: string;
-  options: { id: string | number; text: string }[];
+  options: Option[]; // Use the exported Option type
   correctOptionId: string | number;
-  onCheck: (isCorrect: boolean) => void;
-  onContinue: () => void;
+  // Remove onCheck and onContinue, combine into onComplete
+  onComplete: (selectedOptionId: string | number, isCorrect: boolean) => void;
 }
 
 export const MCQ: Component<MCQProps> = (props) => {
@@ -29,7 +35,7 @@ export const MCQ: Component<MCQProps> = (props) => {
 
     const correct = selectedId === props.correctOptionId;
     setFeedbackCorrectness(correct);
-    props.onCheck(correct);
+    // Call props.onCheck(correct); - Removed
 
     if (!correct) {
       const correctOption = props.options.find(opt => opt.id === props.correctOptionId);
@@ -40,12 +46,21 @@ export const MCQ: Component<MCQProps> = (props) => {
     setShowFeedback(true);
   };
 
+  // Modify handleContinue to call onComplete
   const handleContinue = () => {
+      const selectedId = selectedOptionId();
+      const correct = feedbackCorrectness();
+      
+      if (selectedId !== undefined && correct !== undefined) {
+         props.onComplete(selectedId, correct);
+      }
+      
+      // Reset state after calling onComplete
       setShowFeedback(false);
       setFeedbackCorrectness(undefined);
       setCorrectAnswerText(undefined);
       setSelectedOptionId(undefined);
-      props.onContinue();
+      // props.onContinue(); - Removed
   }
 
   return (

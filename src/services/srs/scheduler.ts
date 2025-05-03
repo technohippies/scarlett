@@ -1,6 +1,6 @@
 import { getDbInstance } from '../db/init';
 import type { DueLearningItem } from './types';
-import { FSRS, Card, Grade, State, ReviewLog, createEmptyCard, generatorParameters, RecordLogItem } from 'ts-fsrs';
+import { FSRS, Card, Grade, State, generatorParameters, RecordLogItem } from 'ts-fsrs';
 
 // Create a single FSRS instance (can be reused)
 // Pass default parameters explicitly
@@ -13,16 +13,12 @@ const fsrs = new FSRS(generatorParameters());
  * @param limit Optional limit on the number of items to fetch.
  * @returns A promise that resolves to an array of DueLearningItem objects.
  */
-export async function getDueLearningItems(limit?: number): Promise<DueLearningItem[]> {
-    const db = await getDbInstance();
-    console.log(`[SRS Scheduler] Fetching due learning items (Limit: ${limit ?? 'None'})...`);
-
+export async function getDueLearningItems(limit: number = 10): Promise<DueLearningItem[]> {
+    console.log(`[SRS Scheduler] Fetching due learning items (Limit: ${limit})...`);
     try {
-        // Construct the SQL query
-        // We join user_learning -> lexeme_translations -> lexemes (twice, for source and target)
-        // Filter by due date <= now
-        // Select necessary fields and map them to the DueLearningItem structure
-        // Order by due date (oldest first)
+        const db = await getDbInstance();
+
+        // Note: We need llm_distractors from lexeme_translations
         const query = `
             SELECT
                 ul.learning_id AS "learningId",
@@ -30,7 +26,8 @@ export async function getDueLearningItems(limit?: number): Promise<DueLearningIt
                 lt.source_lexeme_id AS "sourceLexemeId",
                 lt.target_lexeme_id AS "targetLexemeId",
                 src_lex.text AS "sourceText",
-                tgt_lex.text AS "targetText"
+                tgt_lex.text AS "targetText",
+                lt.llm_distractors AS "llmDistractors" -- Retrieve distractors
             FROM
                 user_learning ul
             JOIN
@@ -43,20 +40,34 @@ export async function getDueLearningItems(limit?: number): Promise<DueLearningIt
                 ul.due <= CURRENT_TIMESTAMP
             ORDER BY
                 ul.due ASC
-            ${limit ? `LIMIT $1` : ''} 
+            LIMIT $1
         `;
+        console.log('[SRS Scheduler] Executing query:', query, [limit]);
+        const result = await db.query<DueLearningItem>(query, [limit]);
 
-        const params = limit ? [limit] : [];
-        
-        console.log('[SRS Scheduler] Executing query:', query.replace(/\s+/g, ' ').trim(), params);
-        const result = await db.query<DueLearningItem>(query, params);
-        
-        console.log(`[SRS Scheduler] Found ${result.rows.length} due items.`);
-        return result.rows;
+        // Ensure llmDistractors is parsed correctly (PGlite might return JSON string)
+        const processedResults = result.rows.map(item => {
+            let distractors = item.llmDistractors;
+            if (typeof distractors === 'string') {
+                try {
+                    distractors = JSON.parse(distractors);
+                } catch (e) {
+                    console.error(`[SRS Scheduler] Failed to parse llmDistractors for item ${item.learningId}:`, distractors, e);
+                    distractors = null; // Set to null if parsing fails
+                }
+            }
+            // Ensure it's an array or null
+            if (!Array.isArray(distractors)) {
+                distractors = null;
+            }
+            return { ...item, llmDistractors: distractors };
+        });
 
+        console.log(`[SRS Scheduler] Found ${processedResults.length} due items.`);
+        return processedResults;
     } catch (error) {
         console.error('[SRS Scheduler] Error fetching due learning items:', error);
-        throw error; // Re-throw the error for the caller to handle
+        return [];
     }
 }
 

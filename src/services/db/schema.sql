@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS lexeme_translations (
     translation_id SERIAL PRIMARY KEY,
     source_lexeme_id INTEGER NOT NULL REFERENCES lexemes(lexeme_id) ON DELETE CASCADE,
     target_lexeme_id INTEGER NOT NULL REFERENCES lexemes(lexeme_id) ON DELETE CASCADE,
-    llm_generated_distractors TEXT[] NULL, -- Added: Store LLM suggestions
+    llm_distractors TEXT[] NULL, -- Added: Store LLM suggestions
     llm_context_hint TEXT NULL, 
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     -- Usually one primary translation, but allow multiple if context differs significantly?

@@ -169,12 +169,12 @@ export async function addOrUpdateLexemeAndTranslation(
             console.log('[DB learning] Finding/creating translation link...');
             // Note: PGlite/Postgres expects arrays passed as parameters to be actual JS arrays
             const translationResult = await tx.query<{ translation_id: number }>(
-                `INSERT INTO lexeme_translations (source_lexeme_id, target_lexeme_id, llm_context_hint, llm_generated_distractors)
+                `INSERT INTO lexeme_translations (source_lexeme_id, target_lexeme_id, llm_context_hint, llm_distractors)
                  VALUES ($1, $2, $3, $4)
                  ON CONFLICT (source_lexeme_id, target_lexeme_id) DO UPDATE SET
                     llm_context_hint = COALESCE(EXCLUDED.llm_context_hint, lexeme_translations.llm_context_hint),
                     -- Overwrite distractors if new ones are provided, otherwise keep old ones
-                    llm_generated_distractors = COALESCE(EXCLUDED.llm_generated_distractors, lexeme_translations.llm_generated_distractors)
+                    llm_distractors = COALESCE(EXCLUDED.llm_distractors, lexeme_translations.llm_distractors)
                  RETURNING translation_id;`,
                 [sourceLexemeId, targetLexemeId, contextHint, llmDistractors] // Pass distractors array
             );
