@@ -26,7 +26,8 @@ function parseCsvToMap(csvText: string): Map<string, DictionaryEntry> {
         const records: string[][] = parse(csvText, {
             columns: false, // Treat rows as arrays
             skip_empty_lines: true,
-            from_line: 2 // Skip header row (line 1)
+            from_line: 2, // Skip header row (line 1)
+            relax_column_count: true // Allow variable number of columns per row
         });
 
         for (const record of records) {
@@ -34,12 +35,13 @@ function parseCsvToMap(csvText: string): Map<string, DictionaryEntry> {
             if (record && record.length >= 2) {
                 const englishWord = record[0]?.trim().toLowerCase();
                 const nativeTranslation = record[1]?.trim();
-                const definition = record[2]?.trim() || ''; // Definition is optional
+                // Handle definition potentially missing or being merged due to commas
+                const definition = record.slice(2).join(', ').trim() || '';
 
                 if (englishWord && nativeTranslation) {
                     map.set(englishWord, { translation: nativeTranslation, definition });
                 } else {
-                    console.warn('[Dictionary Setup] Skipping invalid CSV record:', record);
+                    console.warn('[Dictionary Setup] Skipping invalid CSV record (missing word or translation): ', record);
                 }
             } else {
                  console.warn('[Dictionary Setup] Skipping short/empty CSV record:', record);

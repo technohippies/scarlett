@@ -3,17 +3,19 @@ import type { LLMConfig, LLMChatResponse, ChatMessage } from '../../services/llm
 import { addOrUpdateLexemeAndTranslation } from '../../services/db/learning';
 import { getDbInstance } from '../../services/db/init';
 import compromise from 'compromise';
+import { getLLMAnalysisPrompt } from '../../services/llm/prompts/analysis';
+import { userConfigurationStorage } from '../../services/storage';
+import { getDictionaryEntry } from '../setup/dictionary-setup';
 
-// Interface matching the expected LLM JSON output structure
-// (Could potentially be moved to a shared types file later)
+// Define LLMAnalysisResult locally (matching original structure)
 interface LLMAnalysisResult {
   originalPhrase: string;
   translatedPhrase: string;
   wordMappings: {
     sourceWord: string;
     targetWord: string;
-    targetWordDistractors?: string[]; // Added: LLM-suggested distractors for the target word
-    contextHint?: string;
+    targetWordDistractors?: string[];
+    contextHint?: string; // Keep contextHint if needed
   }[];
 }
 
@@ -23,12 +25,21 @@ interface ProcessTextParams {
   sourceLang: string;
   targetLang: string;
   sourceUrl: string;
-  llmConfig: LLMConfig; // Pass LLM config in
+  llmConfig: LLMConfig;
+}
+
+// Define a simple type for the mapping data used internally
+interface ProcessedMappingData {
+    sourceWord: string; // English word
+    sourcePos: string | null;
+    targetWord: string; // Native language translation
+    targetPos: string | null; // Native language POS (not available yet)
+    llmDistractors: string[] | null; // Native language distractors
 }
 
 /**
- * Pipeline for analyzing selected text: gets translation/word mappings via LLM,
- * parses the result, and updates the database for EACH word pair.
+ * Pipeline for analyzing selected text: gets translation/word mappings via LLM or dictionary,
+ * parses the result, adds POS tags, and updates the database for EACH word pair.
  * Throws errors if any step fails.
  */
 export async function processTextAnalysisPipeline({
@@ -37,176 +48,193 @@ export async function processTextAnalysisPipeline({
     targetLang,
     sourceUrl,
     llmConfig
-}: ProcessTextParams): Promise<LLMAnalysisResult> { // Return the result for potential use
+}: ProcessTextParams): Promise<LLMAnalysisResult> {
     console.log('[Analysis Pipeline] Starting for:', selectedText);
 
-    // 1. Get Analysis from LLM
-    console.log('[Analysis Pipeline] Requesting analysis from LLM...');
-    const analysisPrompt = getLLMAnalysisPrompt(selectedText, sourceLang, targetLang);
-    const analysisMessages: ChatMessage[] = [{ role: 'user', content: analysisPrompt }];
-
-    const llmResponse = await ollamaChat(analysisMessages, llmConfig) as LLMChatResponse;
-    const rawContent = llmResponse?.choices?.[0]?.message?.content?.trim();
-    console.log('[Analysis Pipeline] Raw LLM Response Content:', rawContent);
-
-    if (!rawContent) {
-      throw new Error('[Analysis Pipeline] LLM returned empty content.');
-    }
-
-    // 2. Parse the LLM JSON Response
-    let analysisResult: LLMAnalysisResult;
-    try {
-      const cleanedContent = rawContent.replace(/^```json\s*|\s*```$/g, '').trim();
-      analysisResult = JSON.parse(cleanedContent);
-      // TODO: Add validation (e.g., Zod)
-      console.log('[Analysis Pipeline] Successfully parsed LLM analysis result.');
-    } catch (parseError) {
-      console.error('[Analysis Pipeline] Failed to parse LLM JSON response:', parseError);
-      console.error('[Analysis Pipeline] Raw content was:', rawContent);
-      throw new Error('[Analysis Pipeline] Failed to understand LLM response format.');
-    }
-
-    // 3. Process and Store Results for EACH Word Mapping
-    console.log('[Pipeline] Processing and storing results for word mappings...');
     const db = await getDbInstance();
+    // We assume sourceLang is always English ('en') and targetLang is the native language here.
+    const nativeLanguage = targetLang; // Use targetLang as nativeLanguage for clarity in this context
 
-    for (const item of analysisResult.wordMappings) {
-        // --- Prepare Lexeme Data with POS tagging ---
-        let sourceLexemePOS: string | null = null;
-        let targetLexemePOS: string | null = null;
+    let analysisResult: LLMAnalysisResult | null = null;
+    let wordMappingsData: ProcessedMappingData[] = [];
+    const isSingleWord = !selectedText.includes(' ') && selectedText.trim().length > 0;
+    let sourceWordForLookup = selectedText.trim();
 
-        // Tag source word if it's English
-        if (sourceLang.toLowerCase().startsWith('en')) {
-            try {
-                // Convert to lowercase before tagging
-                const sourceWordLower = item.sourceWord.toLowerCase();
-                const doc = compromise(sourceWordLower);
-                const terms = doc.terms();
-                if (terms.found) {
-                    const firstTerm = terms.first();
-                    const tagsResult = firstTerm.out('tags');
-
-                    console.log(`[Pipeline] Raw tagsResult for source '${sourceWordLower}':`, JSON.stringify(tagsResult, null, 2));
-
-                    // Revised logic to handle the object structure
-                    let tags: string[] | null = null;
-                    if (Array.isArray(tagsResult) && tagsResult.length > 0 && typeof tagsResult[0] === 'object' && tagsResult[0] !== null) {
-                        const wordKey = Object.keys(tagsResult[0])[0]; // Get the word key (e.g., 'love')
-                        const potentialTags = tagsResult[0][wordKey];
-                        if (Array.isArray(potentialTags)) {
-                            tags = potentialTags;
-                        }
-                    }
-
-                    sourceLexemePOS = tags?.[0] ?? null; // Get the primary tag (e.g., 'Verb')
-                    let rawTagsString = tags?.join(', ') ?? 'N/A';
-                    console.log(`[Pipeline] POS for EN source '${item.sourceWord}' (tagged as '${sourceWordLower}'): ${sourceLexemePOS} (Raw: ${rawTagsString})`);
-                } else {
-                    console.log(`[Pipeline] No terms found for EN source '${item.sourceWord}' (tagged as '${sourceWordLower}')`);
-                }
-            } catch (tagError) {
-                 console.error(`[Pipeline] Error during compromise tagging for source word '${item.sourceWord}':`, tagError);
-                 sourceLexemePOS = null;
-            }
+    // --- Stage 1: Translation & Distractors (Dictionary or LLM) ---
+    if (isSingleWord) {
+        const dictionaryEntry = getDictionaryEntry(nativeLanguage, sourceWordForLookup);
+        if (dictionaryEntry) {
+            console.log(`[Analysis Pipeline] Found '${sourceWordForLookup}' in '${nativeLanguage}' dictionary. Translation: ${dictionaryEntry.translation}`);
+            wordMappingsData.push({
+                sourceWord: sourceWordForLookup,
+                sourcePos: null, // Filled later
+                targetWord: dictionaryEntry.translation,
+                targetPos: null,
+                llmDistractors: null
+            });
         }
+    }
 
-        // Tag target word if it's English
-        if (targetLang.toLowerCase().startsWith('en')) {
-             try {
-                 // Convert to lowercase before tagging
-                const targetWordLower = item.targetWord.toLowerCase();
-                const doc = compromise(targetWordLower);
-                const terms = doc.terms();
-                if (terms.found) {
-                    const firstTerm = terms.first();
-                    const tagsResult = firstTerm.out('tags');
-
-                    console.log(`[Pipeline] Raw tagsResult for target '${targetWordLower}':`, JSON.stringify(tagsResult, null, 2));
-
-                    // Revised logic to handle the object structure
-                    let tags: string[] | null = null;
-                    if (Array.isArray(tagsResult) && tagsResult.length > 0 && typeof tagsResult[0] === 'object' && tagsResult[0] !== null) {
-                        const wordKey = Object.keys(tagsResult[0])[0];
-                        const potentialTags = tagsResult[0][wordKey];
-                        if (Array.isArray(potentialTags)) {
-                            tags = potentialTags;
-                        }
-                    }
-
-                    targetLexemePOS = tags?.[0] ?? null; // Get the primary tag
-                    let rawTagsString = tags?.join(', ') ?? 'N/A';
-                    console.log(`[Pipeline] POS for EN target '${item.targetWord}' (tagged as '${targetWordLower}'): ${targetLexemePOS} (Raw: ${rawTagsString})`);
-                } else {
-                     console.log(`[Pipeline] No terms found for EN target '${item.targetWord}' (tagged as '${targetWordLower}')`);
-                }
-            } catch (tagError) {
-                console.error(`[Pipeline] Error during compromise tagging for target word '${item.targetWord}':`, tagError);
-                targetLexemePOS = null;
-            }
-        }
-
-        // --- Add/Update Lexemes and Translation for this pair ---
+    // If not a single word, or not found in dictionary, use LLM
+    if (wordMappingsData.length === 0) {
+        console.log('[Analysis Pipeline] Word not found in dictionary or is a phrase. Requesting analysis from LLM...');
         try {
-            await addOrUpdateLexemeAndTranslation(
-                db,
-                item.sourceWord,
-                sourceLang, 
-                sourceLexemePOS, // Should now be correctly assigned (or null if error)
-                item.targetWord,
-                targetLang,
-                targetLexemePOS, // Should now be correctly assigned (or null if error)
-                item.contextHint || null,
-                item.targetWordDistractors || null,
-                sourceUrl,
-                selectedText,
-                selectedText
-            );
-        } catch (dbError) {
-             console.error(`[Pipeline] Error saving word pair to DB: '${item.sourceWord}' -> '${item.targetWord}'`, dbError);
+            // Use the imported prompt generator (ensure params match: sourceText, sourceLang (en), targetLang (native))
+            const analysisPrompt = getLLMAnalysisPrompt(selectedText, sourceLang, nativeLanguage);
+            const analysisMessages: ChatMessage[] = [{ role: 'user', content: analysisPrompt }];
+
+            // Correct ollamaChat call signature, assuming non-streamed based on config
+            const llmResponse = await ollamaChat(analysisMessages, llmConfig) as LLMChatResponse;
+
+            // Basic check for response content - Use correct response structure
+            const rawContent = llmResponse?.choices?.[0]?.message?.content?.trim();
+            console.log('[Analysis Pipeline] Raw LLM Response Content:', rawContent);
+
+            if (!rawContent) {
+                throw new Error('LLM returned empty or invalid content structure.');
+            }
+
+            // Attempt to parse the JSON response (Keep existing regex approach)
+            // Ensure JSON parsing handles potential errors gracefully
+            const jsonRegex = /```json\n([\s\S]*?)\n```/;
+            const match = rawContent.match(jsonRegex);
+            let parsedJson: any;
+
+            if (match && match[1]) {
+                 try {
+                    parsedJson = JSON.parse(match[1]);
+                    console.log('[Analysis Pipeline] Successfully parsed extracted JSON block.');
+                } catch (parseError) {
+                    console.error('[Analysis Pipeline] Failed to parse extracted JSON:', parseError);
+                    console.error('[Analysis Pipeline] Extracted content was:', match[1]);
+                    throw new Error('Failed to parse JSON from LLM response');
+                }
+            } else {
+                console.log('[Analysis Pipeline] Could not extract JSON block (```json ... ```) from LLM response. Attempting fallback parse.');
+                // Attempt to parse the whole string if no block found, as a fallback
+                try {
+                    const cleanedContent = rawContent.replace(/^```json\s*|\s*```$/g, '').trim();
+                    parsedJson = JSON.parse(cleanedContent);
+                    console.log('[Analysis Pipeline] Successfully parsed entire LLM response fallback.');
+                } catch (fallbackParseError) {
+                     console.error('[Analysis Pipeline] Fallback parsing of entire LLM response also failed:', fallbackParseError);
+                     throw new Error('Failed to extract or parse JSON from LLM response');
+                }
+            }
+
+            // Validate and assign the parsed JSON to analysisResult
+            // Basic validation (could use Zod later)
+            if (parsedJson && typeof parsedJson.originalPhrase === 'string' && typeof parsedJson.translatedPhrase === 'string' && Array.isArray(parsedJson.wordMappings)) {
+                analysisResult = parsedJson as LLMAnalysisResult;
+                console.log('[Analysis Pipeline] LLM JSON structure validated.');
+            } else {
+                console.error('[Analysis Pipeline] Parsed JSON missing required fields or invalid structure:', parsedJson);
+                throw new Error('Parsed LLM response has invalid structure.');
+            }
+
+            // Convert LLM result structure to WordMappingData structure
+            if (analysisResult.wordMappings && analysisResult.wordMappings.length > 0) {
+                wordMappingsData = analysisResult.wordMappings.map((mapping: any) => ({
+                    sourceWord: mapping.sourceWord,
+                    sourcePos: null, // Filled later
+                    targetWord: mapping.targetWord,
+                    targetPos: null,
+                    llmDistractors: mapping.targetWordDistractors || null
+                }));
+            } else {
+                console.warn('[Analysis Pipeline] LLM result parsed but has no word mappings.');
+            }
+
+        } catch (error) {
+            console.error('[Analysis Pipeline] Error during LLM analysis or parsing:', error);
+            // Re-throw or handle - throwing for now
+            throw error;
         }
     }
 
-    console.log('[Analysis Pipeline] Database operations completed for word mappings from:', analysisResult.originalPhrase);
+    // --- Stage 2: POS Tagging (Compromise) ---
+    // Only run POS tagging if we have word mappings to update
+    if (wordMappingsData.length > 0) {
+        console.log('[Pipeline] Running POS tagging on source text (English)... ');
+        try {
+             const doc = compromise(selectedText);
+             const terms = doc.terms().json();
+             const posMap = new Map<string, string | null>();
 
-    // TODO: Handle phrase-level saving separately if needed?
-    // Currently, only word pairs are saved with POS.
-    // If we need to save the originalPhrase -> translatedPhrase link,
-    // we'd call addOrUpdateLexemeAndTranslation again here with null POS tags.
+             terms.forEach((term: any) => {
+                 const wordText = term.text?.toLowerCase();
+                 if (wordText && !posMap.has(wordText)) {
+                     const tags = term.tags || [];
+                     // Prioritize Noun, Verb, Adjective, Adverb
+                     let primaryTag = tags.find((t: string) => ['Noun', 'Verb', 'Adjective', 'Adverb'].includes(t)) || tags[0] || null;
+                     posMap.set(wordText, primaryTag);
+                 }
+             });
+            // Update wordMappingsData with POS tags
+             wordMappingsData = wordMappingsData.map(mapping => {
+                const sourcePos = posMap.get(mapping.sourceWord.toLowerCase()) || null;
+                 if (sourcePos && !mapping.sourcePos) {
+                     return { ...mapping, sourcePos };
+                 }
+                 return mapping;
+             });
+             console.log('[Pipeline] POS tagging complete.');
+         } catch (tagError) {
+             console.error('[Pipeline] Error during compromise POS tagging:', tagError);
+             // Continue without POS tags if compromise fails
+         }
+     } else {
+         console.warn('[Pipeline] No word mapping data generated. Skipping POS tagging.');
+     }
 
-    return analysisResult; // Return the parsed result
-}
-
-
-// --- Helper: LLM Prompt Generation (Keep associated with the pipeline) ---
-// NOTE: Consider moving prompts to a dedicated prompts service/module if they grow complex
-function getLLMAnalysisPrompt(sourceText: string, sourceLang: string, targetLang: string): string {
-    return `You are an advanced linguistic analysis AI. Process the following ${sourceLang} text for a user learning ${targetLang}.
-
-Text: "${sourceText}"
-
-Perform the following tasks:
-1. Translate the entire text accurately into ${targetLang}.
-2. Segment the original ${sourceLang} text into individual words.
-3. Segment the translated ${targetLang} text into individual words. Ensure segmentation is natural for the target language.
-4. Create a mapping between the segmented source words and the corresponding segmented target words. The mapping should represent the most likely translation alignment for each word within the context of the full phrase.
-5. For EACH target word in the mapping, generate exactly 3 plausible but incorrect distractor words in ${targetLang}. These distractors should be semantically related or commonly confused words suitable for a multiple-choice question where the user must identify the correct translation (${targetLang}) of the source word (${sourceLang}).
-
-Respond ONLY with a single, valid JSON object adhering to this exact structure:
-
-{
-  "originalPhrase": "The original source text",
-  "translatedPhrase": "The full target language translation",
-  "wordMappings": [
-    {
-      "sourceWord": "Source_Word",
-      "targetWord": "Corresponding_Target_Word",
-      "targetWordDistractors": ["Distractor1", "Distractor2", "Distractor3"]
+    // --- Stage 3: Database Storage ---
+    if (wordMappingsData.length > 0) {
+        console.log('[Pipeline] Processing and storing results...');
+        try {
+            for (const mapping of wordMappingsData) {
+                console.log(`[Pipeline] Saving to DB: '${mapping.sourceWord}' (${mapping.sourcePos || 'N/A'}) -> '${mapping.targetWord}' (Dist: ${mapping.llmDistractors?.length ?? 0})`);
+                await addOrUpdateLexemeAndTranslation(
+                    db,
+                    mapping.sourceWord,
+                    sourceLang,
+                    mapping.sourcePos,
+                    mapping.targetWord,
+                    nativeLanguage,
+                    mapping.targetPos,
+                    null,
+                    mapping.llmDistractors,
+                    sourceUrl,
+                    selectedText,
+                    selectedText
+                );
+            }
+            console.log(`[Analysis Pipeline] Database operations completed for: ${selectedText}`);
+        } catch (dbError) {
+            console.error('[Analysis Pipeline] Error saving word pair(s) to DB:', dbError);
+            // Re-throw or handle - throwing for now
+            throw dbError;
+        }
+    } else {
+         console.warn('[Analysis Pipeline] No word mapping data generated. Nothing to save.');
+         // Return an empty/default result if nothing was processed
+         return { originalPhrase: selectedText, translatedPhrase: '', wordMappings: [] };
     }
-    // Repeat for all word pairs in sequence
-  ]
-}
 
-Do not include any explanations, apologies, or text outside the JSON object. Ensure the word segmentation, mapping, and distractors reflect the phrase's context.
-
-JSON Response:`;
+    // --- Construct Final Result ---
+    if (analysisResult) {
+        // If LLM was used, return the full result from LLM
+        return analysisResult;
+    } else {
+        // If only dictionary was used, construct a minimal result
+        const singleMapping = wordMappingsData[0];
+        return {
+            originalPhrase: selectedText,
+            translatedPhrase: singleMapping?.targetWord || '',
+            wordMappings: wordMappingsData.map(m => ({
+                 sourceWord: m.sourceWord,
+                 targetWord: m.targetWord,
+                 // No distractors or contextHint from dictionary-only path yet
+            }))
+        };
+    }
 } 
