@@ -8,6 +8,8 @@ export interface DueLearningItem {
   targetLexemeId: number;
   sourceText: string;      // The text of the source lexeme (e.g., English word)
   targetText: string;      // The text of the target lexeme (e.g., Chinese translation)
+  // Add LLM distractors field
+  llmDistractors: string[] | null; // Array of strings or null
   // Include current SRS state if needed for UI or logic (optional for now)
   // currentState: number;
   // currentStability: number;

@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS user_learning (
     learning_id SERIAL PRIMARY KEY,
     -- user_id TEXT NOT NULL DEFAULT 'local', -- For potential multi-user support later
     translation_id INTEGER NOT NULL REFERENCES lexeme_translations(translation_id) ON DELETE CASCADE,
-    
+
     -- FSRS related fields
     due TIMESTAMPTZ NOT NULL,       -- When the card is next due for review
     stability REAL DEFAULT 0,       -- Stability (interval growth factor)

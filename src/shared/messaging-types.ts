@@ -40,7 +40,7 @@ export interface UpdateAlignmentPayload {
 
 // Get Due Items
 export interface GetDueItemsRequest {
-  limit?: number;
+  limit: number;
 }
 export interface GetDueItemsResponse {
   dueItems: DueLearningItem[];
