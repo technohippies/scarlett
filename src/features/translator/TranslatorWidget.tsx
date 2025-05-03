@@ -317,9 +317,14 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
             </div>
         </Show>
 
-        {/* Row 2: Translated Word (with highlight spans) */}
+        {/* Row 2: Original Word (Moved up) */}
+        <div class="text-neutral-400 text-lg italic"> {/* Adjusted size */}
+            {props.originalWord}
+        </div>
+
+        {/* Row 3: Translated Word (with highlight spans) */}
         <div class="flex justify-between items-center gap-2">
-            <span class="text-2xl font-semibold text-foreground">
+            <span class="text-2xl font-semibold text-foreground"> {/* Kept size */}
                 <For each={wordMap().length > 0 ? wordMap() : props.hoveredWord.split(/(\s+)/).filter(Boolean).map((w, i) => ({ text: w, index: i, startTime: 0, endTime: 0 })) }>
                   {(word, _) => (
                     <span
@@ -327,16 +332,12 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                        classList={{ 'scarlett-word-highlight': currentHighlightIndex() === word.index }}
                        data-word-index={word.index}
                     >
-                      {word.text.match(/\s+/) ? <>&nbsp;</> : word.text} {/* Render space or word */}
+                      {/* Render space or word */}
+                      {word.text.match(/\s+/) ? <>&nbsp;</> : word.text}
                     </span>
                   )}
                 </For>
             </span>
-        </div>
-
-        {/* Row 3: Original Word (Corrected: text-md, no quotes) */}
-        <div class="text-neutral-400 text-md font-medium italic">
-            {props.originalWord}
         </div>
 
         {/* Audio Control Area */}

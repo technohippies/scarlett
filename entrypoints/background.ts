@@ -77,6 +77,9 @@ export default defineBackground(() => {
         const translationMessages: ChatMessage[] = [{ role: 'user', content: translationPrompt }];
         const translationResponse = await ollamaChat(translationMessages, mockLlmConfig) as LLMChatResponse;
 
+        // <<< Add logging for raw translation response >>>
+        console.log('[Scarlett BG] Raw Translation LLM Response:', JSON.stringify(translationResponse, null, 2));
+
         translatedText = translationResponse?.choices?.[0]?.message?.content?.trim() || '';
         if (!translatedText) {
           throw new Error('LLM returned empty translation.');
@@ -106,6 +109,10 @@ export default defineBackground(() => {
                 
                 // Await the promise directly since stream is false
                 const mcqResponse = await ollamaChat(mcqMessages, mockLlmConfig) as LLMChatResponse;
+                
+                // <<< Add logging for raw MCQ response >>>
+                console.log('[Scarlett BG] Raw MCQ LLM Response:', JSON.stringify(mcqResponse, null, 2));
+                
                 const mcqContent = mcqResponse?.choices?.[0]?.message?.content?.trim();
 
                 if (!mcqContent) {
@@ -115,13 +122,17 @@ export default defineBackground(() => {
 
                 console.log('[Scarlett BG] Raw MCQ Response:', mcqContent);
                 try {
-                    // Attempt to parse the JSON
-                    const mcqData: MCQExerciseData = JSON.parse(mcqContent);
+                    // <<< Strip markdown fences before parsing >>>
+                    const cleanedMcqContent = mcqContent.replace(/^```json\s*|\s*```$/g, '').trim();
+                    
+                    // Attempt to parse the cleaned JSON
+                    const mcqData: MCQExerciseData = JSON.parse(cleanedMcqContent);
                     console.log('[Scarlett BG] Successfully parsed MCQ Data:', mcqData);
                     // ---> TODO: Save mcqData to DB using createFlashcard <---
                 } catch (parseError) {
                     console.error('[Scarlett BG] Failed to parse MCQ JSON response:', parseError);
-                    console.error('[Scarlett BG] Raw response was:', mcqContent);
+                    // Log the original, problematic content too
+                    console.error('[Scarlett BG] Raw response that failed parsing was:', mcqContent); 
                 }
             } catch (mcqError: any) { // Add type annotation for error
                  console.error('[Scarlett BG] Error requesting MCQ generation:', mcqError);
