@@ -20,9 +20,6 @@ import type {
 // Define messaging for the content script context
 const messaging = defineExtensionMessaging();
 
-// --- Constants ---
-const GLOBAL_STYLE_ID = 'scarlett-global-styles'; // ID for checking if styles are injected
-
 // --- Content Script Definition ---
 export default defineContentScript({
     matches: ['<all_urls>'], // Run on all URLs
@@ -69,7 +66,7 @@ export default defineContentScript({
             }
 
             try {
-                await uiToRemove.remove();
+                uiToRemove.remove();
                 console.log(`[Scarlett CS] Widget UI removed (${widgetNameToClear}).`);
             } catch (error) {
                 console.error(`[Scarlett CS] Error removing widget UI (${widgetNameToClear}):`, error);
@@ -123,24 +120,6 @@ export default defineContentScript({
                     anchor: undefined,
                     onMount: (container): (() => void) => {
                         
-                        // --- Inject Global Styles into Main Page <head> ---
-                        if (!document.getElementById(GLOBAL_STYLE_ID)) {
-                            try {
-                                const styleLink = document.createElement('link');
-                                styleLink.rel = 'stylesheet';
-                                styleLink.id = GLOBAL_STYLE_ID;
-                                // Get the URL to the bundled CSS file
-                                // @ts-ignore - Path is defined in web_accessible_resources
-                                styleLink.href = browser.runtime.getURL('assets/uno-bundle.css'); 
-                                document.head.prepend(styleLink); // Inject into main page head
-                                console.log('[Scarlett CS] Injected global uno-bundle.css into document head.');
-                            } catch (e) {
-                                console.error("[Scarlett CS] Failed to inject global uno-bundle.css:", e);
-                            }
-                        } else {
-                             console.log('[Scarlett CS] Global styles already injected.');
-                        }
-                        // -----------------------------------------------------
                         
                         // Apply fixed positioning styles to the container
                         container.style.position = 'fixed';

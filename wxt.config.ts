@@ -72,8 +72,7 @@ export default defineConfig({
         resources: [
             "postgres.wasm",
             "postgres.data",
-            "vector.tar.gz",
-            "assets/uno-bundle.css"
+            "vector.tar.gz"
         ],
       }
     ],
