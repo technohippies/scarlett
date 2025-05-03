@@ -12,7 +12,8 @@ interface LLMAnalysisResult {
   wordMappings: {
     sourceWord: string;
     targetWord: string;
-    contextHint?: string; // Optional hint per word pair
+    targetWordDistractors?: string[]; // Added: LLM-suggested distractors for the target word
+    contextHint?: string;
   }[];
 }
 
@@ -155,6 +156,7 @@ export async function processTextAnalysisPipeline({
                 targetLang,
                 targetLexemePOS, // Should now be correctly assigned (or null if error)
                 item.contextHint || null,
+                item.targetWordDistractors || null,
                 sourceUrl,
                 selectedText,
                 selectedText
@@ -187,6 +189,7 @@ Perform the following tasks:
 2. Segment the original ${sourceLang} text into individual words.
 3. Segment the translated ${targetLang} text into individual words. Ensure segmentation is natural for the target language.
 4. Create a mapping between the segmented source words and the corresponding segmented target words. The mapping should represent the most likely translation alignment for each word within the context of the full phrase.
+5. For EACH target word in the mapping, generate exactly 3 plausible but incorrect distractor words in ${targetLang}. These distractors should be semantically related or commonly confused words suitable for a multiple-choice question where the user must identify the correct translation (${targetLang}) of the source word (${sourceLang}).
 
 Respond ONLY with a single, valid JSON object adhering to this exact structure:
 
@@ -196,13 +199,14 @@ Respond ONLY with a single, valid JSON object adhering to this exact structure:
   "wordMappings": [
     {
       "sourceWord": "Source_Word",
-      "targetWord": "Corresponding_Target_Word"
+      "targetWord": "Corresponding_Target_Word",
+      "targetWordDistractors": ["Distractor1", "Distractor2", "Distractor3"]
     }
     // Repeat for all word pairs in sequence
   ]
 }
 
-Do not include any explanations, apologies, or text outside the JSON object. Ensure the word segmentation and mapping reflect the phrase's context.
+Do not include any explanations, apologies, or text outside the JSON object. Ensure the word segmentation, mapping, and distractors reflect the phrase's context.
 
 JSON Response:`;
 } 

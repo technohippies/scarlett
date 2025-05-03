@@ -104,6 +104,7 @@ async function createEncounter(
  * @param targetLang The target language code (as string)
  * @param targetLexemePOS Part of speech for the target lexeme (if applicable)
  * @param contextHint Optional context hint from LLM for the translation
+ * @param llmDistractors Optional array of LLM-generated distractors for the target lexeme
  * @param encounterUrl URL where the item was encountered
  * @param encounterHighlight The exact text highlighted by the user
  * @param encounterContext Optional broader context snippet
@@ -117,6 +118,7 @@ export async function addOrUpdateLexemeAndTranslation(
     targetLang: string,
     targetLexemePOS: string | null,
     contextHint: string | null,
+    llmDistractors: string[] | null,
     encounterUrl: string,
     encounterHighlight: string,
     encounterContext: string | null
@@ -127,7 +129,7 @@ export async function addOrUpdateLexemeAndTranslation(
         return;
     }
 
-    console.log(`[DB learning] Starting transaction for: '${sourceText}' (${sourceLexemePOS || 'N/A'}) -> '${targetText}' (${targetLexemePOS || 'N/A'})`);
+    console.log(`[DB learning] Starting transaction for: '${sourceText}' (${sourceLexemePOS || 'N/A'}) -> '${targetText}' (${targetLexemePOS || 'N/A'}) (Distractors: ${llmDistractors?.length ?? 0})`);
 
     try {
         // Use db.transaction to ensure atomicity
@@ -163,15 +165,18 @@ export async function addOrUpdateLexemeAndTranslation(
             if (!targetLexemeId) throw new Error(`Failed to get target lexeme ID for ${targetText}`);
             console.log(`[DB learning] Target lexeme ID: ${targetLexemeId}`);
 
-            // --- 2. Find or Create Translation Link ---
+            // --- 2. Find or Create Translation Link --- Now includes distractors
             console.log('[DB learning] Finding/creating translation link...');
+            // Note: PGlite/Postgres expects arrays passed as parameters to be actual JS arrays
             const translationResult = await tx.query<{ translation_id: number }>(
-                `INSERT INTO lexeme_translations (source_lexeme_id, target_lexeme_id, llm_context_hint)
-                 VALUES ($1, $2, $3)
+                `INSERT INTO lexeme_translations (source_lexeme_id, target_lexeme_id, llm_context_hint, llm_generated_distractors)
+                 VALUES ($1, $2, $3, $4)
                  ON CONFLICT (source_lexeme_id, target_lexeme_id) DO UPDATE SET
-                    llm_context_hint = COALESCE(EXCLUDED.llm_context_hint, lexeme_translations.llm_context_hint)
+                    llm_context_hint = COALESCE(EXCLUDED.llm_context_hint, lexeme_translations.llm_context_hint),
+                    -- Overwrite distractors if new ones are provided, otherwise keep old ones
+                    llm_generated_distractors = COALESCE(EXCLUDED.llm_generated_distractors, lexeme_translations.llm_generated_distractors)
                  RETURNING translation_id;`,
-                [sourceLexemeId, targetLexemeId, contextHint]
+                [sourceLexemeId, targetLexemeId, contextHint, llmDistractors] // Pass distractors array
             );
             const translationId = translationResult?.rows?.[0]?.translation_id;
             if (!translationId) throw new Error(`Failed to get translation ID for ${sourceLexemeId} -> ${targetLexemeId}`);
