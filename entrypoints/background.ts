@@ -1,12 +1,5 @@
 import { defineBackground } from '#imports';
 import { browser } from 'wxt/browser';
-import { defineExtensionMessaging } from '@webext-core/messaging';
-import type { DisplayTranslationPayload } from '../src/shared/messaging-types';
-import { getLLMAnalysisPrompt } from '../src/services/llm/prompts/analysis';
-import { ollamaChat } from '../src/services/llm/providers/ollama/chat';
-import type { LLMConfig, LLMChatResponse, ChatMessage } from '../src/services/llm/types';
-import { addOrUpdateLearnedItem } from '../src/services/db/learning';
-import { ensureDbInitialized } from '../src/services/db/init';
 
 // Import setup functions
 import { setupContextMenu } from '../src/background/setup/context-menu-setup';
@@ -17,16 +10,6 @@ import { registerContextMenuHandlers } from '../src/background/handlers/context-
 import { registerMessageHandlers } from '../src/background/handlers/message-handlers';
 
 console.log('[Scarlett BG Entrypoint] Script loaded.');
-
-// --- Initialize Messaging ---
-interface ProtocolMap {
-  displayTranslationWidget(data: DisplayTranslationPayload): Promise<void>;
-  // Add other messages if needed later (like updateWidgetAlignment for TTS)
-}
-const messaging = defineExtensionMessaging<ProtocolMap>();
-
-// --- Constants ---
-const CONTEXT_MENU_ID = 'process-selected-text';
 
 // --- Background Script Logic ---
 export default defineBackground(() => {

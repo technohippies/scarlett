@@ -25,6 +25,7 @@
     "@wxt-dev/storage": "^1.1.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "compromise": "^14.14.4",
     "highlight.js": "^11.11.1",
     "phosphor-solid": "^1.1.5",
     "solid-js": "^1.9.5",

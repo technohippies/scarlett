@@ -1,6 +1,8 @@
 import { ollamaChat } from '../../services/llm/providers/ollama/chat';
 import type { LLMConfig, LLMChatResponse, ChatMessage } from '../../services/llm/types';
-import { addOrUpdateLearnedItem } from '../../services/db/learning';
+import { addOrUpdateLexemeAndTranslation } from '../../services/db/learning';
+import { getDbInstance } from '../../services/db/init';
+import compromise from 'compromise';
 
 // Interface matching the expected LLM JSON output structure
 // (Could potentially be moved to a shared types file later)
@@ -10,6 +12,7 @@ interface LLMAnalysisResult {
   wordMappings: {
     sourceWord: string;
     targetWord: string;
+    contextHint?: string; // Optional hint per word pair
   }[];
 }
 
@@ -24,7 +27,7 @@ interface ProcessTextParams {
 
 /**
  * Pipeline for analyzing selected text: gets translation/word mappings via LLM,
- * parses the result, and updates the database.
+ * parses the result, and updates the database for EACH word pair.
  * Throws errors if any step fails.
  */
 export async function processTextAnalysisPipeline({
@@ -62,15 +65,111 @@ export async function processTextAnalysisPipeline({
       throw new Error('[Analysis Pipeline] Failed to understand LLM response format.');
     }
 
-    // 3. Add/Update data in the Database
-    console.log('[Analysis Pipeline] Calling addOrUpdateLearnedItem...');
-    await addOrUpdateLearnedItem({
-      llmResult: analysisResult,
-      sourceLang,
-      targetLang,
-      sourceUrl,
-    });
-    console.log('[Analysis Pipeline] Database operation completed for:', analysisResult.originalPhrase);
+    // 3. Process and Store Results for EACH Word Mapping
+    console.log('[Pipeline] Processing and storing results for word mappings...');
+    const db = await getDbInstance();
+
+    for (const item of analysisResult.wordMappings) {
+        // --- Prepare Lexeme Data with POS tagging ---
+        let sourceLexemePOS: string | null = null;
+        let targetLexemePOS: string | null = null;
+
+        // Tag source word if it's English
+        if (sourceLang.toLowerCase().startsWith('en')) {
+            try {
+                // Convert to lowercase before tagging
+                const sourceWordLower = item.sourceWord.toLowerCase();
+                const doc = compromise(sourceWordLower);
+                const terms = doc.terms();
+                if (terms.found) {
+                    const firstTerm = terms.first();
+                    const tagsResult = firstTerm.out('tags');
+
+                    console.log(`[Pipeline] Raw tagsResult for source '${sourceWordLower}':`, JSON.stringify(tagsResult, null, 2));
+
+                    // Revised logic to handle the object structure
+                    let tags: string[] | null = null;
+                    if (Array.isArray(tagsResult) && tagsResult.length > 0 && typeof tagsResult[0] === 'object' && tagsResult[0] !== null) {
+                        const wordKey = Object.keys(tagsResult[0])[0]; // Get the word key (e.g., 'love')
+                        const potentialTags = tagsResult[0][wordKey];
+                        if (Array.isArray(potentialTags)) {
+                            tags = potentialTags;
+                        }
+                    }
+
+                    sourceLexemePOS = tags?.[0] ?? null; // Get the primary tag (e.g., 'Verb')
+                    let rawTagsString = tags?.join(', ') ?? 'N/A';
+                    console.log(`[Pipeline] POS for EN source '${item.sourceWord}' (tagged as '${sourceWordLower}'): ${sourceLexemePOS} (Raw: ${rawTagsString})`);
+                } else {
+                    console.log(`[Pipeline] No terms found for EN source '${item.sourceWord}' (tagged as '${sourceWordLower}')`);
+                }
+            } catch (tagError) {
+                 console.error(`[Pipeline] Error during compromise tagging for source word '${item.sourceWord}':`, tagError);
+                 sourceLexemePOS = null;
+            }
+        }
+
+        // Tag target word if it's English
+        if (targetLang.toLowerCase().startsWith('en')) {
+             try {
+                 // Convert to lowercase before tagging
+                const targetWordLower = item.targetWord.toLowerCase();
+                const doc = compromise(targetWordLower);
+                const terms = doc.terms();
+                if (terms.found) {
+                    const firstTerm = terms.first();
+                    const tagsResult = firstTerm.out('tags');
+
+                    console.log(`[Pipeline] Raw tagsResult for target '${targetWordLower}':`, JSON.stringify(tagsResult, null, 2));
+
+                    // Revised logic to handle the object structure
+                    let tags: string[] | null = null;
+                    if (Array.isArray(tagsResult) && tagsResult.length > 0 && typeof tagsResult[0] === 'object' && tagsResult[0] !== null) {
+                        const wordKey = Object.keys(tagsResult[0])[0];
+                        const potentialTags = tagsResult[0][wordKey];
+                        if (Array.isArray(potentialTags)) {
+                            tags = potentialTags;
+                        }
+                    }
+
+                    targetLexemePOS = tags?.[0] ?? null; // Get the primary tag
+                    let rawTagsString = tags?.join(', ') ?? 'N/A';
+                    console.log(`[Pipeline] POS for EN target '${item.targetWord}' (tagged as '${targetWordLower}'): ${targetLexemePOS} (Raw: ${rawTagsString})`);
+                } else {
+                     console.log(`[Pipeline] No terms found for EN target '${item.targetWord}' (tagged as '${targetWordLower}')`);
+                }
+            } catch (tagError) {
+                console.error(`[Pipeline] Error during compromise tagging for target word '${item.targetWord}':`, tagError);
+                targetLexemePOS = null;
+            }
+        }
+
+        // --- Add/Update Lexemes and Translation for this pair ---
+        try {
+            await addOrUpdateLexemeAndTranslation(
+                db,
+                item.sourceWord,
+                sourceLang, 
+                sourceLexemePOS, // Should now be correctly assigned (or null if error)
+                item.targetWord,
+                targetLang,
+                targetLexemePOS, // Should now be correctly assigned (or null if error)
+                item.contextHint || null,
+                sourceUrl,
+                selectedText,
+                selectedText
+            );
+        } catch (dbError) {
+             console.error(`[Pipeline] Error saving word pair to DB: '${item.sourceWord}' -> '${item.targetWord}'`, dbError);
+        }
+    }
+
+    console.log('[Analysis Pipeline] Database operations completed for word mappings from:', analysisResult.originalPhrase);
+
+    // TODO: Handle phrase-level saving separately if needed?
+    // Currently, only word pairs are saved with POS.
+    // If we need to save the originalPhrase -> translatedPhrase link,
+    // we'd call addOrUpdateLexemeAndTranslation again here with null POS tags.
 
     return analysisResult; // Return the parsed result
 }

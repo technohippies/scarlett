@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS lexemes (
     lexeme_id SERIAL PRIMARY KEY,
     text TEXT NOT NULL,
     language TEXT NOT NULL, -- e.g., 'en', 'zh-CN'
+    part_of_speech TEXT NULL, -- Added: Store POS tag (e.g., 'Noun', 'Verb')
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(text, language)
 );

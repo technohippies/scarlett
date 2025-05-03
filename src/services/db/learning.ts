@@ -1,157 +1,212 @@
-import { getDbInstance } from './init'; // Assuming getDbInstance is correctly exported from init.ts
+import type { PGlite } from '@electric-sql/pglite';
 
-// Interface matching the expected LLM JSON output structure
-interface LLMAnalysisResult {
-  originalPhrase: string;
-  translatedPhrase: string;
-  wordMappings: {
-    sourceWord: string;
-    targetWord: string;
-  }[];
-}
-
-// Interface for the data needed by the function
-interface AddItemParams {
-  llmResult: LLMAnalysisResult;
-  sourceLang: string;
-  targetLang: string;
-  sourceUrl: string; // URL where the original phrase was encountered
+/**
+ * Inserts or updates a lexeme, returning its ID.
+ * Handles conflicts by updating nothing (just returning the existing ID).
+ */
+async function findOrCreateLexeme(
+    tx: PGlite,
+    text: string,
+    language: string,
+    partOfSpeech: string | null // Added POS parameter
+): Promise<number> {
+    const result = await tx.query<{ lexeme_id: number }>(
+        `INSERT INTO lexemes (text, language, part_of_speech)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (text, language) DO UPDATE SET
+             -- Update POS if the new value is not null and the existing one is null or different?
+             -- Or maybe just update if the incoming value is not null?
+             -- Simplest for now: If conflict, don't update POS. Rely on first encounter.
+             -- If we want to update: part_of_speech = COALESCE(EXCLUDED.part_of_speech, lexemes.part_of_speech)
+             text = EXCLUDED.text -- Needs a dummy update for RETURNING
+         RETURNING lexeme_id;`,
+        [text, language, partOfSpeech] // Pass POS value
+    );
+    if (!result?.rows?.[0]?.lexeme_id) {
+        throw new Error(`[DB Learning] Failed to find or create lexeme for: ${text} (${language})`);
+    }
+    return result.rows[0].lexeme_id;
 }
 
 /**
- * Adds or updates learned items (phrase and words) based on LLM analysis.
- * - Creates lexeme entries for the phrase and individual words.
- * - Creates translation entries for the phrase and individual words.
- * - Creates or updates the user_learning SRS record for the phrase and words.
- * - Creates an encounter record for the phrase.
- * Uses transactions for atomicity.
+ * Inserts or updates a translation link between two lexemes, returning its ID.
  */
-export async function addOrUpdateLearnedItem({
-  llmResult,
-  sourceLang,
-  targetLang,
-  sourceUrl,
-}: AddItemParams): Promise<void> {
-  const db = await getDbInstance();
-  const { originalPhrase, translatedPhrase, wordMappings } = llmResult;
+async function findOrCreateTranslation(
+    tx: PGlite,
+    sourceLexemeId: number,
+    targetLexemeId: number,
+    contextHint: string | null
+): Promise<number> {
+    const result = await tx.query<{ translation_id: number }>(
+        `INSERT INTO lexeme_translations (source_lexeme_id, target_lexeme_id, llm_context_hint)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (source_lexeme_id, target_lexeme_id) DO UPDATE SET
+            llm_context_hint = COALESCE(EXCLUDED.llm_context_hint, lexeme_translations.llm_context_hint)
+         RETURNING translation_id;`,
+        [sourceLexemeId, targetLexemeId, contextHint]
+    );
+     if (!result?.rows?.[0]?.translation_id) {
+        throw new Error(`[DB Learning] Failed to find or create translation for: ${sourceLexemeId} -> ${targetLexemeId}`);
+    }
+    return result.rows[0].translation_id;
+}
 
-  console.log('[DB learning] Starting transaction for:', originalPhrase);
-
-  try {
-    await db.transaction(async (tx) => {
-      // --- 1. Handle Phrase Level ---
-      console.log('[DB learning] Handling phrase level...');
-
-      // Get/Create source phrase lexeme
-      const sourcePhraseLexeme = await tx.query<{ lexeme_id: number }>(
-        `INSERT INTO lexemes (text, language) VALUES ($1, $2)
-         ON CONFLICT (text, language) DO UPDATE SET text = EXCLUDED.text RETURNING lexeme_id;`,
-        [originalPhrase, sourceLang]
-      );
-      const sourcePhraseLexemeId = sourcePhraseLexeme.rows[0].lexeme_id;
-      console.log(`[DB learning] Source phrase lexeme ID: ${sourcePhraseLexemeId} ('${originalPhrase}')`);
-
-      // Get/Create target phrase lexeme
-      const targetPhraseLexeme = await tx.query<{ lexeme_id: number }>(
-         `INSERT INTO lexemes (text, language) VALUES ($1, $2)
-          ON CONFLICT (text, language) DO UPDATE SET text = EXCLUDED.text RETURNING lexeme_id;`,
-         [translatedPhrase, targetLang]
-       );
-      const targetPhraseLexemeId = targetPhraseLexeme.rows[0].lexeme_id;
-      console.log(`[DB learning] Target phrase lexeme ID: ${targetPhraseLexemeId} ('${translatedPhrase.substring(0,20)}...')`);
-
-
-      // Get/Create phrase translation link
-      const phraseTranslation = await tx.query<{ translation_id: number }>(
-        `INSERT INTO lexeme_translations (source_lexeme_id, target_lexeme_id) VALUES ($1, $2)
-         ON CONFLICT (source_lexeme_id, target_lexeme_id) DO UPDATE SET source_lexeme_id = EXCLUDED.source_lexeme_id RETURNING translation_id;`,
-        [sourcePhraseLexemeId, targetPhraseLexemeId]
-      );
-      const phraseTranslationId = phraseTranslation.rows[0].translation_id;
-       console.log(`[DB learning] Phrase translation ID: ${phraseTranslationId}`);
-
-
-      // Get/Create user learning record for the PHRASE
-      // Initialize FSRS state: due now, state = new (0)
-      // ON CONFLICT: If user encounters the same phrase again, maybe just update `updated_at`?
-      // Or potentially reset SRS state? For now, just ensure the record exists.
-      const phraseLearning = await tx.query<{ learning_id: number }>(
+/**
+ * Inserts or updates a user learning record for a translation, returning its ID.
+ * Initializes FSRS state for new records.
+ */
+async function findOrCreateUserLearning(
+    tx: PGlite,
+    translationId: number
+): Promise<number> {
+     const result = await tx.query<{ learning_id: number }>(
         `INSERT INTO user_learning (translation_id, due, state, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days)
          VALUES ($1, CURRENT_TIMESTAMP, 0, 0, 0, 0, 0, NULL, 0, 0)
-         ON CONFLICT (translation_id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+         ON CONFLICT (translation_id) DO UPDATE SET
+             updated_at = CURRENT_TIMESTAMP -- Just update timestamp on conflict
          RETURNING learning_id;`,
-        [phraseTranslationId]
-      );
-      const phraseLearningId = phraseLearning.rows[0].learning_id;
-      console.log(`[DB learning] Phrase learning ID: ${phraseLearningId}`);
+        [translationId]
+    );
+    if (!result?.rows?.[0]?.learning_id) {
+        throw new Error(`[DB Learning] Failed to find or create user learning record for translation ID: ${translationId}`);
+    }
+    return result.rows[0].learning_id;
+}
 
+/**
+ * Creates an encounter record for a specific learning item.
+ */
+async function createEncounter(
+    tx: PGlite,
+    learningId: number,
+    url: string,
+    sourceHighlight: string,
+    contextSnippet: string | null
+): Promise<void> {
+    await tx.query(
+        `INSERT INTO encounters (learning_id, url, source_highlight, page_context_snippet) VALUES ($1, $2, $3, $4);`,
+        [learningId, url, sourceHighlight, contextSnippet]
+    );
+}
 
-      // Create encounter record for the phrase
-       await tx.query(
-         `INSERT INTO encounters (learning_id, url, source_highlight) VALUES ($1, $2, $3);`,
-         [phraseLearningId, sourceUrl, originalPhrase] // Use originalPhrase as source_highlight for now
-       );
-       console.log(`[DB learning] Encounter created for learning ID ${phraseLearningId}`);
+/**
+ * Adds or updates lexemes and their translation link.
+ * Creates or updates the user learning record for the translation.
+ * Creates an encounter record.
+ * Handles both word and phrase level data consistently.
+ * Uses transactions for atomicity.
+ *
+ * @param db PGlite instance
+ * @param sourceText The source language word/phrase
+ * @param sourceLang The source language code (as string)
+ * @param sourceLexemePOS Part of speech for the source lexeme (if applicable)
+ * @param targetText The target language word/phrase
+ * @param targetLang The target language code (as string)
+ * @param targetLexemePOS Part of speech for the target lexeme (if applicable)
+ * @param contextHint Optional context hint from LLM for the translation
+ * @param encounterUrl URL where the item was encountered
+ * @param encounterHighlight The exact text highlighted by the user
+ * @param encounterContext Optional broader context snippet
+ */
+export async function addOrUpdateLexemeAndTranslation(
+    db: PGlite,
+    sourceText: string,
+    sourceLang: string,
+    sourceLexemePOS: string | null,
+    targetText: string,
+    targetLang: string,
+    targetLexemePOS: string | null,
+    contextHint: string | null,
+    encounterUrl: string,
+    encounterHighlight: string,
+    encounterContext: string | null
+): Promise<void> {
 
+    if (!sourceText || !targetText) {
+        console.warn('[DB learning] Skipping addOrUpdateLexemeAndTranslation due to empty source or target text.');
+        return;
+    }
 
-      // --- 2. Handle Word Level ---
-      console.log(`[DB learning] Handling ${wordMappings.length} word mappings...`);
+    console.log(`[DB learning] Starting transaction for: '${sourceText}' (${sourceLexemePOS || 'N/A'}) -> '${targetText}' (${targetLexemePOS || 'N/A'})`);
 
-      for (const mapping of wordMappings) {
-        const { sourceWord, targetWord } = mapping;
+    try {
+        // Use db.transaction to ensure atomicity
+        await db.transaction(async (tx) => {
+            // --- 1. Find or Create Lexemes --- Use the transaction object 'tx' for queries
+            console.log('[DB learning] Finding/creating lexemes...');
 
-        // Skip empty strings if segmentation yields them
-        if (!sourceWord || !targetWord) {
-             console.warn('[DB learning] Skipping empty source/target word in mapping.');
-             continue;
-        }
+            // Source Lexeme
+            const sourceLexemeResult = await tx.query<{ lexeme_id: number }>(
+                `INSERT INTO lexemes (text, language, part_of_speech)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (text, language) DO UPDATE SET
+                     -- Only update POS if the new value is provided and the existing one is NULL?
+                     -- Let's keep it simple: Don't update POS on conflict for now.
+                     part_of_speech = COALESCE(lexemes.part_of_speech, EXCLUDED.part_of_speech) -- Prefer existing if available
+                 RETURNING lexeme_id;`,
+                [sourceText, sourceLang, sourceLexemePOS] // Use source POS
+            );
+            const sourceLexemeId = sourceLexemeResult?.rows?.[0]?.lexeme_id;
+            if (!sourceLexemeId) throw new Error(`Failed to get source lexeme ID for ${sourceText}`);
+            console.log(`[DB learning] Source lexeme ID: ${sourceLexemeId}`);
 
-        // Get/Create source word lexeme
-        const sourceWordLexeme = await tx.query<{ lexeme_id: number }>(
-          `INSERT INTO lexemes (text, language) VALUES ($1, $2)
-           ON CONFLICT (text, language) DO UPDATE SET text = EXCLUDED.text RETURNING lexeme_id;`,
-          [sourceWord, sourceLang]
-        );
-        const sourceWordLexemeId = sourceWordLexeme.rows[0].lexeme_id;
+            // Target Lexeme
+            const targetLexemeResult = await tx.query<{ lexeme_id: number }>(
+                `INSERT INTO lexemes (text, language, part_of_speech)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (text, language) DO UPDATE SET
+                     part_of_speech = COALESCE(lexemes.part_of_speech, EXCLUDED.part_of_speech) -- Prefer existing if available
+                 RETURNING lexeme_id;`,
+                [targetText, targetLang, targetLexemePOS] // Use target POS
+            );
+            const targetLexemeId = targetLexemeResult?.rows?.[0]?.lexeme_id;
+            if (!targetLexemeId) throw new Error(`Failed to get target lexeme ID for ${targetText}`);
+            console.log(`[DB learning] Target lexeme ID: ${targetLexemeId}`);
 
-        // Get/Create target word lexeme
-        const targetWordLexeme = await tx.query<{ lexeme_id: number }>(
-          `INSERT INTO lexemes (text, language) VALUES ($1, $2)
-           ON CONFLICT (text, language) DO UPDATE SET text = EXCLUDED.text RETURNING lexeme_id;`,
-          [targetWord, targetLang]
-        );
-        const targetWordLexemeId = targetWordLexeme.rows[0].lexeme_id;
+            // --- 2. Find or Create Translation Link ---
+            console.log('[DB learning] Finding/creating translation link...');
+            const translationResult = await tx.query<{ translation_id: number }>(
+                `INSERT INTO lexeme_translations (source_lexeme_id, target_lexeme_id, llm_context_hint)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (source_lexeme_id, target_lexeme_id) DO UPDATE SET
+                    llm_context_hint = COALESCE(EXCLUDED.llm_context_hint, lexeme_translations.llm_context_hint)
+                 RETURNING translation_id;`,
+                [sourceLexemeId, targetLexemeId, contextHint]
+            );
+            const translationId = translationResult?.rows?.[0]?.translation_id;
+            if (!translationId) throw new Error(`Failed to get translation ID for ${sourceLexemeId} -> ${targetLexemeId}`);
+             console.log(`[DB learning] Translation ID: ${translationId}`);
 
-        // Get/Create word translation link
-        const wordTranslation = await tx.query<{ translation_id: number }>(
-          `INSERT INTO lexeme_translations (source_lexeme_id, target_lexeme_id) VALUES ($1, $2)
-           ON CONFLICT (source_lexeme_id, target_lexeme_id) DO UPDATE SET source_lexeme_id = EXCLUDED.source_lexeme_id RETURNING translation_id;`,
-          [sourceWordLexemeId, targetWordLexemeId]
-        );
-        const wordTranslationId = wordTranslation.rows[0].translation_id;
+            // --- 3. Find or Create User Learning Record ---
+            console.log('[DB learning] Finding/creating user learning record...');
+            const learningResult = await tx.query<{ learning_id: number }>(
+                `INSERT INTO user_learning (translation_id, due, state, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days)
+                 VALUES ($1, CURRENT_TIMESTAMP, 0, 0, 0, 0, 0, NULL, 0, 0)
+                 ON CONFLICT (translation_id) DO UPDATE SET
+                     updated_at = CURRENT_TIMESTAMP -- Just update timestamp
+                 RETURNING learning_id;`,
+                [translationId]
+            );
+            const learningId = learningResult?.rows?.[0]?.learning_id;
+            if (!learningId) throw new Error(`Failed to get learning ID for translation ID ${translationId}`);
+            console.log(`[DB learning] Learning ID: ${learningId}`);
 
-        // Get/Create user learning record for the WORD translation
-        // Same initialization logic as the phrase
-         await tx.query<{ learning_id: number }>(
-          `INSERT INTO user_learning (translation_id, due, state, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days)
-           VALUES ($1, CURRENT_TIMESTAMP, 0, 0, 0, 0, 0, NULL, 0, 0)
-           ON CONFLICT (translation_id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
-           RETURNING learning_id;`,
-          [wordTranslationId]
-        );
-        // We don't necessarily need the word learning ID right now
-        console.log(`[DB learning] Processed word pair: '${sourceWord}' -> '${targetWord}'`);
-      }
-      console.log('[DB learning] Word mappings processed.');
+            // --- 4. Create Encounter Record ---
+            console.log('[DB learning] Creating encounter record...');
+            await tx.query(
+                `INSERT INTO encounters (learning_id, url, source_highlight, page_context_snippet)
+                 VALUES ($1, $2, $3, $4);`,
+                [learningId, encounterUrl, encounterHighlight, encounterContext]
+            );
+            console.log(`[DB learning] Encounter created for Learning ID: ${learningId}`);
+        }); // End transaction
 
-    }); // End transaction
-    console.log('[DB learning] Transaction committed successfully for:', originalPhrase);
+        console.log('[DB learning] Transaction committed successfully.');
 
-  } catch (error) {
-    console.error('[DB learning] Transaction failed:', error);
-    // Re-throw the error so the caller (background script) knows something went wrong
-    throw error;
-  }
+    } catch (error) {
+        console.error('[DB learning] Transaction failed in addOrUpdateLexemeAndTranslation:', error);
+        throw error; // Re-throw the error for the pipeline to catch
+    }
 }
 
 // TODO: Add functions later for:
