@@ -1,36 +1,51 @@
 import { defineBackground } from '#imports';
 import { browser } from 'wxt/browser';
+import { ensureDbInitialized } from '../src/services/db/init';
+import { setupContextMenu } from '../src/background/setup/context-menu-setup';
+import { registerMessageHandlers } from '../src/background/handlers/message-handlers';
+import { loadDictionaries } from '../src/background/setup/dictionary-setup';
 
 // Import setup functions
-import { setupContextMenu } from '../src/background/setup/context-menu-setup';
 import { setupDatabase } from '../src/background/setup/db-setup';
 
 // Import handler registration functions
 import { registerContextMenuHandlers } from '../src/background/handlers/context-menu-handler';
-import { registerMessageHandlers } from '../src/background/handlers/message-handlers';
 
 console.log('[Scarlett BG Entrypoint] Script loaded.');
 
 // --- Background Script Logic ---
-export default defineBackground(() => {
+export default defineBackground(async () => {
   console.log('[Scarlett BG Entrypoint] Background defining function running.');
 
-  // --- Setup on Install/Update ---
-  browser.runtime.onInstalled.addListener(async (details) => {
+  // --- Core Initializations ---
+  // Run these every time the background script starts
+
+  // 1. Initialize Database (if not already)
+  await ensureDbInitialized();
+  console.log('[Scarlett BG Entrypoint] Database initialization checked/completed.');
+
+  // 2. Load Dictionaries into memory
+  await loadDictionaries();
+  console.log('[Scarlett BG Entrypoint] Dictionaries loaded.');
+
+  // 3. Setup Context Menus (might only need onInstalled, but safe to run always)
+  // Let's assume setupContextMenu handles idempotency or is fine to run multiple times
+  await setupContextMenu();
+  console.log('[Scarlett BG Entrypoint] Context menu setup checked/completed.');
+
+  // 4. Register message listeners
+  registerMessageHandlers();
+  console.log('[Scarlett BG Entrypoint] Message handlers registered.');
+
+  // --- Event-specific logic (like onInstalled) --- 
+  // onInstalled listener might still be useful for one-time setup tasks 
+  // if needed, but core setup runs above.
+  chrome.runtime.onInstalled.addListener(async (details) => {
     console.log('[Scarlett BG Entrypoint] onInstalled event triggered:', details.reason);
-    try {
-        await setupDatabase();
-        await setupContextMenu();
-        console.log('[Scarlett BG Entrypoint] Initial setup complete.');
-    } catch (error) {
-        console.error('[Scarlett BG Entrypoint] Error during initial setup:', error);
-    }
+    // Example: Maybe trigger a specific migration only on update
+    // if (details.reason === 'update') { /* ... */ }
+    console.log('[Scarlett BG Entrypoint] onInstalled specific tasks complete (if any).');
   });
 
-  // --- Register Event Handlers ---
-  // Call functions that attach listeners
-  registerContextMenuHandlers();
-  registerMessageHandlers();
-
-  console.log('[Scarlett BG Entrypoint] Background setup complete. Handlers registered.');
+  console.log('[Scarlett BG Entrypoint] Background setup complete. Ready.');
 });
