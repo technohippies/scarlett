@@ -14,7 +14,7 @@ import { setupDatabase } from '../src/background/setup/db-setup';
 
 // Import handler registration functions
 import { registerContextMenuHandlers } from '../src/background/handlers/context-menu-handler';
-// import { registerMessageHandlers } from '../src/background/handlers/message-handlers'; // Example for later
+import { registerMessageHandlers } from '../src/background/handlers/message-handlers';
 
 console.log('[Scarlett BG Entrypoint] Script loaded.');
 
@@ -47,7 +47,7 @@ export default defineBackground(() => {
   // --- Register Event Handlers ---
   // Call functions that attach listeners
   registerContextMenuHandlers();
-  // registerMessageHandlers(); // Example for later
+  registerMessageHandlers();
 
   console.log('[Scarlett BG Entrypoint] Background setup complete. Handlers registered.');
 });

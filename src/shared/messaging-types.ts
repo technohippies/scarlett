@@ -1,4 +1,6 @@
 import type { AlignmentData } from "../features/translator/TranslatorWidget";
+import type { Grade } from 'ts-fsrs';
+import type { DueLearningItem } from "../services/srs/types";
 
 /**
  * Payload sent from the background script to the content script
@@ -32,4 +34,34 @@ export interface UpdateAlignmentPayload {
   // TODO: Consider adding an identifier if multiple widgets could exist
   // or if the request/response needs explicit linking.
   // widgetId?: string;
+}
+
+// --- New Tab / Review Communication --- 
+
+// Get Due Items
+export interface GetDueItemsRequest {
+  limit?: number;
+}
+export interface GetDueItemsResponse {
+  dueItems: DueLearningItem[];
+}
+
+// Get Distractors
+export interface GetDistractorsRequest {
+  correctTargetLexemeId: number;
+  targetLanguage: string;
+  count: number;
+}
+export interface GetDistractorsResponse {
+  distractors: string[];
+}
+
+// Submit Review Result
+export interface SubmitReviewRequest {
+  learningId: number;
+  grade: Grade;
+}
+export interface SubmitReviewResponse {
+  success: boolean;
+  error?: string;
 } 
