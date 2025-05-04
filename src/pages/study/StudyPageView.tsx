@@ -19,7 +19,7 @@ export interface StudyPageViewProps {
 export const StudyPageView: Component<StudyPageViewProps> = (props) => {
   return (
     <div class="study-page-container flex flex-col font-sans bg-background min-h-screen">
-      <Header title="Study" onBackClick={props.onNavigateBack} />
+      <Header title="" onBackClick={props.onNavigateBack} />
 
       <div class="flex-grow flex flex-col items-center p-8 overflow-y-auto">
         {/* --- Loading / Error for Item Fetching --- */}
@@ -35,14 +35,13 @@ export const StudyPageView: Component<StudyPageViewProps> = (props) => {
         </div>
 
         {/* --- MCQ Area --- */}
-        <div class="exercise-area mt-4 w-full max-w-md flex-grow flex flex-col justify-center">
+        <div class="exercise-area mt-4 w-full max-w-md flex flex-col">
           <Show when={!props.isLoadingItem && !props.itemError}>
               <Show
                   when={!props.isLoadingDistractors}
                   fallback={
                       <div class="flex items-center justify-center text-foreground text-lg">
                         <Spinner class="h-5 w-5 mr-2" />
-                        <span>Preparing exercise...</span>
                       </div>
                   }
               >
@@ -77,15 +76,6 @@ export const StudyPageView: Component<StudyPageViewProps> = (props) => {
               </Show>
           </Show>
         </div>
-
-        {/* --- Skip Button --- */}
-        <button
-          onClick={props.onSkipClick}
-          disabled={props.isLoadingItem || props.isLoadingDistractors}
-          class="mt-8 mb-4 px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 disabled:opacity-50 transition-colors"
-        >
-          {props.isLoadingItem || props.isLoadingDistractors ? 'Loading...' : 'Skip / Get Next'}
-        </button>
       </div>
     </div>
   );
