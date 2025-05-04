@@ -17,9 +17,8 @@ import {
     getDueLearningItems,
     getDistractors,
     updateSRSState,
-    // --- NEW: Import the actual function to get summary counts --- 
-    // (Ensure this function exists and is correctly implemented in your SRS service)
-    // getStudySummaryCounts // <-- Commented out until implemented
+    // --- UNCOMMENT: Import the actual function --- 
+    getStudySummaryCounts // Assuming this function exists
 } from '../../services/srs/scheduler';
 import { updateCachedDistractors } from '../../services/db/learning';
 import { getDbInstance } from '../../services/db/init';
@@ -51,9 +50,13 @@ export function registerMessageHandlers(): void {
         console.log('[Message Handlers] Received getDueItems request:', message.data);
         try {
             const dueItems = await getDueLearningItems(message.data.limit);
+            // --- Log Result from Service --- 
+            console.log(`[Message Handlers] getDueLearningItems returned ${dueItems?.length ?? 0} item(s). Returning to StudyPage.`);
+            console.log('[Message Handlers] Due items data:', JSON.stringify(dueItems, null, 2));
             return { dueItems };
         } catch (error) {
-            console.error('[Message Handlers] Error handling getDueItems:', error);
+            // --- Log Error from Service --- 
+            console.error('[Message Handlers] Error calling getDueLearningItems:', error);
             return { dueItems: [] }; 
         }
     });
@@ -218,11 +221,10 @@ export function registerMessageHandlers(): void {
     messaging.onMessage('getStudySummary', async (message) => {
         console.log('[Message Handlers] Received getStudySummary request:', message.data);
         try {
-            // --- Use the actual function to get counts --- 
-            // TODO: Uncomment and ensure getStudySummaryCounts is implemented and imported
-            // const counts = await getStudySummaryCounts(); 
-            const counts = { due: 0, review: 0, new: 1 }; // Use placeholder WITH A NEW COUNT for testing
-            console.log('[Message Handlers] Retrieved summary counts (Using placeholder):', counts);
+            // --- Use the actual function (UNCOMMENTED) --- 
+            const counts = await getStudySummaryCounts(); 
+            // const counts = { due: 0, review: 0, new: 0 }; // Placeholder removed
+            console.log('[Message Handlers] Retrieved summary counts from scheduler:', counts);
             // ---------
 
             // Validate and ensure counts are numbers, default to 0 if not

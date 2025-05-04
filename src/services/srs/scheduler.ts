@@ -6,6 +6,58 @@ import { FSRS, Card, Grade, State, generatorParameters, RecordLogItem } from 'ts
 // Pass default parameters explicitly
 const fsrs = new FSRS(generatorParameters()); 
 
+// --- NEW: Function to get Study Summary Counts ---
+
+interface SummaryCounts {
+    new: number;
+    review: number;
+    due: number; // Often same as review in simple views, but calculated separately for clarity
+}
+
+/**
+ * Queries the database to get the counts of new, review (due), and learning cards.
+ * - New: Cards in State.New (0)
+ * - Review: Cards in State.Learning (1) or State.Review (2) that are due now or past.
+ * - Due: Same as Review count for this implementation.
+ * @returns A promise resolving to an object with { new, review, due } counts.
+ */
+export async function getStudySummaryCounts(): Promise<SummaryCounts> {
+    console.log('[SRS Scheduler] Fetching study summary counts...');
+    try {
+        const db = await getDbInstance();
+        
+        // Query for New items (State.New = 0)
+        const newCountResult = await db.query<{ count: string | number }>(
+            `SELECT COUNT(*) AS count FROM user_learning WHERE state = $1;`,
+            [State.New] // Use enum value (0)
+        );
+        const newCount = parseInt(String(newCountResult.rows[0]?.count ?? '0'), 10);
+        
+        // Query for Review/Due items (State != New AND due <= now)
+        // Note: State.Learning = 1, State.Review = 2, State.Relearning = 3
+        const reviewDueCountResult = await db.query<{ count: string | number }>(
+            `SELECT COUNT(*) AS count 
+             FROM user_learning 
+             WHERE state != $1 AND due <= CURRENT_TIMESTAMP;`,
+            [State.New] // Exclude New state
+        );
+        const reviewDueCount = parseInt(String(reviewDueCountResult.rows[0]?.count ?? '0'), 10);
+
+        const counts = {
+            new: newCount,
+            review: reviewDueCount,
+            due: reviewDueCount // Set due = review count
+        };
+        console.log('[SRS Scheduler] Calculated summary counts:', counts);
+        return counts;
+        
+    } catch (error) {
+        console.error('[SRS Scheduler] Error fetching study summary counts:', error);
+        // Return zero counts in case of error
+        return { new: 0, review: 0, due: 0 };
+    }
+}
+
 /**
  * Fetches learning items that are due for review.
  * Queries the database joining user_learning, lexeme_translations, and lexemes.

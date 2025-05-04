@@ -41,21 +41,26 @@ const StudyPage: Component = () => {
     setItemError(null);
     setCurrentItem(null);
     try {
-      const response = await messaging.sendMessage('getDueItems', { limit: 1 });
-      console.log('[StudyPage Container] Received due item(s):', response.dueItems);
-      if (response.dueItems && response.dueItems.length > 0) {
+      const requestData = { limit: 1 };
+      console.log('[StudyPage Container] Sending getDueItems message with data:', requestData);
+      const response = await messaging.sendMessage('getDueItems', requestData);
+      console.log('[StudyPage Container] Received getDueItems response:', JSON.stringify(response, null, 2));
+      
+      if (response && response.dueItems && response.dueItems.length > 0) {
         const fetchedItem = response.dueItems[0];
+        console.log('[StudyPage Container] Setting current item:', JSON.stringify(fetchedItem, null, 2));
         setCurrentItem(fetchedItem);
         const direction = Math.random() < 0.5 ? 'EN_TO_NATIVE' : 'NATIVE_TO_EN';
         setExerciseDirection(direction);
         console.log(`[StudyPage Container] Set exercise direction: ${direction}`);
         return fetchedItem;
       } else {
+        console.log('[StudyPage Container] No due items returned in response.');
         setCurrentItem(null);
         return null;
       }
     } catch (err: any) {
-      console.error('[StudyPage Container] Error fetching due items:', err);
+      console.error('[StudyPage Container] Error fetching due items via messaging:', err);
       setItemError(err.message || 'Failed to fetch due items.');
       return null;
     }
