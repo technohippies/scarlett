@@ -14,7 +14,8 @@ import type { TranslatorWidgetProps, AlignmentData } from '../src/features/trans
 import type {
     DisplayTranslationPayload, // Expect payload from background for displaying
     GenerateTTSPayload,      // Payload sent TO background for TTS
-    UpdateAlignmentPayload // Payload from background with alignment
+    UpdateAlignmentPayload, // Payload from background with alignment
+    GetPageContentResponse 
 } from '../src/shared/messaging-types.ts';
 
 // Define messaging for the content script context
@@ -205,6 +206,40 @@ export default defineContentScript({
         messaging.onMessage('hideTranslationWidget', async () => {
              console.log('[Scarlett CS] Received hideTranslationWidget request.');
              await hideWidget();
+        });
+
+        // --- Message Listener: Get Page Content ---
+        messaging.onMessage('getPageContent', async (message): Promise<GetPageContentResponse> => {
+            console.log('[Scarlett CS] Received getPageContent request.');
+            try {
+                // Simple approach: get the innerHTML of the body
+                const bodyHtml = document.body.innerHTML;
+                if (!bodyHtml) {
+                    console.warn('[Scarlett CS] document.body.innerHTML was empty.');
+                    return { success: false, error: 'Page body content is empty.' };
+                }
+                console.log(`[Scarlett CS] Extracted body HTML (length: ${bodyHtml.length}).`);
+                return { success: true, htmlContent: bodyHtml };
+            } catch (error: any) {
+                console.error('[Scarlett CS] Error getting page content:', error);
+                return { success: false, error: error.message || 'Failed to get page content.' };
+            }
+        });
+        
+        // --- Message Listener: Get Selected Text (for background handler) ---
+        // This listener responds to requests specifically from the background script's 
+        // handleGetSelectedText function.
+        messaging.onMessage('requestSelectedText', (message): { success: boolean; text?: string | null } => {
+            console.log('[Scarlett CS] Received requestSelectedText request.');
+            try {
+                const selection = window.getSelection();
+                const selectedText = selection ? selection.toString().trim() : null;
+                console.log(`[Scarlett CS] Responding with selected text: "${selectedText?.substring(0,50)}..."`);
+                return { success: true, text: selectedText };
+            } catch (error: any) {
+                console.error('[Scarlett CS] Error getting selected text:', error);
+                return { success: false, text: null };
+            }
         });
 
         console.log('[Scarlett CS] Content script setup complete. Listening for messages.');

@@ -13,9 +13,7 @@ export function getTagSuggestionPrompt(
   contentSnippet?: string,
   maxTags: number = 5
 ): string {
-  let prompt = `Analyze the following information about a webpage and suggest ${maxTags} relevant category hashtags (starting with #):
-
-`;
+  let prompt = `Analyze the following information about a webpage and suggest ${maxTags} relevant category hashtags (starting with #). Prioritize tags that reflect the main topics and themes.\n\n`;
 
   if (title) {
     prompt += `Title: ${title}\n`;
@@ -29,10 +27,10 @@ export function getTagSuggestionPrompt(
     const truncatedSnippet = contentSnippet.length > snippetLimit 
       ? contentSnippet.substring(0, snippetLimit) + '...' 
       : contentSnippet;
-    prompt += `Content Snippet: ${truncatedSnippet}\n`;
+    prompt += `Content Summary (Markdown):\n${truncatedSnippet}\n`;
   }
 
-  prompt += `\nPlease provide exactly ${maxTags} relevant hashtags, each starting with #, separated by spaces. Examples: #technology #solidjs #webdev #ai #news`;
+  prompt += `\nPlease provide exactly ${maxTags} relevant hashtags, each starting with #, separated by spaces. Choose broad topics first, then more specific ones if applicable. Examples: #technology #solidjs #webdev #ai #news`;
 
   return prompt;
 } 

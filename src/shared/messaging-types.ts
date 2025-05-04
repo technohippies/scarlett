@@ -163,3 +163,15 @@ export interface GetPageInfoResponse {
   url?: string;
   error?: string;
 }
+
+// --- Page Content Extraction ---
+
+/** Request from background to content script to get page HTML */
+export interface GetPageContentRequest {}
+
+/** Response from content script with page HTML */
+export interface GetPageContentResponse {
+  success: boolean;
+  htmlContent?: string; // The innerHTML of the body
+  error?: string;
+}
