@@ -112,7 +112,7 @@ export const BookmarkTool: Component<BookmarkToolProps> = (props) => {
   );
 
   return (
-    <div class="bg-background text-foreground rounded-lg flex flex-col gap-4 p-4 max-w-md w-full">
+    <div class="bg-background text-foreground flex flex-col gap-4 p-4 w-full">
 
       {/* Header */}
       <div class="flex items-center justify-between mb-1">

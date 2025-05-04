@@ -1,6 +1,7 @@
 import type { AlignmentData } from "../features/translator/TranslatorWidget";
 import type { Grade } from 'ts-fsrs';
 import type { DueLearningItem } from "../services/srs/types";
+import type { Bookmark, Tag } from "../services/db/types";
 
 /**
  * Payload sent from the background script to the content script
@@ -115,4 +116,50 @@ export interface GetStudySummaryResponse {
 export interface CacheDistractorsRequest {
   translationId: number;
   distractors: string[];
+}
+
+// --- Bookmark Related Message Types ---
+
+/** Response for loading bookmarks */
+export interface LoadBookmarksResponse {
+  success: boolean;
+  bookmarks?: Bookmark[];
+  error?: string;
+}
+
+/** Response for saving a bookmark */
+export interface SaveBookmarkResponse {
+  success: boolean;
+  bookmark?: Bookmark; // The newly created or updated bookmark
+  error?: string;
+}
+
+/** Response for suggesting tags */
+export interface TagSuggestResponse {
+  success: boolean;
+  suggestions?: string[];
+  error?: string;
+}
+
+/** Response for listing tags */
+export interface TagListResponse {
+  success: boolean;
+  tags?: Tag[]; // Assuming Tag type exists in db/types
+  error?: string;
+}
+
+// --- Content Script -> Background Get Info Types ---
+// (These were likely needed by popup/main.tsx)
+
+export interface GetSelectedTextResponse {
+  success: boolean;
+  text?: string | null;
+  error?: string;
+}
+
+export interface GetPageInfoResponse {
+  success: boolean;
+  title?: string;
+  url?: string;
+  error?: string;
 }

@@ -11,7 +11,11 @@ import type {
     GenerateLLMDistractorsRequest,
     GenerateLLMDistractorsResponse,
     GetStudySummaryRequest,
-    GetStudySummaryResponse
+    GetStudySummaryResponse,
+    SaveBookmarkResponse,
+    LoadBookmarksResponse,
+    TagListResponse, 
+    TagSuggestResponse
 } from '../../shared/messaging-types';
 import {
     getDueLearningItems,
@@ -25,6 +29,9 @@ import { getDbInstance } from '../../services/db/init';
 import { ollamaChat } from '../../services/llm/providers/ollama/chat';
 import { getMCQGenerationPrompt, getMCQGenerationPromptNativeToEn } from '../../services/llm/prompts/exercises';
 import type { LLMConfig } from '../../services/llm/types';
+import { handleSaveBookmark, handleLoadBookmarks } from './bookmark-handlers';
+import { handleTagList, handleTagSuggest } from './tag-handlers';
+import type { Bookmark, Tag } from '../../services/db/types';
 
 // Define the protocol map for messages handled by the background script
 interface BackgroundProtocolMap {
@@ -34,6 +41,12 @@ interface BackgroundProtocolMap {
     cacheDistractors(data: CacheDistractorsRequest): Promise<CacheDistractorsResponse>;
     generateLLMDistractors(data: GenerateLLMDistractorsRequest): Promise<GenerateLLMDistractorsResponse>;
     getStudySummary(data: GetStudySummaryRequest): Promise<GetStudySummaryResponse>;
+    saveBookmark(data: { url: string; title?: string | null; tags?: string | null; selectedText?: string | null }): 
+        Promise<SaveBookmarkResponse>;
+    loadBookmarks(): Promise<LoadBookmarksResponse>;
+    'tag:list': () => Promise<TagListResponse>;
+    'tag:suggest': (data: { title: string; url: string; pageContent?: string | null }) => 
+        Promise<TagSuggestResponse>;
 }
 
 // Initialize messaging for the background context
@@ -242,6 +255,30 @@ export function registerMessageHandlers(): void {
                 error: error.message || 'Failed to get study summary counts.' 
             };
         }
+    });
+
+    // --- Listener for saveBookmark ---
+    messaging.onMessage('saveBookmark', ({ data, sender }) => {
+        console.log('[Message Handlers] Received saveBookmark');
+        return handleSaveBookmark(data, sender);
+    });
+
+    // --- Listener for loadBookmarks ---
+    messaging.onMessage('loadBookmarks', ({ data, sender }) => {
+        console.log('[Message Handlers] Received loadBookmarks');
+        return handleLoadBookmarks(data, sender);
+    });
+
+    // --- Listener for tag:list ---
+    messaging.onMessage('tag:list', ({ data, sender }) => {
+        console.log('[Message Handlers] Received tag:list');
+        return handleTagList(data, sender);
+    });
+
+    // --- Listener for tag:suggest ---
+    messaging.onMessage('tag:suggest', ({ data, sender }) => {
+        console.log('[Message Handlers] Received tag:suggest');
+        return handleTagSuggest(data, sender);
     });
 
     console.log('[Message Handlers] Background message listeners registered.');
