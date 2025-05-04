@@ -1,95 +1,6 @@
 import type { PGlite } from '@electric-sql/pglite';
 
 /**
- * Inserts or updates a lexeme, returning its ID.
- * Handles conflicts by updating nothing (just returning the existing ID).
- */
-async function findOrCreateLexeme(
-    tx: PGlite,
-    text: string,
-    language: string,
-    partOfSpeech: string | null // Added POS parameter
-): Promise<number> {
-    const result = await tx.query<{ lexeme_id: number }>(
-        `INSERT INTO lexemes (text, language, part_of_speech)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (text, language) DO UPDATE SET
-             -- Update POS if the new value is not null and the existing one is null or different?
-             -- Or maybe just update if the incoming value is not null?
-             -- Simplest for now: If conflict, don't update POS. Rely on first encounter.
-             -- If we want to update: part_of_speech = COALESCE(EXCLUDED.part_of_speech, lexemes.part_of_speech)
-             text = EXCLUDED.text -- Needs a dummy update for RETURNING
-         RETURNING lexeme_id;`,
-        [text, language, partOfSpeech] // Pass POS value
-    );
-    if (!result?.rows?.[0]?.lexeme_id) {
-        throw new Error(`[DB Learning] Failed to find or create lexeme for: ${text} (${language})`);
-    }
-    return result.rows[0].lexeme_id;
-}
-
-/**
- * Inserts or updates a translation link between two lexemes, returning its ID.
- */
-async function findOrCreateTranslation(
-    tx: PGlite,
-    sourceLexemeId: number,
-    targetLexemeId: number,
-    contextHint: string | null
-): Promise<number> {
-    const result = await tx.query<{ translation_id: number }>(
-        `INSERT INTO lexeme_translations (source_lexeme_id, target_lexeme_id, llm_context_hint)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (source_lexeme_id, target_lexeme_id) DO UPDATE SET
-            llm_context_hint = COALESCE(EXCLUDED.llm_context_hint, lexeme_translations.llm_context_hint)
-         RETURNING translation_id;`,
-        [sourceLexemeId, targetLexemeId, contextHint]
-    );
-     if (!result?.rows?.[0]?.translation_id) {
-        throw new Error(`[DB Learning] Failed to find or create translation for: ${sourceLexemeId} -> ${targetLexemeId}`);
-    }
-    return result.rows[0].translation_id;
-}
-
-/**
- * Inserts or updates a user learning record for a translation, returning its ID.
- * Initializes FSRS state for new records.
- */
-async function findOrCreateUserLearning(
-    tx: PGlite,
-    translationId: number
-): Promise<number> {
-     const result = await tx.query<{ learning_id: number }>(
-        `INSERT INTO user_learning (translation_id, due, state, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days)
-         VALUES ($1, CURRENT_TIMESTAMP, 0, 0, 0, 0, 0, NULL, 0, 0)
-         ON CONFLICT (translation_id) DO UPDATE SET
-             updated_at = CURRENT_TIMESTAMP -- Just update timestamp on conflict
-         RETURNING learning_id;`,
-        [translationId]
-    );
-    if (!result?.rows?.[0]?.learning_id) {
-        throw new Error(`[DB Learning] Failed to find or create user learning record for translation ID: ${translationId}`);
-    }
-    return result.rows[0].learning_id;
-}
-
-/**
- * Creates an encounter record for a specific learning item.
- */
-async function createEncounter(
-    tx: PGlite,
-    learningId: number,
-    url: string,
-    sourceHighlight: string,
-    contextSnippet: string | null
-): Promise<void> {
-    await tx.query(
-        `INSERT INTO encounters (learning_id, url, source_highlight, page_context_snippet) VALUES ($1, $2, $3, $4);`,
-        [learningId, url, sourceHighlight, contextSnippet]
-    );
-}
-
-/**
  * Adds or updates lexemes and their translation link.
  * Creates or updates the user learning record for the translation.
  * Creates an encounter record.
@@ -105,9 +16,11 @@ async function createEncounter(
  * @param targetLexemePOS Part of speech for the target lexeme (if applicable)
  * @param contextHint Optional context hint from LLM for the translation
  * @param llmDistractors Optional array of LLM-generated distractors for the target lexeme
+ * @param variationType NEW: Type of variation (e.g., 'original', 'past_tense') or null
  * @param encounterUrl URL where the item was encountered
  * @param encounterHighlight The exact text highlighted by the user
  * @param encounterContext Optional broader context snippet
+ * @param initialDueDate Optional initial due date for the learning record
  */
 export async function addOrUpdateLexemeAndTranslation(
     db: PGlite,
@@ -119,9 +32,11 @@ export async function addOrUpdateLexemeAndTranslation(
     targetLexemePOS: string | null,
     contextHint: string | null,
     llmDistractors: string[] | null,
+    variationType: string | null,
     encounterUrl: string,
     encounterHighlight: string,
-    encounterContext: string | null
+    encounterContext: string | null,
+    initialDueDate?: Date | null
 ): Promise<void> {
 
     if (!sourceText || !targetText) {
@@ -129,7 +44,7 @@ export async function addOrUpdateLexemeAndTranslation(
         return;
     }
 
-    console.log(`[DB learning] Starting transaction for: '${sourceText}' (${sourceLexemePOS || 'N/A'}) -> '${targetText}' (${targetLexemePOS || 'N/A'}) (Distractors: ${llmDistractors?.length ?? 0})`);
+    console.log(`[DB learning] Starting transaction for: '${sourceText}' (${sourceLexemePOS || 'N/A'}) -> '${targetText}' (${targetLexemePOS || 'N/A'}) (Variation: ${variationType || 'original'}, Distractors: ${llmDistractors?.length ?? 0})`);
 
     try {
         // Use db.transaction to ensure atomicity
@@ -165,35 +80,55 @@ export async function addOrUpdateLexemeAndTranslation(
             if (!targetLexemeId) throw new Error(`Failed to get target lexeme ID for ${targetText}`);
             console.log(`[DB learning] Target lexeme ID: ${targetLexemeId}`);
 
-            // --- 2. Find or Create Translation Link --- Now includes distractors
+            // --- 2. Find or Create Translation Link --- Now includes variation_type
             console.log('[DB learning] Finding/creating translation link...');
-            // Note: PGlite/Postgres expects arrays passed as parameters to be actual JS arrays
+            // Prepare distractors for storage (null if empty or null)
+            const distractorsJson = llmDistractors && llmDistractors.length > 0 ? JSON.stringify(llmDistractors) : null;
             const translationResult = await tx.query<{ translation_id: number }>(
-                `INSERT INTO lexeme_translations (source_lexeme_id, target_lexeme_id, llm_context_hint, llm_distractors)
-                 VALUES ($1, $2, $3, $4)
+                `INSERT INTO lexeme_translations (source_lexeme_id, target_lexeme_id, llm_context_hint, llm_distractors, variation_type)
+                 VALUES ($1, $2, $3, $4, $5)
                  ON CONFLICT (source_lexeme_id, target_lexeme_id) DO UPDATE SET
                     llm_context_hint = COALESCE(EXCLUDED.llm_context_hint, lexeme_translations.llm_context_hint),
-                    -- Overwrite distractors if new ones are provided, otherwise keep old ones
-                    llm_distractors = COALESCE(EXCLUDED.llm_distractors, lexeme_translations.llm_distractors)
+                    llm_distractors = COALESCE(EXCLUDED.llm_distractors, lexeme_translations.llm_distractors),
+                    variation_type = COALESCE(EXCLUDED.variation_type, lexeme_translations.variation_type),
+                    updated_at = CURRENT_TIMESTAMP
                  RETURNING translation_id;`,
-                [sourceLexemeId, targetLexemeId, contextHint, llmDistractors] // Pass distractors array
+                [sourceLexemeId, targetLexemeId, contextHint, distractorsJson, variationType]
             );
             const translationId = translationResult?.rows?.[0]?.translation_id;
             if (!translationId) throw new Error(`Failed to get translation ID for ${sourceLexemeId} -> ${targetLexemeId}`);
-             console.log(`[DB learning] Translation ID: ${translationId}`);
+             console.log(`[DB learning] Translation ID: ${translationId} (Variation: ${variationType || 'original'})`);
 
             // --- 3. Find or Create User Learning Record ---
             console.log('[DB learning] Finding/creating user learning record...');
-            const learningResult = await tx.query<{ learning_id: number }>(
-                `INSERT INTO user_learning (translation_id, due, state, stability, difficulty, reps, lapses, last_review, elapsed_days, scheduled_days)
-                 VALUES ($1, CURRENT_TIMESTAMP, 0, 0, 0, 0, 0, NULL, 0, 0)
-                 ON CONFLICT (translation_id) DO UPDATE SET
-                     updated_at = CURRENT_TIMESTAMP -- Just update timestamp
-                 RETURNING learning_id;`,
-                [translationId]
-            );
-            const learningId = learningResult?.rows?.[0]?.learning_id;
-            if (!learningId) throw new Error(`Failed to get learning ID for translation ID ${translationId}`);
+            const learningCheckQuery = `
+                SELECT learning_id FROM user_learning WHERE translation_id = $1;
+            `;
+            const learningCheckResult = await tx.query<{ learning_id: number }>(learningCheckQuery, [translationId]);
+
+            let learningId: number;
+            if (learningCheckResult.rows.length > 0) {
+                learningId = learningCheckResult.rows[0].learning_id;
+                // Existing record found - DO NOT update SRS state here.
+                // SRS state is only updated upon review submission.
+                // Just ensure an encounter is logged.
+            } else {
+                const insertLearningQuery = `
+                    INSERT INTO user_learning (translation_id, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review)
+                    VALUES ($1, $2, 0, 0, 0, 0, 0, 0, 0, NULL) -- State is 0 for 'new'
+                    RETURNING learning_id;
+                `;
+                // Use initialDueDate if provided, otherwise generate the current time as ISO string
+                const initialDue = (initialDueDate instanceof Date ? initialDueDate : new Date()).toISOString();
+                const insertResult = await tx.query<{ learning_id: number }>(insertLearningQuery, [
+                    translationId, 
+                    initialDue 
+                ]); 
+                if (!insertResult.rows[0]?.learning_id) {
+                    throw new Error("Failed to insert user_learning record.");
+                }
+                learningId = insertResult.rows[0].learning_id;
+            }
             console.log(`[DB learning] Learning ID: ${learningId}`);
 
             // --- 4. Create Encounter Record ---
@@ -224,15 +159,15 @@ export async function updateCachedDistractors(
 ): Promise<void> {
     console.log(`[DB Learning] Caching ${distractors.length} distractors for translation ID: ${translationId}`);
     try {
-        // PGlite's query doesn't expose rowCount directly for UPDATE
-        // If translationId doesn't exist, the query simply won't update anything, which is acceptable.
+        // Convert the array to a JSON string before storing
+        const distractorsJson = JSON.stringify(distractors);
+        
         await db.query(
             `UPDATE lexeme_translations
-             SET cached_distractors = $1
+             SET cached_distractors = $1 -- Store as JSON string
              WHERE translation_id = $2;`,
-            [distractors, translationId]
+            [distractorsJson, translationId] // Pass the JSON string
         );
-        // Removed rowCount check
     } catch (error) {
         console.error(`[DB Learning] Error updating cached distractors for translation ID ${translationId}:`, error);
         throw error; // Re-throw

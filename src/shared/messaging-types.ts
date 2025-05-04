@@ -82,12 +82,11 @@ export interface GenerateLLMDistractorsRequest {
   sourceText: string;
   targetText: string;
   targetLang: string;
-  count: number; // How many distractors to aim for
-  // Optional context can be added if needed by the prompt
-  // context?: string;
+  count: number;
+  direction: 'EN_TO_NATIVE' | 'NATIVE_TO_EN';
 }
 export interface GenerateLLMDistractorsResponse {
-  distractors: string[]; // Array of generated distractors
+  distractors: string[];
   error?: string;
 }
 

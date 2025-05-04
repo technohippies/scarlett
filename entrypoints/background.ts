@@ -2,7 +2,7 @@ import { defineBackground } from '#imports';
 import { ensureDbInitialized } from '../src/services/db/init';
 import { setupContextMenu } from '../src/background/setup/context-menu-setup';
 import { registerMessageHandlers } from '../src/background/handlers/message-handlers';
-import { loadDictionaries } from '../src/background/setup/dictionary-setup';
+// import { loadDictionaries } from '../src/background/setup/dictionary-setup'; // Removed
 
 // Import handler registration functions
 import { registerContextMenuHandlers } from '../src/background/handlers/context-menu-handler';
@@ -20,9 +20,9 @@ export default defineBackground(async () => {
   await ensureDbInitialized();
   console.log('[Scarlett BG Entrypoint] Database initialization checked/completed.');
 
-  // 2. Load Dictionaries into memory
-  await loadDictionaries();
-  console.log('[Scarlett BG Entrypoint] Dictionaries loaded.');
+  // 2. Load Dictionaries into memory - REMOVED
+  // await loadDictionaries();
+  // console.log('[Scarlett BG Entrypoint] Dictionaries loaded.');
 
   // 3. Setup Context Menus (might only need onInstalled, but safe to run always)
   // Let's assume setupContextMenu handles idempotency or is fine to run multiple times

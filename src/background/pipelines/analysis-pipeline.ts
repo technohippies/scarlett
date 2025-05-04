@@ -4,7 +4,6 @@ import { addOrUpdateLexemeAndTranslation } from '../../services/db/learning';
 import { getDbInstance } from '../../services/db/init';
 import compromise from 'compromise';
 import { getLLMAnalysisPrompt } from '../../services/llm/prompts/analysis';
-import { getDictionaryEntry } from '../setup/dictionary-setup';
 
 // Define LLMAnalysisResult locally (matching original structure)
 interface LLMAnalysisResult {
@@ -51,104 +50,92 @@ export async function processTextAnalysisPipeline({
     console.log('[Analysis Pipeline] Starting for:', selectedText);
 
     const db = await getDbInstance();
-    // We assume sourceLang is always English ('en') and targetLang is the native language here.
-    const nativeLanguage = targetLang; // Use targetLang as nativeLanguage for clarity in this context
+    const nativeLanguage = targetLang; 
 
     let analysisResult: LLMAnalysisResult | null = null;
     let wordMappingsData: ProcessedMappingData[] = [];
-    const isSingleWord = !selectedText.includes(' ') && selectedText.trim().length > 0;
-    let sourceWordForLookup = selectedText.trim();
 
-    // --- Stage 1: Translation & Distractors (Dictionary or LLM) ---
-    if (isSingleWord) {
-        const dictionaryEntry = getDictionaryEntry(nativeLanguage, sourceWordForLookup);
-        if (dictionaryEntry) {
-            console.log(`[Analysis Pipeline] Found '${sourceWordForLookup}' in '${nativeLanguage}' dictionary. Translation: ${dictionaryEntry.translation}`);
-            wordMappingsData.push({
-                sourceWord: sourceWordForLookup,
+    // --- Stage 1: Translation & Distractors (LLM Only) ---
+    console.log('[Analysis Pipeline] Requesting analysis from LLM...');
+    try {
+        const analysisPrompt = getLLMAnalysisPrompt(selectedText, sourceLang, nativeLanguage);
+        const analysisMessages: ChatMessage[] = [{ role: 'user', content: analysisPrompt }];
+        const llmResponse = await ollamaChat(analysisMessages, llmConfig) as LLMChatResponse;
+        const rawContent = llmResponse?.choices?.[0]?.message?.content?.trim();
+        console.log('[Analysis Pipeline] Raw LLM Response Content:', rawContent);
+
+        if (!rawContent) {
+            throw new Error('LLM returned empty or invalid content structure.');
+        }
+        
+        // Attempt to parse the JSON response (Keep existing regex approach)
+        // Ensure JSON parsing handles potential errors gracefully
+        const jsonRegex = /```json\n([\s\S]*?)\n```/;
+        const match = rawContent.match(jsonRegex);
+        let parsedJson: any;
+
+        if (match && match[1]) {
+             try {
+                parsedJson = JSON.parse(match[1]);
+                console.log('[Analysis Pipeline] Successfully parsed extracted JSON block.');
+            } catch (parseError) {
+                console.error('[Analysis Pipeline] Failed to parse extracted JSON:', parseError);
+                console.error('[Analysis Pipeline] Extracted content was:', match[1]);
+                throw new Error('Failed to parse JSON from LLM response');
+            }
+        } else {
+            console.log('[Analysis Pipeline] Could not extract JSON block (```json ... ```) from LLM response. Attempting fallback parse.');
+            // Attempt to parse the whole string if no block found, as a fallback
+            try {
+                const cleanedContent = rawContent.replace(/^```json\s*|\s*```$/g, '').trim();
+                parsedJson = JSON.parse(cleanedContent);
+                console.log('[Analysis Pipeline] Successfully parsed entire LLM response fallback.');
+            } catch (fallbackParseError) {
+                 console.error('[Analysis Pipeline] Fallback parsing of entire LLM response also failed:', fallbackParseError);
+                 throw new Error('Failed to extract or parse JSON from LLM response');
+            }
+        }
+
+        // Validate and assign the parsed JSON to analysisResult
+        if (parsedJson && typeof parsedJson.originalPhrase === 'string' && typeof parsedJson.translatedPhrase === 'string' && Array.isArray(parsedJson.wordMappings)) {
+            analysisResult = parsedJson as LLMAnalysisResult;
+            console.log('[Analysis Pipeline] LLM JSON structure validated.');
+        } else {
+            console.error('[Analysis Pipeline] Parsed JSON missing required fields or invalid structure:', parsedJson);
+            throw new Error('Parsed LLM response has invalid structure.');
+        }
+
+        // Convert LLM result structure to WordMappingData structure
+         if (analysisResult.wordMappings && analysisResult.wordMappings.length > 0) {
+            wordMappingsData = analysisResult.wordMappings.map((mapping: any) => ({
+                sourceWord: mapping.sourceWord,
                 sourcePos: null, // Filled later
-                targetWord: dictionaryEntry.translation,
+                targetWord: mapping.targetWord,
                 targetPos: null,
-                llmDistractors: null
-            });
+                llmDistractors: mapping.targetWordDistractors || null
+            }));
+        } else {
+             console.warn('[Analysis Pipeline] LLM result parsed but has no word mappings.');
+             // If analysisResult is valid but has no mappings (e.g., for a single word response format)
+             // We might need to construct wordMappingsData from analysisResult.originalPhrase and analysisResult.translatedPhrase
+             if (analysisResult && wordMappingsData.length === 0 && !selectedText.includes(' ')) {
+                 console.log('[Analysis Pipeline] Constructing mapping data for single word from top-level translation.');
+                 wordMappingsData.push({
+                     sourceWord: analysisResult.originalPhrase, // Assume LLM returns the word here
+                     sourcePos: null,
+                     targetWord: analysisResult.translatedPhrase, // Assume LLM returns translation here
+                     targetPos: null,
+                     llmDistractors: null // LLM might not provide distractors at this level
+                 });
+             } else if (wordMappingsData.length === 0) {
+                 console.warn('[Analysis Pipeline] LLM analysis successful but resulted in no processable word mappings.');
+                 // Consider throwing an error or returning a specific state if mappings are essential
+             }
         }
-    }
 
-    // If not a single word, or not found in dictionary, use LLM
-    if (wordMappingsData.length === 0) {
-        console.log('[Analysis Pipeline] Word not found in dictionary or is a phrase. Requesting analysis from LLM...');
-        try {
-            // Use the imported prompt generator (ensure params match: sourceText, sourceLang (en), targetLang (native))
-            const analysisPrompt = getLLMAnalysisPrompt(selectedText, sourceLang, nativeLanguage);
-            const analysisMessages: ChatMessage[] = [{ role: 'user', content: analysisPrompt }];
-
-            // Correct ollamaChat call signature, assuming non-streamed based on config
-            const llmResponse = await ollamaChat(analysisMessages, llmConfig) as LLMChatResponse;
-
-            // Basic check for response content - Use correct response structure
-            const rawContent = llmResponse?.choices?.[0]?.message?.content?.trim();
-            console.log('[Analysis Pipeline] Raw LLM Response Content:', rawContent);
-
-            if (!rawContent) {
-                throw new Error('LLM returned empty or invalid content structure.');
-            }
-
-            // Attempt to parse the JSON response (Keep existing regex approach)
-            // Ensure JSON parsing handles potential errors gracefully
-            const jsonRegex = /```json\n([\s\S]*?)\n```/;
-            const match = rawContent.match(jsonRegex);
-            let parsedJson: any;
-
-            if (match && match[1]) {
-                 try {
-                    parsedJson = JSON.parse(match[1]);
-                    console.log('[Analysis Pipeline] Successfully parsed extracted JSON block.');
-                } catch (parseError) {
-                    console.error('[Analysis Pipeline] Failed to parse extracted JSON:', parseError);
-                    console.error('[Analysis Pipeline] Extracted content was:', match[1]);
-                    throw new Error('Failed to parse JSON from LLM response');
-                }
-            } else {
-                console.log('[Analysis Pipeline] Could not extract JSON block (```json ... ```) from LLM response. Attempting fallback parse.');
-                // Attempt to parse the whole string if no block found, as a fallback
-                try {
-                    const cleanedContent = rawContent.replace(/^```json\s*|\s*```$/g, '').trim();
-                    parsedJson = JSON.parse(cleanedContent);
-                    console.log('[Analysis Pipeline] Successfully parsed entire LLM response fallback.');
-                } catch (fallbackParseError) {
-                     console.error('[Analysis Pipeline] Fallback parsing of entire LLM response also failed:', fallbackParseError);
-                     throw new Error('Failed to extract or parse JSON from LLM response');
-                }
-            }
-
-            // Validate and assign the parsed JSON to analysisResult
-            // Basic validation (could use Zod later)
-            if (parsedJson && typeof parsedJson.originalPhrase === 'string' && typeof parsedJson.translatedPhrase === 'string' && Array.isArray(parsedJson.wordMappings)) {
-                analysisResult = parsedJson as LLMAnalysisResult;
-                console.log('[Analysis Pipeline] LLM JSON structure validated.');
-            } else {
-                console.error('[Analysis Pipeline] Parsed JSON missing required fields or invalid structure:', parsedJson);
-                throw new Error('Parsed LLM response has invalid structure.');
-            }
-
-            // Convert LLM result structure to WordMappingData structure
-            if (analysisResult.wordMappings && analysisResult.wordMappings.length > 0) {
-                wordMappingsData = analysisResult.wordMappings.map((mapping: any) => ({
-                    sourceWord: mapping.sourceWord,
-                    sourcePos: null, // Filled later
-                    targetWord: mapping.targetWord,
-                    targetPos: null,
-                    llmDistractors: mapping.targetWordDistractors || null
-                }));
-            } else {
-                console.warn('[Analysis Pipeline] LLM result parsed but has no word mappings.');
-            }
-
-        } catch (error) {
-            console.error('[Analysis Pipeline] Error during LLM analysis or parsing:', error);
-            // Re-throw or handle - throwing for now
-            throw error;
-        }
+    } catch (error) {
+        console.error('[Analysis Pipeline] Error during LLM analysis or parsing:', error);
+        throw error; // Re-throw
     }
 
     // --- Stage 2: POS Tagging (Compromise) ---
@@ -183,57 +170,186 @@ export async function processTextAnalysisPipeline({
              // Continue without POS tags if compromise fails
          }
      } else {
-         console.warn('[Pipeline] No word mapping data generated. Skipping POS tagging.');
+         console.warn('[Pipeline] No word mapping data generated from LLM/POS tagging. Nothing to store.');
+         // Consider if this should be an error case - did the LLM fail to provide useful output?
+         if (!analysisResult) {
+             throw new Error("Analysis pipeline failed to produce a result from the LLM.");
+         }
      }
 
-    // --- Stage 3: Database Storage ---
-    if (wordMappingsData.length > 0) {
-        console.log('[Pipeline] Processing and storing results...');
+    // --- NEW: Stage 2.5: Generate Compromise Variations & Translate/Store --- 
+    if (wordMappingsData.length > 0 && selectedText && selectedText.includes(' ')) { 
+        console.log('[Pipeline] Generating & Translating English variations for:', selectedText);
+        try {
+            const doc = compromise(selectedText);
+            const variationsToProcess: { type: string, text: string | null }[] = [];
+
+            // --- Generate Variations --- 
+            // NOTE: Suppressing TS errors due to potential issues with @types/compromise
+            try { // Inner try-catch for generation part
+                // Past Tense
+                let pastDoc = doc.clone(); 
+                // @ts-ignore 
+                pastDoc.verbs().toPastTense(); 
+                const pastTenseVariant = pastDoc.text();
+                if (pastTenseVariant && pastTenseVariant !== selectedText) {
+                    variationsToProcess.push({ type: 'Past Tense', text: pastTenseVariant });
+                }
+
+                // Negation
+                let negDoc = doc.clone();
+                // @ts-ignore 
+                negDoc.sentences().toNegative(); 
+                const negativeVariant = negDoc.text();
+                if (negativeVariant && negativeVariant !== selectedText) {
+                    variationsToProcess.push({ type: 'Negative', text: negativeVariant });
+                }
+
+                // Future Tense
+                let futureDoc = doc.clone();
+                // @ts-ignore 
+                futureDoc.verbs().toFutureTense();
+                const futureTenseVariant = futureDoc.text();
+                if (futureTenseVariant && futureTenseVariant !== selectedText) {
+                    variationsToProcess.push({ type: 'Future Tense', text: futureTenseVariant });
+                }
+            } catch (compromiseError) {
+                 console.error('[Pipeline] Error during Compromise generation part:', compromiseError);
+                 // Continue without variations if generation fails
+                 variationsToProcess.length = 0; // Clear any partial results
+            }
+
+            // --- Translate and Store Each Variation --- 
+            if (variationsToProcess.length > 0) {
+                console.log(`[Pipeline] Found ${variationsToProcess.length} variations to translate and store.`);
+                for (const variant of variationsToProcess) {
+                    if (!variant.text) continue; 
+                    
+                    const variantEnglish = variant.text;
+                    console.log(`[Pipeline] Processing Variant [${variant.type}]: ${variantEnglish}`);
+                    
+                    try { // Inner try-catch for each variant's LLM call + DB store
+                        // 1. Get Translation via LLM
+                        // Simple prompt just for translation
+                        const translationPrompt = `Translate the following English text accurately into ${nativeLanguage}:
+"${variantEnglish}"
+
+Respond ONLY with the translated text, nothing else.`;
+                        const translationMessages: ChatMessage[] = [{ role: 'user', content: translationPrompt }];
+                        
+                        const llmResponse = await ollamaChat(translationMessages, llmConfig) as LLMChatResponse;
+                        const variantNativeTranslation = llmResponse?.choices?.[0]?.message?.content?.trim();
+
+                        if (!variantNativeTranslation) {
+                            console.warn(`[Pipeline] LLM failed to provide translation for variant: ${variantEnglish}`);
+                            continue; // Skip this variant if translation fails
+                        }
+                         console.log(`[Pipeline]   - LLM Translation: ${variantNativeTranslation}`);
+
+                        // 2. Store in Database (Variant)
+                        await addOrUpdateLexemeAndTranslation(
+                            db,                         // 1
+                            variantEnglish,             // 2 
+                            sourceLang,                 // 3
+                            null,                       // 4 
+                            variantNativeTranslation,   // 5 
+                            nativeLanguage,             // 6 
+                            null,                       // 7 
+                            null,                       // 8 
+                            null,                       // 9 
+                            variant.type,               // 10 << VARIATION TYPE for variants
+                            sourceUrl,                  // 11
+                            variantEnglish,             // 12 
+                            selectedText                // 13 
+                        );
+                        console.log(`[Pipeline]   - Stored variant: '${variantEnglish}' -> '${variantNativeTranslation}' (Type: ${variant.type})`);
+
+                    } catch(variantError) {
+                         console.error(`[Pipeline] Error processing variant '${variantEnglish}':`, variantError);
+                         // Continue to next variant even if one fails
+                    }
+                }
+            } else {
+                console.log('[Pipeline] No valid variations generated by Compromise.');
+            }
+
+        } catch (outerError) { // Catch errors in the main try block (less likely now)
+            console.error('[Pipeline] Error during overall variation processing stage:', outerError);
+        }
+    } else if (wordMappingsData.length > 0 && selectedText && !selectedText.includes(' ')) {
+         console.log('[Pipeline] Skipping Compromise variations for single word:', selectedText);
+    }
+    // --- End Variations Processing Stage ---
+
+    // ---- DEBUGGING ----
+    console.log(`[Pipeline DEBUG] Before Stage 3 check. wordMappingsData length: ${wordMappingsData?.length}`);
+    try {
+        console.log(`[Pipeline DEBUG] wordMappingsData content: ${JSON.stringify(wordMappingsData)}`);
+    } catch (e) {
+        console.error("[Pipeline DEBUG] Failed to stringify wordMappingsData", e);
+        console.log("[Pipeline DEBUG] wordMappingsData raw:", wordMappingsData);
+    }
+    // ---- END DEBUGGING ----
+
+    // --- Stage 3: Database Storage (Original) ---
+    if (wordMappingsData.length > 0) { 
+        console.log('[Pipeline] Processing and storing ORIGINAL results (LLM based)...');
         try {
             for (const mapping of wordMappingsData) {
-                console.log(`[Pipeline] Saving to DB: '${mapping.sourceWord}' (${mapping.sourcePos || 'N/A'}) -> '${mapping.targetWord}' (Dist: ${mapping.llmDistractors?.length ?? 0})`);
+                // Find the original contextHint for this specific sourceWord from the LLM result
+                const originalMapping = analysisResult?.wordMappings.find(m => m.sourceWord === mapping.sourceWord);
+                const contextHint = originalMapping?.contextHint || null;
+
+                // Use sourceWord as highlight for now
+                const encounterHighlight = mapping.sourceWord; 
+                // Use original selected text as broader context
+                const encounterContext = selectedText; 
+
+                // ---- DEBUGGING: Log arguments before DB call ----
+                console.log(`[Pipeline DEBUG] Inside loop for '${mapping.sourceWord}'. Calling addOrUpdateLexemeAndTranslation with arguments:`);
+                console.log(`[Pipeline DEBUG]   db: ${db ? '[PGlite instance]' : 'null'}`);
+                console.log(`[Pipeline DEBUG]   sourceWord: ${mapping.sourceWord}`);
+                console.log(`[Pipeline DEBUG]   sourceLang: ${sourceLang}`);
+                console.log(`[Pipeline DEBUG]   sourcePos: ${mapping.sourcePos}`);
+                console.log(`[Pipeline DEBUG]   targetWord: ${mapping.targetWord}`);
+                console.log(`[Pipeline DEBUG]   targetLang: ${nativeLanguage}`);
+                console.log(`[Pipeline DEBUG]   targetPos: ${mapping.targetPos}`);
+                console.log(`[Pipeline DEBUG]   contextHint: ${contextHint}`);
+                console.log(`[Pipeline DEBUG]   llmDistractors: ${JSON.stringify(mapping.llmDistractors)}`);
+                console.log(`[Pipeline DEBUG]   sourceUrl: ${sourceUrl}`);
+                console.log(`[Pipeline DEBUG]   encounterHighlight: ${encounterHighlight}`);
+                console.log(`[Pipeline DEBUG]   encounterContext: ${encounterContext}`);
+                console.log(`[Pipeline DEBUG]   variationType: original`); // Add log for variation type
+                // ---- END DEBUGGING ----
+
+                // Call with 13 positional arguments (Original)
                 await addOrUpdateLexemeAndTranslation(
-                    db,
-                    mapping.sourceWord,
-                    sourceLang,
-                    mapping.sourcePos,
-                    mapping.targetWord,
-                    nativeLanguage,
-                    mapping.targetPos,
-                    null,
-                    mapping.llmDistractors,
-                    sourceUrl,
-                    selectedText,
-                    selectedText
+                    db,                         // 1
+                    mapping.sourceWord,         // 2 
+                    sourceLang,                 // 3 
+                    mapping.sourcePos,          // 4 
+                    mapping.targetWord,         // 5 
+                    nativeLanguage,             // 6 
+                    mapping.targetPos,          // 7 
+                    contextHint,                // 8 
+                    mapping.llmDistractors,     // 9 
+                    "original",                 // 10 << VARIATION TYPE for original
+                    sourceUrl,                  // 11
+                    encounterHighlight,         // 12 
+                    encounterContext            // 13
                 );
+                console.log(`[Pipeline] Stored/Updated ORIGINAL lexeme/translation for '${mapping.sourceWord}' -> '${mapping.targetWord}'`);
             }
-            console.log(`[Analysis Pipeline] Database operations completed for: ${selectedText}`);
-        } catch (dbError) {
-            console.error('[Analysis Pipeline] Error saving word pair(s) to DB:', dbError);
-            // Re-throw or handle - throwing for now
-            throw dbError;
+        } catch (storageError) {
+            console.error('[Pipeline] Error during ORIGINAL database storage:', storageError);
+            throw storageError;
         }
-    } else {
-         console.warn('[Analysis Pipeline] No word mapping data generated. Nothing to save.');
-         // Return an empty/default result if nothing was processed
-         return { originalPhrase: selectedText, translatedPhrase: '', wordMappings: [] };
     }
 
-    // --- Construct Final Result ---
-    if (analysisResult) {
-        // If LLM was used, return the full result from LLM
-        return analysisResult;
-    } else {
-        // If only dictionary was used, construct a minimal result
-        const singleMapping = wordMappingsData[0];
-        return {
-            originalPhrase: selectedText,
-            translatedPhrase: singleMapping?.targetWord || '',
-            wordMappings: wordMappingsData.map(m => ({
-                 sourceWord: m.sourceWord,
-                 targetWord: m.targetWord,
-                 // No distractors or contextHint from dictionary-only path yet
-            }))
-        };
-    }
+    // Ensure we return a valid LLMAnalysisResult structure, even if mappings are empty
+    return analysisResult || { 
+        originalPhrase: selectedText, 
+        translatedPhrase: '', // Indicate LLM failed to provide translation?
+        wordMappings: [] 
+    }; 
 } 

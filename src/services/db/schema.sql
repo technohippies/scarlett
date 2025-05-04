@@ -27,19 +27,37 @@ CREATE TABLE IF NOT EXISTS lexeme_definitions (
 -- Index for faster definition lookups by lexeme
 CREATE INDEX IF NOT EXISTS idx_lexeme_definitions_lexeme_id ON lexeme_definitions(lexeme_id);
 
+-- Function to update 'updated_at' timestamp (defined once, before triggers)
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+   NEW.updated_at = CURRENT_TIMESTAMP;
+   RETURN NEW;
+END;
+$$ language 'plpgsql';
+
 -- Table linking source lexemes to their translations
 CREATE TABLE IF NOT EXISTS lexeme_translations (
     translation_id SERIAL PRIMARY KEY,
-    source_lexeme_id INTEGER NOT NULL REFERENCES lexemes(lexeme_id) ON DELETE CASCADE,
-    target_lexeme_id INTEGER NOT NULL REFERENCES lexemes(lexeme_id) ON DELETE CASCADE,
-    llm_distractors TEXT[] NULL, -- DEPRECATED: Use cached_distractors instead
-    cached_distractors TEXT[] NULL, -- Added: Store distractors generated during review
-    llm_context_hint TEXT NULL, 
+    source_lexeme_id INTEGER NOT NULL,
+    target_lexeme_id INTEGER NOT NULL,
+    llm_context_hint TEXT,          -- Optional hint from LLM about usage
+    llm_distractors TEXT,           -- Storing distractors as JSON string array? Or use separate table?
+                                    -- Using TEXT for JSON array for now.
+    cached_distractors TEXT,        -- Cached distractors (JSON array) generated via fallback/user feedback?
+    variation_type TEXT,            -- NEW: Type of variation (e.g., 'original', 'past_tense', 'negative')
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    -- Usually one primary translation, but allow multiple if context differs significantly?
-    -- Starting with unique pair constraint for simplicity.
-    UNIQUE(source_lexeme_id, target_lexeme_id)
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (source_lexeme_id) REFERENCES lexemes(lexeme_id) ON DELETE CASCADE,
+    FOREIGN KEY (target_lexeme_id) REFERENCES lexemes(lexeme_id) ON DELETE CASCADE,
+    UNIQUE (source_lexeme_id, target_lexeme_id) -- Ensure unique translation pairs
 );
+
+-- Trigger to update updated_at timestamp for lexeme_translations
+CREATE TRIGGER update_lexeme_translations_modtime
+BEFORE UPDATE ON lexeme_translations
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
 
 -- Table tracking user's learning progress for specific translations (SRS state)
 CREATE TABLE IF NOT EXISTS user_learning (
@@ -69,6 +87,12 @@ CREATE TABLE IF NOT EXISTS user_learning (
     UNIQUE(translation_id) 
 );
 
+-- Trigger to update 'updated_at' on user_learning table
+CREATE TRIGGER update_user_learning_modtime
+BEFORE UPDATE ON user_learning
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
 -- Table logging when and where a user encountered a specific translation
 CREATE TABLE IF NOT EXISTS encounters (
     encounter_id SERIAL PRIMARY KEY,
@@ -86,17 +110,3 @@ CREATE INDEX IF NOT EXISTS idx_lexeme_translations_target ON lexeme_translations
 CREATE INDEX IF NOT EXISTS idx_user_learning_due ON user_learning(due); -- Important for finding due cards
 CREATE INDEX IF NOT EXISTS idx_user_learning_translation ON user_learning(translation_id);
 CREATE INDEX IF NOT EXISTS idx_encounters_learning_id ON encounters(learning_id);
-
--- Optional: Trigger to update 'updated_at' on user_learning table
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
-BEGIN
-   NEW.updated_at = CURRENT_TIMESTAMP;
-   RETURN NEW;
-END;
-$$ language 'plpgsql';
-
-CREATE TRIGGER update_user_learning_modtime
-BEFORE UPDATE ON user_learning
-FOR EACH ROW
-EXECUTE FUNCTION update_updated_at_column();

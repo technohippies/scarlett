@@ -46,6 +46,8 @@ function shuffleArray<T>(array: T[]): T[] {
 const NewTabPage: Component = () => {
   const [currentItem, setCurrentItem] = createSignal<DueLearningItem | null>(null);
   const [itemError, setItemError] = createSignal<string | null>(null);
+  // NEW: Signal for chosen direction
+  const [exerciseDirection, setExerciseDirection] = createSignal<'EN_TO_NATIVE' | 'NATIVE_TO_EN'>('EN_TO_NATIVE');
 
   // --- Fetching Due Item Resource ---
   const [dueItemResource, { refetch: fetchDueItems }] = createResource(async () => {
@@ -56,8 +58,13 @@ const NewTabPage: Component = () => {
       const response = await messaging.sendMessage('getDueItems', { limit: 1 });
       console.log('[NewTab] Received due item(s):', response.dueItems);
       if (response.dueItems && response.dueItems.length > 0) {
-        setCurrentItem(response.dueItems[0]); // Set the raw item
-        return response.dueItems[0]; // Return for the resource
+        const fetchedItem = response.dueItems[0];
+        setCurrentItem(fetchedItem); // Set the raw item
+        // Decide direction RANDOMLY when item is fetched
+        const direction = Math.random() < 0.5 ? 'EN_TO_NATIVE' : 'NATIVE_TO_EN';
+        setExerciseDirection(direction);
+        console.log(`[NewTab] Set exercise direction: ${direction}`);
+        return fetchedItem; // Return for the resource
       } else {
         setCurrentItem(null);
         return null; // No items due
@@ -70,171 +77,200 @@ const NewTabPage: Component = () => {
   });
 
   // --- Generating Distractors (Async Logic Moved Here) ---
-  const [distractorResource] = createResource(currentItem, async (item) => {
-    if (!item) return null; // No item, no distractors needed
+  // Depend on both the item and the direction to avoid race conditions
+  const [distractorResource] = createResource(
+    // Source function returns dependencies
+    () => ({ item: currentItem(), direction: exerciseDirection() }), 
+    // Fetcher function receives the dependency object
+    async (deps) => {
+        const { item, direction } = deps;
+        if (!item) return null; // No item, no distractors needed
 
-    console.log('[NewTab Distractors] Generating/fetching distractors for:', item.sourceText);
+        // We already have the correct direction from deps.direction
+        // const direction = exerciseDirection(); // No longer needed to call signal getter here
+        
+        // Determine prompt/answer based on the received direction
+        const promptTextForDistractors = direction === 'EN_TO_NATIVE' ? item.sourceText : item.targetText;
+        const answerTextForDistractors = direction === 'EN_TO_NATIVE' ? item.targetText : item.sourceText;
+        const languageForDistractors = direction === 'EN_TO_NATIVE' ? item.targetLang : 'en'; // Language OF the distractors
 
-    const requiredDistractors = 3;
-    let finalDistractors: string[] = [];
-    const correctTargetText = item.targetText;
+        console.log(`[NewTab Distractors] Generating/fetching ${languageForDistractors} distractors for [${direction}]: ${promptTextForDistractors}`);
 
-    // 1. Check Cache
-    if (item.cachedDistractors && item.cachedDistractors.length >= requiredDistractors) {
-      console.log('[NewTab Distractors] Using cached distractors.', item.cachedDistractors);
-      // Select based on last incorrect choice if applicable
-      const pool = [...item.cachedDistractors];
-      if (item.lastIncorrectChoice && pool.includes(item.lastIncorrectChoice)) {
-        finalDistractors.push(item.lastIncorrectChoice);
-      } 
-      // Fill remaining slots randomly from pool, avoiding duplicates and the correct answer
-      const remainingPool = pool.filter(d => d !== item.lastIncorrectChoice && d !== correctTargetText);
-      while (finalDistractors.length < requiredDistractors && remainingPool.length > 0) {
-           const randomIndex = Math.floor(Math.random() * remainingPool.length);
-           finalDistractors.push(remainingPool.splice(randomIndex, 1)[0]);
-      }
-      // If still not enough (e.g., cache had duplicates), handle later
+        const requiredDistractors = 3;
+        let finalDistractors: string[] = [];
+        // Correct answer text depends on direction
+        const correctCurrentAnswerText = direction === 'EN_TO_NATIVE' ? item.targetText : item.sourceText;
 
-    } else {
-      console.log('[NewTab Distractors] No valid cached distractors found. Generating...');
-      // 2. Attempt LLM Generation
-      try {
-        const llmResponse = await messaging.sendMessage('generateLLMDistractors', {
-          sourceText: item.sourceText,
-          targetText: correctTargetText,
-          targetLang: item.targetLang, // Use the actual target language from the item
-          count: requiredDistractors
-        });
-
-        if (llmResponse.distractors && llmResponse.distractors.length > 0) {
-          console.log('[NewTab Distractors] Received distractors from LLM:', llmResponse.distractors);
-          finalDistractors = [...new Set(llmResponse.distractors)] // Ensure unique
-                              .filter(d => d !== correctTargetText); // Filter out correct answer just in case
-          
-          // Cache the LLM results if successful and we got enough
-          if (finalDistractors.length >= requiredDistractors) {
-             console.log('[NewTab Distractors] Caching LLM distractors...');
-             // Fire-and-forget caching, no need to await
-             messaging.sendMessage('cacheDistractors', { 
-                 translationId: item.translationId, 
-                 distractors: finalDistractors.slice(0, requiredDistractors) // Cache only needed amount
-             }).catch(cacheErr => console.error('[NewTab] Error caching distractors:', cacheErr));
+        // 1. Check Cache - Cache logic likely assumes native distractors, might need adjustment if storing English ones
+        // For now, let's simplify and rely more on LLM generation when direction is Native->EN
+        let useCache = direction === 'EN_TO_NATIVE'; // Only use cache for EN->Native for simplicity
+        if (useCache && item.cachedDistractors && item.cachedDistractors.length >= requiredDistractors) {
+          console.log('[NewTab Distractors] Using cached distractors (EN_TO_NATIVE).', item.cachedDistractors);
+          const pool = [...item.cachedDistractors];
+          if (item.lastIncorrectChoice && pool.includes(item.lastIncorrectChoice)) {
+            finalDistractors.push(item.lastIncorrectChoice);
+          } 
+          // Fill remaining slots randomly from pool, avoiding duplicates and the correct answer
+          const remainingPool = pool.filter(d => d !== item.lastIncorrectChoice && d !== correctCurrentAnswerText);
+          while (finalDistractors.length < requiredDistractors && remainingPool.length > 0) {
+               const randomIndex = Math.floor(Math.random() * remainingPool.length);
+               finalDistractors.push(remainingPool.splice(randomIndex, 1)[0]);
           }
-        }
-        if (llmResponse.error) {
-          console.warn('[NewTab Distractors] LLM generation failed:', llmResponse.error);
-        }
-      } catch (llmError) {
-        console.error('[NewTab Distractors] Error calling generateLLMDistractors:', llmError);
-      }
+          // If still not enough (e.g., cache had duplicates), handle later
+          // Ensure correctCurrentAnswerText is filtered
+          finalDistractors = finalDistractors.filter(d => d !== correctCurrentAnswerText);
 
-      // 3. Fallback 1: Compromise.js (if still needed)
-      if (finalDistractors.length < requiredDistractors) {
-          console.log('[NewTab Distractors] Using Compromise.js fallback...');
+        } else {
+          if (direction === 'NATIVE_TO_EN') {
+              console.log('[NewTab Distractors] Skipping cache check for NATIVE_TO_EN direction.');
+          }
+          console.log(`[NewTab Distractors] No valid cached distractors found or NATIVE_TO_EN. Generating via LLM for ${languageForDistractors}...`);
+          // 2. Attempt LLM Generation
           try {
-              const doc = nlp(correctTargetText);
-              // Get nouns/verbs/adjectives related to the target word
-              const relatedWords = doc.terms().out('terms'); 
-              let compromiseDistractors = relatedWords
-                  .map((t: any) => t.text.toLowerCase()) // Assuming terms have text property
-                  .filter((w: string) => w !== correctTargetText.toLowerCase() && !finalDistractors.includes(w)); 
+            const llmResponse = await messaging.sendMessage('generateLLMDistractors', {
+              // Pass texts based on the *distractor context*
+              sourceText: promptTextForDistractors,
+              targetText: answerTextForDistractors,
+              targetLang: languageForDistractors, // Language we want distractors IN
+              count: requiredDistractors,
+              direction: direction // Pass the direction received from deps
+            });
+
+            if (llmResponse.distractors && llmResponse.distractors.length > 0) {
+              console.log(`[NewTab Distractors] Received ${languageForDistractors} distractors from LLM:`, llmResponse.distractors);
+              finalDistractors = [...new Set(llmResponse.distractors)]
+                                  .filter(d => d !== correctCurrentAnswerText); // Filter out correct answer 
               
-              // Get synonyms more directly if possible (Compromise structure might vary)
-              // This is a basic example, might need refinement based on library version/structure
-              // let synonyms = doc.nouns().out('terms'); // Or verbs(), adjectives() etc.
-
-              compromiseDistractors = [...new Set(compromiseDistractors)]; // Unique
-
-              while(finalDistractors.length < requiredDistractors && compromiseDistractors.length > 0) {
-                   finalDistractors.push(compromiseDistractors.shift()!); // Add unique related words
+              // Cache results only if EN_TO_NATIVE and successful
+              if (direction === 'EN_TO_NATIVE' && finalDistractors.length >= requiredDistractors) {
+                 console.log('[NewTab Distractors] Caching LLM distractors (EN_TO_NATIVE)...');
+                 messaging.sendMessage('cacheDistractors', { 
+                     translationId: item.translationId, 
+                     distractors: finalDistractors.slice(0, requiredDistractors) 
+                 }).catch(cacheErr => console.error('[NewTab] Error caching distractors:', cacheErr));
               }
-              console.log('[NewTab Distractors] Added from Compromise:', finalDistractors);
-          } catch(compromiseError) {
-              console.error('[NewTab Distractors] Error using Compromise:', compromiseError);
+            }
+            if (llmResponse.error) {
+              console.warn('[NewTab Distractors] LLM generation failed:', llmResponse.error);
+            }
+          } catch (llmError) {
+            console.error('[NewTab Distractors] Error calling generateLLMDistractors:', llmError);
           }
-      }
 
-      // 4. Fallback 2: DB Learned Words (if still needed)
-      if (finalDistractors.length < requiredDistractors) {
-          console.log('[NewTab Distractors] Using DB fallback...');
-          try {
-              const needed = requiredDistractors - finalDistractors.length;
-              const dbResponse = await messaging.sendMessage('getDistractorsForItem', {
-                  correctTargetLexemeId: item.targetLexemeId, // Use the ID of the correct English word
-                  targetLanguage: 'en', // Target is English
-                  count: needed
-              });
-              const dbDistractors = dbResponse.distractors.filter(d => !finalDistractors.includes(d) && d !== correctTargetText);
-              finalDistractors.push(...dbDistractors);
-              console.log('[NewTab Distractors] Added from DB:', finalDistractors);
-          } catch (dbError) {
-               console.error('[NewTab Distractors] Error fetching DB distractors:', dbError);
+          // 3. Fallback 1: Compromise.js (if still needed)
+          if (finalDistractors.length < requiredDistractors) {
+              console.log('[NewTab Distractors] Using Compromise.js fallback...');
+              try {
+                  const doc = nlp(correctCurrentAnswerText);
+                  // Get nouns/verbs/adjectives related to the target word
+                  const relatedWords = doc.terms().out('terms'); 
+                  let compromiseDistractors = relatedWords
+                      .map((t: any) => t.text.toLowerCase()) // Assuming terms have text property
+                      .filter((w: string) => w !== correctCurrentAnswerText.toLowerCase() && !finalDistractors.includes(w)); 
+                  
+                  // Get synonyms more directly if possible (Compromise structure might vary)
+                  // This is a basic example, might need refinement based on library version/structure
+                  // let synonyms = doc.nouns().out('terms'); // Or verbs(), adjectives() etc.
+
+                  compromiseDistractors = [...new Set(compromiseDistractors)]; // Unique
+
+                  while(finalDistractors.length < requiredDistractors && compromiseDistractors.length > 0) {
+                       finalDistractors.push(compromiseDistractors.shift()!); // Add unique related words
+                  }
+                  console.log('[NewTab Distractors] Added from Compromise:', finalDistractors);
+              } catch(compromiseError) {
+                  console.error('[NewTab Distractors] Error using Compromise:', compromiseError);
+              }
           }
-      }
-    }
 
-    // 5. Final Selection & Placeholder Fill (if needed)
-    let selectedDistractors: string[] = [];
-    const pool = [...new Set(finalDistractors)].filter(d => d !== correctTargetText);
-    
-    // Prioritize last incorrect choice
-    if (item.lastIncorrectChoice && pool.includes(item.lastIncorrectChoice)) {
-        selectedDistractors.push(item.lastIncorrectChoice);
-        pool.splice(pool.indexOf(item.lastIncorrectChoice), 1); // Remove from pool
-    }
-    // Fill remaining randomly from pool
-    while (selectedDistractors.length < requiredDistractors && pool.length > 0) {
-         const randomIndex = Math.floor(Math.random() * pool.length);
-         selectedDistractors.push(pool.splice(randomIndex, 1)[0]);
-    }
-     // Add placeholders if absolutely necessary
-    while (selectedDistractors.length < requiredDistractors) {
-         selectedDistractors.push(`Placeholder ${String.fromCharCode(65 + selectedDistractors.length)}`);
-    }
+          // 4. Fallback 2: DB Learned Words (if still needed)
+          if (finalDistractors.length < requiredDistractors) {
+              console.log('[NewTab Distractors] Using DB fallback...');
+              try {
+                  const needed = requiredDistractors - finalDistractors.length;
+                  const dbResponse = await messaging.sendMessage('getDistractorsForItem', {
+                      correctTargetLexemeId: item.targetLexemeId, // Use the ID of the correct English word
+                      targetLanguage: 'en', // Target is English
+                      count: needed
+                  });
+                  const dbDistractors = dbResponse.distractors.filter(d => !finalDistractors.includes(d) && d !== correctCurrentAnswerText);
+                  finalDistractors.push(...dbDistractors);
+                  console.log('[NewTab Distractors] Added from DB:', finalDistractors);
+              } catch (dbError) {
+                   console.error('[NewTab Distractors] Error fetching DB distractors:', dbError);
+              }
+          }
+          // Ensure correctCurrentAnswerText is filtered from fallbacks too
+          finalDistractors = finalDistractors.filter(d => d !== correctCurrentAnswerText);
+        }
 
-    console.log('[NewTab Distractors] Final selected distractors:', selectedDistractors);
-    return selectedDistractors;
-  });
+        // 5. Final Selection & Placeholder Fill (if needed)
+        let selectedDistractors: string[] = [];
+        const pool = [...new Set(finalDistractors)].filter(d => d !== correctCurrentAnswerText);
+        
+        // Prioritize last incorrect choice
+        if (item.lastIncorrectChoice && pool.includes(item.lastIncorrectChoice)) {
+            selectedDistractors.push(item.lastIncorrectChoice);
+            pool.splice(pool.indexOf(item.lastIncorrectChoice), 1); // Remove from pool
+        }
+        // Fill remaining randomly from pool
+        while (selectedDistractors.length < requiredDistractors && pool.length > 0) {
+             const randomIndex = Math.floor(Math.random() * pool.length);
+             selectedDistractors.push(pool.splice(randomIndex, 1)[0]);
+        }
+         // Add placeholders if absolutely necessary
+        while (selectedDistractors.length < requiredDistractors) {
+             selectedDistractors.push(`Placeholder ${String.fromCharCode(65 + selectedDistractors.length)}`);
+        }
+
+        console.log('[NewTab Distractors] Final selected distractors:', selectedDistractors);
+        return selectedDistractors;
+    }
+  );
 
   // --- Memo for Final MCQ Props ---
   const mcqProps = createMemo<MCQProps | null>(() => {
-    const item = currentItem();
-    const distractors = distractorResource();
+    // Depend on the same combined source for consistency
+    const deps = { item: currentItem(), direction: exerciseDirection() };
+    const distractors = distractorResource(); // This resource now implicitly depends on direction too
 
-    // Need item and successfully generated distractors
-    if (!item || distractorResource.loading || !distractors || distractors.length < 3) {
-      return null;
-    }
+    if (!deps.item || !distractors) return null;
 
-    const correctOptionText = item.targetText;
-    // Combine correct answer + finalized distractors and shuffle
-    const rawOptions = [correctOptionText, ...distractors];
-    const shuffledOptions = shuffleArray(rawOptions);
+    // Determine prompt and correct answer text based on direction from deps
+    const promptText = deps.direction === 'EN_TO_NATIVE' ? deps.item.sourceText : deps.item.targetText;
+    const correctAnswerText = deps.direction === 'EN_TO_NATIVE' ? deps.item.targetText : deps.item.sourceText;
 
-    // Create options with IDs
-    let correctOptionId: number = -1;
-    const options: Option[] = shuffledOptions.map((text, index) => {
-        if (text === correctOptionText) {
-            correctOptionId = index;
-        }
-        return { id: index, text };
-    });
+    // Create options array
+    const options: Option[] = distractors.map((distractor, index) => ({
+      id: index,
+      text: distractor,
+    }));
 
-    if (correctOptionId === -1) {
-        console.error("[NewTab] Couldn't find correct option ID after shuffling!", item);
-        // Avoid setting global error here, maybe handle differently
+    // Insert the correct answer at a random position
+    const correctOptionId = Math.floor(Math.random() * (options.length + 1));
+    options.splice(correctOptionId, 0, { id: correctOptionId, text: correctAnswerText });
+
+    // Re-assign IDs sequentially after insertion
+    const finalOptions = options.map((opt, index) => ({ ...opt, id: index }));
+
+    // Find the ID of the correct answer in the final shuffled list
+    const finalCorrectId = finalOptions.find(opt => opt.text === correctAnswerText)?.id;
+
+    if (finalCorrectId === undefined) {
+        console.error("[NewTab] Failed to determine correct option ID after shuffling!");
+        setItemError("Internal error creating exercise options.");
         return null;
     }
 
-    console.log("[NewTab] Generated Final MCQ Props:", { instruction: "Translate:", sentence: item.sourceText, options, correctId: correctOptionId });
-
-    return {
-        instructionText: "Translate:",
-        sentenceToTranslate: item.sourceText,
-        options: options,
-        correctOptionId: correctOptionId,
-        onComplete: handleMcqComplete, // Assign the handler
+    const props: MCQProps = {
+      instructionText: "Translate:",
+      sentenceToTranslate: promptText,
+      options: finalOptions,     
+      correctOptionId: finalCorrectId, 
+      onComplete: handleMcqComplete 
     };
+    console.log('[NewTab] Generated Final MCQ Props:', props);
+    return props;
   });
 
   // --- Handle MCQ Completion ---
@@ -282,13 +318,11 @@ const NewTabPage: Component = () => {
 
   // --- Render ---
   return (
-    <div class="newtab-page-container p-8 font-sans bg-gray-50 min-h-screen flex flex-col items-center">
-      <h1 class="text-3xl font-bold mb-6 text-gray-800">Scarlett Study Session</h1>
-
+    <div class="newtab-page-container p-8 font-sans bg-background min-h-screen flex flex-col items-center">
       {/* Loading / Error for Item Fetching */} 
       <div class="h-10 mb-4">
         <Show when={dueItemResource.loading}> 
-          <p class="text-gray-600 text-lg animate-pulse">Loading review item...</p>
+          <p class="text-foreground text-lg animate-pulse">Loading review item...</p>
         </Show>
         <Show when={itemError()}>
           {(errorMsgAccessor) => <p class="text-red-600 font-semibold text-lg">Error: {errorMsgAccessor()}</p>}
@@ -296,11 +330,11 @@ const NewTabPage: Component = () => {
       </div>
 
       {/* MCQ Area - Centered container with width constraints */}
-      <div class="exercise-area mt-4 w-full max-w-md flex-grow flex flex-col items-center justify-center">
+      <div class="exercise-area mt-4 w-full max-w-md flex-grow flex flex-col justify-center">
         <Show when={!dueItemResource.loading && !itemError() && currentItem()} 
               fallback={
                   !dueItemResource.loading && !itemError() && (
-                      <p class="text-gray-600 text-lg text-center">
+                      <p class="text-foreground text-lg text-center">
                           🎉 No items due for review right now! Great job! 🎉
                       </p>
                   )
@@ -308,10 +342,23 @@ const NewTabPage: Component = () => {
         >
             <Show when={!distractorResource.loading && mcqProps()} 
                    fallback={
-                       <p class="text-gray-600 text-lg animate-pulse">Preparing exercise...</p>
+                       <p class="text-foreground text-lg animate-pulse">Preparing exercise...</p>
                    }
             >
-                {(props) => <MCQ {...mcqProps()!} />}
+                <Show when={mcqProps()}> 
+                  {(propsAccessor) => {
+                      const props = propsAccessor();
+                      return (
+                          <MCQ
+                              instructionText={props.instructionText}
+                              sentenceToTranslate={props.sentenceToTranslate}
+                              options={props.options}
+                              correctOptionId={props.correctOptionId}
+                              onComplete={props.onComplete}
+                          />
+                      );
+                  }}
+                </Show>
             </Show>
             {/* Conditionally render the error paragraph if error exists */}
             {distractorResource.error && (
@@ -326,7 +373,7 @@ const NewTabPage: Component = () => {
       <button
         onClick={fetchDueItems}
         disabled={dueItemResource.loading}
-        class="mt-8 px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50 transition-colors"
+        class="mt-8 px-4 py-2 bg-secondary text-secondary-foreground rounded hover:bg-secondary/80 disabled:opacity-50 transition-colors"
       >
         {dueItemResource.loading ? 'Loading...' : 'Skip / Get Next'}
       </button>

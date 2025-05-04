@@ -19,7 +19,7 @@ import {
 import { updateCachedDistractors } from '../../services/db/learning';
 import { getDbInstance } from '../../services/db/init';
 import { ollamaChat } from '../../services/llm/providers/ollama/chat';
-import { getMCQGenerationPrompt } from '../../services/llm/prompts/exercises';
+import { getMCQGenerationPrompt, getMCQGenerationPromptNativeToEn } from '../../services/llm/prompts/exercises';
 import type { LLMConfig } from '../../services/llm/types';
 
 // Define the protocol map for messages handled by the background script
@@ -73,6 +73,32 @@ export function registerMessageHandlers(): void {
         console.log('[Message Handlers] Received submitReviewResult request:', message.data);
         const { learningId, grade, incorrectChoiceText } = message.data;
         try {
+            // --- Fetch variation_type before updating SRS state ---
+            let variationType: string | null = 'unknown';
+            try {
+                const db = await getDbInstance();
+                // Query to get translation_id from learningId, then variation_type from translation_id
+                const result = await db.query<{ variation_type: string | null }>(
+                   `SELECT lt.variation_type 
+                    FROM lexeme_translations lt
+                    JOIN user_learning ul ON lt.translation_id = ul.translation_id
+                    WHERE ul.learning_id = $1;`,
+                   [learningId]
+                );
+                if (result.rows && result.rows.length > 0) {
+                    variationType = result.rows[0].variation_type ?? 'original'; // Default to original if null
+                }
+                 console.log(`[Message Handlers] Fetched variation type for learningId ${learningId}: ${variationType}`);
+            } catch (fetchError) {
+                 console.error(`[Message Handlers] Error fetching variation type for learningId ${learningId}:`, fetchError);
+                 // Proceed with SRS update even if variation type fetch fails
+            }
+            // --- End fetch variation_type ---
+            
+            // Now log the variation type along with the grade
+             console.log(`[Message Handlers] Submitting review grade ${grade} for variation type: ${variationType}`);
+             
+            // Update SRS state (original logic)
             await updateSRSState(learningId, grade, new Date(), incorrectChoiceText);
             return { success: true };
         } catch (error: any) {
@@ -98,8 +124,19 @@ export function registerMessageHandlers(): void {
     // --- Listener for generateLLMDistractors ---
     messaging.onMessage('generateLLMDistractors', async (message) => {
         console.log('[Message Handlers] Received generateLLMDistractors request:', message.data);
-        const { sourceText, targetText, targetLang, count } = message.data;
+        const { sourceText, targetText, targetLang, count, direction } = message.data;
         
+        // ---- DEBUG: Log received direction ----
+        console.log(`[Message Handlers DEBUG] Received direction value: ${direction}`);
+        // ---- END DEBUG ----
+
+        // Determine source language based on direction
+        const sourceLang = direction === 'NATIVE_TO_EN' ? targetLang : 'en';
+        const effectiveTargetLang = direction === 'NATIVE_TO_EN' ? 'en' : targetLang;
+
+        // Log the direction being processed
+        console.log(`[Message Handlers] Distractor generation direction: ${direction} (${sourceLang} -> ${effectiveTargetLang})`);
+
         // TODO: Retrieve actual LLM config from storage
         const mockLlmConfig: LLMConfig = {
             provider: 'ollama',
@@ -109,11 +146,19 @@ export function registerMessageHandlers(): void {
         };
 
         try {
-            // Assuming sourceLang is always 'en' for now
-            const sourceLang = 'en'; 
-            // We only need distractors, so we might need a more focused prompt or parse the MCQ prompt response
-            // Using getMCQGenerationPrompt and parsing its output for now
-            const prompt = getMCQGenerationPrompt(sourceText, targetText, sourceLang, targetLang);
+            let prompt: string;
+            // Choose prompt based on direction
+            if (direction === 'NATIVE_TO_EN') {
+                // We need the Native phrase as the prompt ('sourceText' in this context)
+                // and the English phrase as the correct answer ('targetText' in this context)
+                 prompt = getMCQGenerationPromptNativeToEn(sourceText, targetText, sourceLang, effectiveTargetLang); 
+                 console.log(`[Message Handlers] Using NATIVE_TO_EN prompt generator.`);
+            } else { // Default to EN_TO_NATIVE
+                // Here, sourceText is English, targetText is Native
+                prompt = getMCQGenerationPrompt(sourceText, targetText, sourceLang, effectiveTargetLang);
+                 console.log(`[Message Handlers] Using EN_TO_NATIVE prompt generator.`);
+            }
+            
             const llmResponse = await ollamaChat([{ role: 'user', content: prompt }], mockLlmConfig);
             
             // Handle both streamed and non-streamed responses
@@ -122,16 +167,8 @@ export function registerMessageHandlers(): void {
                 // Non-streamed response
                 rawContent = llmResponse.choices?.[0]?.message?.content?.trim();
             } else {
-                // Handle streamed response case if needed, or throw error if unexpected
                 console.warn('[Message Handlers] Received unexpected response type from ollamaChat (expected non-streamed object).');
-                 // For now, assume non-streamed or throw
                  throw new Error('Unexpected LLM response format. Expected non-streamed.');
-                // If streaming was intended:
-                // let fullContent = '';
-                // for await (const part of llmResponse) {
-                //     fullContent += part.message?.content || '';
-                // }
-                // rawContent = fullContent.trim();
             }
 
             if (!rawContent) throw new Error('LLM returned empty content.');
