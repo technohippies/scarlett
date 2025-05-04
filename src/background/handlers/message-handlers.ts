@@ -34,6 +34,9 @@ import type { LLMConfig } from '../../services/llm/types';
 import { handleSaveBookmark, handleLoadBookmarks } from './bookmark-handlers';
 import { handleTagList, handleTagSuggest } from './tag-handlers';
 import { handleGetPageInfo, handleGetSelectedText } from './pageInteractionHandlers';
+import { getMarkdownFromHtml } from '../../services/llm/reader';
+import { getOllamaEmbedding } from '../../services/llm/embedding';
+import { addOrUpdateVisitedPage } from '../../services/db/visited_pages';
 import type { Bookmark, Tag } from '../../services/db/types';
 
 // Define the protocol map for messages handled by the background script
@@ -52,6 +55,7 @@ interface BackgroundProtocolMap {
         Promise<TagSuggestResponse>;
     getPageInfo: () => Promise<GetPageInfoResponse>;
     getSelectedText: () => Promise<GetSelectedTextResponse>;
+    processPageVisit: (data: { url: string; title: string; htmlContent: string }) => Promise<void>;
 }
 
 // Initialize messaging for the background context
@@ -296,6 +300,45 @@ export function registerMessageHandlers(): void {
     messaging.onMessage('getSelectedText', ({ data, sender }) => {
         console.log('[Message Handlers] Received getSelectedText');
         return handleGetSelectedText(data, sender);
+    });
+
+    // --- Listener for processPageVisit ---
+    messaging.onMessage('processPageVisit', async ({ data }) => {
+        const { url, title, htmlContent } = data;
+        console.log(`[Message Handlers] Received processPageVisit for URL: ${url}`);
+        try {
+            // 1. Get Markdown
+            console.log('[Message Handlers processPageVisit] Getting Markdown...');
+            const markdown = await getMarkdownFromHtml(htmlContent);
+            if (!markdown) {
+                console.warn('[Message Handlers processPageVisit] Markdown extraction failed or returned null. Aborting.');
+                return; // Don't proceed without markdown
+            }
+            console.log(`[Message Handlers processPageVisit] Markdown extracted (length: ${markdown.length}).`);
+
+            // 2. Get Embedding
+            console.log('[Message Handlers processPageVisit] Getting embedding...');
+            const embedding = await getOllamaEmbedding(markdown); // Embed the markdown
+            if (!embedding) {
+                console.warn('[Message Handlers processPageVisit] Embedding generation failed or returned null. Aborting.');
+                return; // Don't proceed without embedding
+            }
+            console.log(`[Message Handlers processPageVisit] Embedding generated (dimension: ${embedding.length}).`);
+
+            // 3. Add/Update Database
+            console.log('[Message Handlers processPageVisit] Adding/updating visited page in DB...');
+            await addOrUpdateVisitedPage({ 
+                url, 
+                title, 
+                markdown_content: markdown, 
+                embedding 
+            });
+            console.log(`[Message Handlers processPageVisit] DB operation complete for URL: ${url}`);
+
+        } catch (error) {
+            console.error(`[Message Handlers] Error handling processPageVisit for URL ${url}:`, error);
+            // Decide if we should notify user or just log
+        }
     });
 
     console.log('[Message Handlers] Background message listeners registered.');

@@ -23,7 +23,6 @@ const App: Component<AppProps> = (props) => {
   const [pageTitle] = createSignal(props.initialData?.pageTitle || '');
   const [pageUrl] = createSignal(props.initialData?.pageUrl || '');
   const [bookmarks, setBookmarks] = createSignal<Bookmark[]>(props.initialData?.bookmarks || []);
-  const [availableTags] = createSignal<Tag[]>(props.initialData?.availableTags || []);
   const [initialSelectedText] = createSignal(props.initialData?.selectedText ?? '');
 
   const [status, setStatus] = createSignal('');

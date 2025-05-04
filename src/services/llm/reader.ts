@@ -8,7 +8,7 @@ console.log('[LLM Reader Service] Module loaded.');
 // TODO: Make this configurable via settings later
 const READER_MODEL_CONFIG: LLMConfig = {
   provider: 'ollama',
-  model: 'gemma3:12b', // Or another suitable model like mixtral, gemma, etc.
+  model: 'milkey/reader-lm-v2:latest', // Corrected reader model
   baseUrl: 'http://localhost:11434',
   stream: false, // Non-streaming is easier for full page conversion
 };

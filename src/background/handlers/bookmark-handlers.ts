@@ -1,8 +1,9 @@
 import { createBookmark, getAllBookmarks } from '../../services/db/learning'; // Assuming functions are here
-import type { Bookmark } from '../../services/db/types'; // Assuming types are here
+// import type { Bookmark } from '../../services/db/types'; // Removed unused type import
 import type { Browser } from 'wxt/browser';
 // Assuming response types are defined in messaging-types
 import type { SaveBookmarkResponse, LoadBookmarksResponse } from '../../shared/messaging-types';
+import { ensureDbInitialized } from '../../services/db/init'; // Import ensureDbInitialized
 
 console.log('[Bookmark Handlers] Module loaded.');
 
@@ -28,6 +29,10 @@ export async function handleSaveBookmark(
   }
 
   try {
+    // Ensure DB is ready before accessing it
+    await ensureDbInitialized(); 
+    console.log('[handleSaveBookmark] DB initialized. Saving bookmark...');
+
     // Prepare data for createBookmark
     // Note: createBookmark might need its own Input type
     const bookmarkData = {
@@ -63,6 +68,9 @@ export async function handleLoadBookmarks(
 ): Promise<LoadBookmarksResponse> { // Return type based on messaging-types
   console.log('[handleLoadBookmarks] Request received.');
   try {
+    // Ensure DB is ready before accessing it
+    await ensureDbInitialized(); 
+    console.log('[handleLoadBookmarks] DB initialized. Fetching bookmarks...');
     const bookmarks = await getAllBookmarks();
     console.log(`[handleLoadBookmarks] Found ${bookmarks.length} bookmarks.`);
     return {

@@ -12,7 +12,6 @@ let dbReadyPromise: Promise<PGlite> | null = null;
 // Returns the promise representing the ongoing or completed initialization.
 function startInitialization(): Promise<PGlite> {
     console.log('[DB startInitialization] Starting NEW PGlite initialization...');
-    // Return the promise immediately. The assignment happens inside.
     return (async () => {
         try {
             const instance = new PGlite('idb://scarlett-wxt-db', { extensions: { vector } });
@@ -20,46 +19,41 @@ function startInitialization(): Promise<PGlite> {
             await instance.waitReady;
             console.log('[DB startInitialization] PGlite instance ready.');
 
-            // --- Apply Schema ---
+            // --- Apply Schema --- 
             console.log('[DB startInitialization] Applying database schema START...');
             try {
-                // Check if the NEW chat_threads table exists
-                const checkSql = `
-                  SELECT EXISTS (
-                    SELECT FROM information_schema.tables
-                    WHERE table_schema = 'public' AND table_name = 'chat_threads'
-                  );
-                `;
-                console.log('[DB startInitialization] Executing check query:', checkSql);
+                // Check for 'bookmarks' table
+                const checkSql = `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'bookmarks');`;
+                console.log('[DB startInitialization] Executing check query for \'bookmarks\' table...');
                 const checkResult = await instance.query<{ exists: boolean }>(checkSql);
                 const tableExists = checkResult?.rows?.[0]?.exists;
-                console.log(`[DB startInitialization] Check query result: chat_threads exists = ${tableExists}`);
+                console.log(`[DB startInitialization] Check query result: bookmarks exists = ${tableExists}`);
 
                 if (tableExists === false) {
-                    console.log('[DB startInitialization] chat_threads table does not exist. Applying full schema...');
-                    console.log('[DB startInitialization] --- EXECUTING FULL SCHEMA ---');
+                    console.log('[DB startInitialization] bookmarks table does not exist. Applying full schema...');
                     await instance.exec(dbSchemaSql);
                     console.log('[DB startInitialization] --- FULL SCHEMA EXECUTION COMPLETE ---');
-                    console.log('[DB startInitialization] Verifying chat_threads table existence AFTER schema exec...');
                     const verifyResult = await instance.query<{ exists: boolean }>(checkSql);
-                    console.log(`[DB startInitialization] Verification result: chat_threads exists = ${verifyResult?.rows?.[0]?.exists}`);
+                    console.log(`[DB startInitialization] Verification result: bookmarks exists = ${verifyResult?.rows?.[0]?.exists}`);
                 } else {
-                    console.log('[DB startInitialization] chat_threads table already exists. Assuming schema is up-to-date.');
+                    console.log('[DB startInitialization] bookmarks table already exists. Assuming schema is up-to-date.');
                 }
                 console.log('[DB startInitialization] Applying database schema COMPLETE.');
             } catch (schemaError) {
                 console.error('[DB startInitialization] Error during schema check/application:', schemaError);
-                throw schemaError;
+                throw schemaError; 
             }
-            // --- END Schema ---
+            // --- END Schema --- 
 
-            console.log('[DB startInitialization] Initialization complete. Assigning instance to \'db\'.');
-            db = instance; // Assign ONLY after everything is ready
-            return db; // Resolve the promise with the instance
+            // --- DO NOT SEED HERE --- 
+
+            console.log('[DB startInitialization] Initialization complete (Schema applied). Assigning instance to \'db\'.');
+            db = instance; // Assign db instance
+            return db; // Resolve the promise
         } catch (error) {
             console.error('[DB startInitialization] PGlite initialization or schema application failed:', error);
-            dbReadyPromise = null; // Clear promise on failure
-            db = null; // Clear instance on failure
+            dbReadyPromise = null; 
+            db = null; 
             throw error; // Reject the promise
         }
     })();

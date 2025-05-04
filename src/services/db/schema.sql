@@ -148,7 +148,19 @@ CREATE TABLE IF NOT EXISTS bookmarks (
 -- Table for managing predefined and user-added tags
 CREATE TABLE IF NOT EXISTS tags (
     tag_id SERIAL PRIMARY KEY,
-    tag_name TEXT NOT NULL,
+    tag_name TEXT NOT NULL UNIQUE, -- Added UNIQUE constraint
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table to store processed and embedded visited pages
+CREATE TABLE IF NOT EXISTS visited_pages (
+    page_id SERIAL PRIMARY KEY,
+    url TEXT NOT NULL UNIQUE,
+    title TEXT NULL,
+    markdown_content TEXT NULL,
+    embedding vector(768) NULL, -- Dimension based on embedding model (e.g., nomic-embed-text)
+    visit_count INTEGER DEFAULT 1, -- Added: Track visit frequency
+    last_visited_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_processed_at TIMESTAMPTZ NULL
 );

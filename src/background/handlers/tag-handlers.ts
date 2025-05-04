@@ -1,5 +1,6 @@
 import { browser, type Browser } from 'wxt/browser';
-import { getAllTags } from '../../services/db/learning';
+import { getAllTags } from '../../services/db/tags';
+import { ensureDbInitialized } from '../../services/db/init';
 // Assuming response types are defined
 import type { 
     TagListResponse, 
@@ -27,6 +28,9 @@ export async function handleTagList(
 ): Promise<TagListResponse> {
   console.log('[handleTagList] Request received.');
   try {
+    // Ensure DB is ready before accessing it
+    await ensureDbInitialized(); 
+    console.log('[handleTagList] DB initialized. Fetching tags...');
     const tags = await getAllTags();
     console.log(`[handleTagList] Found ${tags.length} tags.`);
     return {
@@ -74,8 +78,24 @@ export async function handleTagSuggest(
   };
 
   let markdownContent: string | null = null;
+  let existingTagNames: string[] = [];
 
   try {
+    // Ensure DB is ready before fetching existing tags
+    await ensureDbInitialized(); 
+    console.log('[handleTagSuggest] DB initialized.');
+
+    // --- Step 0: Get Existing Tags --- 
+    try {
+        console.log('[handleTagSuggest] Fetching existing tags...');
+        const existingTagsResult = await getAllTags();
+        existingTagNames = existingTagsResult.map(tag => tag.tag_name.startsWith('#') ? tag.tag_name : `#${tag.tag_name}`);
+        console.log(`[handleTagSuggest] Found ${existingTagNames.length} existing tags.`);
+    } catch (tagError) {
+        console.warn('[handleTagSuggest] Failed to fetch existing tags, proceeding without them:', tagError);
+        existingTagNames = []; // Ensure it's an empty array on error
+    }
+
     // --- Step 1: Get Page Content --- 
     console.log('[handleTagSuggest] Getting active tab...');
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
@@ -103,9 +123,9 @@ export async function handleTagSuggest(
     }
     console.log(`[handleTagSuggest] Markdown generated (length: ${markdownContent.length}).`);
 
-    // --- Step 3: Generate Tag Suggestion Prompt (using Markdown) --- 
-    const prompt = getTagSuggestionPrompt(title, url, markdownContent); // Pass Markdown here
-    console.log('[handleTagSuggest] Generated tag suggestion prompt (using Markdown).'); 
+    // --- Step 3: Generate Tag Suggestion Prompt (using Markdown AND existing tags) --- 
+    const prompt = getTagSuggestionPrompt(title, url, markdownContent, existingTagNames);
+    console.log('[handleTagSuggest] Generated tag suggestion prompt (using Markdown and existing tags).'); 
     // Limit logging extremely long prompts
     // console.log('[handleTagSuggest] Prompt:', prompt.substring(0, 500) + '...');
 

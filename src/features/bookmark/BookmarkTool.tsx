@@ -3,7 +3,7 @@ import { Button } from '../../components/ui/button';
 import { TextField, TextFieldInput } from '../../components/ui/text-field';
 import { Textarea } from '../../components/ui/textarea'; // Now using the SolidJS version
 import { Spinner } from '../../components/ui/spinner'; // Import Spinner
-import { BookmarkSimple } from 'phosphor-solid'; // CORRECTED package name
+import { BookmarkSimple } from 'phosphor-solid'; // Removed X icon import
 import { cn } from '../../lib/utils'; // Correct path for cn
 
 export interface BookmarkToolProps {
@@ -27,30 +27,32 @@ export interface BookmarkToolProps {
 export const BookmarkTool: Component<BookmarkToolProps> = (props) => {
 
   // Use signals for local state
-  const [tagInput, setTagInput] = createSignal<string>(
-    (props.initialTags ?? []).join(', ')
-  );
+  const [tagInput, setTagInput] = createSignal<string>('');
   const [selectedText, setSelectedText] = createSignal<string>(
     props.initialSelectedText ?? ''
   );
 
-  // Effect to update local tag input when initialTags or suggestedTags change
+  // Effect to update tagInput string when props change
   createEffect(() => {
-    const currentTags = tagInput().split(',').map(t => t.trim()).filter(Boolean);
-    // Use props directly inside createEffect
     const initial = props.initialTags ?? [];
     const suggested = props.suggestedTags ?? [];
-    const combined = Array.from(new Set([...currentTags, ...initial, ...suggested]));
-    const newTagString = combined.join(', ');
+    // Get current tags from the input string itself to preserve user edits
+    const currentTagsFromString = tagInput()
+                                  .split(',')
+                                  .map(t => t.trim())
+                                  .filter(t => t.startsWith('#') && t.length > 1);
+                                  
+    const combined = Array.from(new Set([...currentTagsFromString, ...initial, ...suggested]));
+    const newTagString = combined.join(', '); // Create the string representation
 
+    // Update the input signal only if the string content changes
     if (newTagString !== tagInput()) {
-        setTagInput(newTagString);
-        // Update parent if tags changed due to merge
-        if (JSON.stringify(combined) !== JSON.stringify(currentTags)) {
-            props.onTagsChange(combined);
-        }
+      console.log('[BookmarkTool Effect] Updating tagInput:', newTagString);
+      setTagInput(newTagString);
+      // Still notify parent with the array version if change was triggered by props
+      props.onTagsChange(combined);
     }
-  }); // Solid automatically tracks dependencies (props.initialTags, props.suggestedTags, tagInput)
+  });
 
   // Effect to update local selected text when initialSelectedText changes
   createEffect(() => {
@@ -61,24 +63,33 @@ export const BookmarkTool: Component<BookmarkToolProps> = (props) => {
   const handleTagInputChange = (event: Event) => {
     const target = event.currentTarget as HTMLInputElement;
     setTagInput(target.value);
+    // Don't call onTagsChange on every keystroke
   };
 
   // Handler for when tag input loses focus or Enter is pressed
+  // Normalizes tags and calls onTagsChange with the array
   const processTags = () => {
     const tags = tagInput()
       .split(',')
       .map(tag => {
         let trimmed = tag.trim();
+        // Add # if missing and it's not just whitespace
         if (trimmed && !trimmed.startsWith('#')) {
           trimmed = `#${trimmed}`;
         }
         return trimmed;
       })
-      .filter(tag => tag.length > 1);
+      .filter(tag => tag.length > 1); // Filter out empty/short tags like just '#'
     const uniqueTags = Array.from(new Set(tags));
     const newTagString = uniqueTags.join(', ');
-    setTagInput(newTagString);
+    
+    // Update local input to the cleaned version
+    if (newTagString !== tagInput()) {
+        setTagInput(newTagString);
+    }
+    // Always notify parent with the processed array
     props.onTagsChange(uniqueTags);
+    console.log('[BookmarkTool processTags] Notified parent with:', uniqueTags);
   };
 
   const handleTagInputBlur = () => {
@@ -87,9 +98,9 @@ export const BookmarkTool: Component<BookmarkToolProps> = (props) => {
 
   const handleTagInputKeyDown = (event: KeyboardEvent) => {
     if (event.key === 'Enter') {
-      event.preventDefault();
+      event.preventDefault(); // Prevent form submission if inside a form
       processTags();
-      (event.currentTarget as HTMLInputElement).blur();
+      (event.currentTarget as HTMLInputElement).blur(); // Optional: blur on enter
     }
   };
 
@@ -156,7 +167,14 @@ export const BookmarkTool: Component<BookmarkToolProps> = (props) => {
             placeholder={props.isSuggestingTags ? "Suggesting tags..." : "#tag1, #tag2, #..."}
             class="text-base placeholder:text-muted-foreground"
           />
+          <Show when={props.isSuggestingTags}> 
+             <Spinner class="absolute right-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          </Show>
         </TextField>
+
+        <Show when={props.tagSuggestionError}> 
+            <p class="text-xs text-destructive mt-1">Error suggesting tags: {props.tagSuggestionError}</p>
+        </Show>
       </div>
 
       {/* Selected Text (Context) Section */}
@@ -165,8 +183,8 @@ export const BookmarkTool: Component<BookmarkToolProps> = (props) => {
           <label for="bookmark-text" class="text-base font-medium text-foreground/90">Text:</label>
           <Textarea
             id="bookmark-text"
-            value={selectedText()} // Access signal value
-            onInput={handleSelectedTextChange} // Use onInput for live updates
+            value={selectedText()}
+            onInput={handleSelectedTextChange}
             class="w-full h-24 text-base"
             placeholder="Selected text from page..."
             disabled={props.isSaving}

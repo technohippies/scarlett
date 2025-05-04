@@ -30,6 +30,88 @@ export default defineContentScript({
     async main(ctx) {
         console.log('[Scarlett CS] Content script loaded.');
 
+        // --- Timer for Page Visit Processing ---
+        let pageVisitTimerId: number | null = null;
+        const PAGE_VISIT_DELAY = 3000; // 3 seconds
+
+        const schedulePageProcessing = () => {
+            if (pageVisitTimerId) {
+                clearTimeout(pageVisitTimerId);
+            }
+            console.log(`[Scarlett CS] Scheduling page processing in ${PAGE_VISIT_DELAY / 1000}s...`);
+            pageVisitTimerId = window.setTimeout(async () => {
+                console.log('[Scarlett CS] Page visit timer fired. Processing page...');
+                try {
+                    const url = window.location.href;
+                    const title = document.title;
+                    const htmlContent = await extractMainContent(); // Use helper function
+                    if (htmlContent) {
+                        console.log(`[Scarlett CS] Sending processPageVisit for URL: ${url}`);
+                        messaging.sendMessage('processPageVisit', { url, title, htmlContent });
+                    } else {
+                         console.warn('[Scarlett CS] No content extracted, skipping processPageVisit.');
+                    }
+                } catch (error) {
+                     console.error('[Scarlett CS] Error during scheduled page processing:', error);
+                }
+            }, PAGE_VISIT_DELAY);
+        };
+
+        const cancelPageProcessing = () => {
+            if (pageVisitTimerId) {
+                console.log(`[Scarlett CS] Cancelling scheduled page processing (navigation).`);
+                clearTimeout(pageVisitTimerId);
+                pageVisitTimerId = null;
+            }
+        };
+        
+        // Helper function for content extraction (refactored from getPageContent handler)
+        const extractMainContent = async (): Promise<string | null> => {
+             try {
+                 const selectors = [
+                     '#bodyContent', // Specific to Wikipedia
+                     'main',
+                     'article',
+                     '.main-content', 
+                     '.post-body',
+                     '.entry-content'
+                 ];
+                 let mainContentElement: HTMLElement | null = null;
+                 for (const selector of selectors) {
+                     mainContentElement = document.querySelector(selector);
+                     if (mainContentElement) {
+                         console.log(`[Scarlett CS Extract] Found main content element with selector: ${selector}`);
+                         break;
+                     }
+                 }
+                 let htmlContent: string | null = null;
+                 if (mainContentElement) {
+                     htmlContent = mainContentElement.innerHTML;
+                 } else {
+                     console.warn('[Scarlett CS Extract] Could not find specific main content container. Falling back to document.body.innerHTML.');
+                     htmlContent = document.body.innerHTML;
+                 }
+                 if (!htmlContent) {
+                     console.warn('[Scarlett CS Extract] HTML content extraction resulted in empty content.');
+                     return null;
+                 }
+                 console.log(`[Scarlett CS Extract] Extracted content length: ${htmlContent.length}`);
+                 return htmlContent;
+             } catch (error) {
+                 console.error('[Scarlett CS Extract] Error extracting content:', error);
+                 return null;
+             }
+        }
+
+        // Schedule processing on initial load (or when script is injected)
+        // Use requestIdleCallback or a small delay if DOMContentLoaded isn't reliable here
+        window.setTimeout(schedulePageProcessing, 500); // Schedule slightly after load
+        
+        // Cancel processing if the user navigates away
+        window.addEventListener('beforeunload', cancelPageProcessing);
+        // TODO: Add more robust SPA navigation detection later if needed
+        // --- End Timer Logic ---
+
         // --- State Signals for the Widget ---
         // Using signals allows Solid's reactivity to update the component when data changes.
         const [isVisible, setIsVisible] = createSignal(false);
@@ -208,28 +290,21 @@ export default defineContentScript({
              await hideWidget();
         });
 
-        // --- Message Listener: Get Page Content ---
-        messaging.onMessage('getPageContent', async (message): Promise<GetPageContentResponse> => {
+        // --- Message Listener: Get Page Content --- (Now simpler, uses helper)
+        messaging.onMessage('getPageContent', async (_): Promise<GetPageContentResponse> => {
             console.log('[Scarlett CS] Received getPageContent request.');
-            try {
-                // Simple approach: get the innerHTML of the body
-                const bodyHtml = document.body.innerHTML;
-                if (!bodyHtml) {
-                    console.warn('[Scarlett CS] document.body.innerHTML was empty.');
-                    return { success: false, error: 'Page body content is empty.' };
-                }
-                console.log(`[Scarlett CS] Extracted body HTML (length: ${bodyHtml.length}).`);
-                return { success: true, htmlContent: bodyHtml };
-            } catch (error: any) {
-                console.error('[Scarlett CS] Error getting page content:', error);
-                return { success: false, error: error.message || 'Failed to get page content.' };
+            const htmlContent = await extractMainContent();
+            if (htmlContent) {
+                return { success: true, htmlContent };
+            } else {
+                return { success: false, error: 'Failed to extract page content.' };
             }
         });
         
         // --- Message Listener: Get Selected Text (for background handler) ---
         // This listener responds to requests specifically from the background script's 
         // handleGetSelectedText function.
-        messaging.onMessage('requestSelectedText', (message): { success: boolean; text?: string | null } => {
+        messaging.onMessage('requestSelectedText', (_): { success: boolean; text?: string | null } => {
             console.log('[Scarlett CS] Received requestSelectedText request.');
             try {
                 const selection = window.getSelection();
