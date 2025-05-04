@@ -1,9 +1,12 @@
-import { browser } from 'wxt/browser';
+import { browser, type Browser } from 'wxt/browser';
+import type { OnClickData } from '@webext-core/context-menus';
+import { analysisPipelineV2 } from './analysis-pipeline';
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import { CONTEXT_MENU_ID } from '../setup/context-menu-setup'; // Import the ID
 import { processTextAnalysisPipeline } from '../pipelines/analysis-pipeline';
 import type { LLMConfig } from '../../services/llm/types';
 import type { DisplayTranslationPayload } from '../../shared/messaging-types'; 
+import { setLastContextMenuSelection } from './pageInteractionHandlers'; // Import the function
 
 // Define messaging for sending results back to content script
 // If other handlers need messaging, consider a shared messaging setup
@@ -15,7 +18,7 @@ const messaging = defineExtensionMessaging<ProtocolMap>();
 /**
  * Handles clicks on the context menu item.
  */
-async function handleContextMenuClick(info: browser.contextMenus.OnClickData, tab?: browser.tabs.Tab): Promise<void> {
+async function handleContextMenuClick(info: OnClickData, tab?: browser.tabs.Tab): Promise<void> {
     if (info.menuItemId === CONTEXT_MENU_ID && info.selectionText && tab?.id) {
       const selectedText = info.selectionText.trim();
       const sourceUrl = info.pageUrl || tab.url || 'unknown_url';
@@ -27,6 +30,9 @@ async function handleContextMenuClick(info: browser.contextMenus.OnClickData, ta
       }
 
       console.log(`[Context Menu Handler] Processing text: "${selectedText.substring(0, 50)}..." from ${sourceUrl}`);
+
+      // Store the selection before starting the potentially long pipeline
+      setLastContextMenuSelection(selectedText);
 
       // --- Hardcoded Config (TODO: Move to storage/settings) ---
       const mockLlmConfig: LLMConfig = {

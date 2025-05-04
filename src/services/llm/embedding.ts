@@ -14,14 +14,21 @@ interface OllamaEmbeddingResponse {
   embedding?: number[];
 }
 
+// Define the return type for the embedding function
+export interface EmbeddingResult {
+    embedding: number[];
+    modelName: string;
+    dimension: number;
+}
+
 /**
  * Generates text embeddings using a specified Ollama model.
  *
  * @param text The text content to embed.
- * @returns A Promise resolving to an array of numbers (the embedding vector), or null if failed.
+ * @returns A Promise resolving to an object containing the embedding vector, model name, and dimension, or null if failed.
  * @throws Throws an error if the API call fails or the response is invalid.
  */
-export async function getOllamaEmbedding(text: string): Promise<number[] | null> {
+export async function getOllamaEmbedding(text: string): Promise<EmbeddingResult | null> {
   if (!text) {
     console.warn('[getOllamaEmbedding] Input text is empty.');
     return null;
@@ -53,8 +60,13 @@ export async function getOllamaEmbedding(text: string): Promise<number[] | null>
     const data: OllamaEmbeddingResponse = await response.json();
 
     if (data.embedding && Array.isArray(data.embedding)) {
-      console.log(`[getOllamaEmbedding] Successfully received embedding vector (dimension: ${data.embedding.length}).`);
-      return data.embedding;
+      const dimension = data.embedding.length;
+      console.log(`[getOllamaEmbedding] Successfully received embedding vector (model: ${model}, dimension: ${dimension}).`);
+      return {
+          embedding: data.embedding,
+          modelName: model, // Return the model name used
+          dimension: dimension // Return the actual dimension
+      };
     } else {
       console.warn('[getOllamaEmbedding] Invalid response format from Ollama embedding API:', data);
       throw new Error('Invalid response format from Ollama embedding API.');

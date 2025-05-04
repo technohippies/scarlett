@@ -1,4 +1,5 @@
 import { createBookmark, getAllBookmarks } from '../../services/db/learning'; // Assuming functions are here
+import type { CreateBookmarkInput } from '../../services/db/types'; // Added import
 // import type { Bookmark } from '../../services/db/types'; // Removed unused type import
 import type { Browser } from 'wxt/browser';
 // Assuming response types are defined in messaging-types
@@ -35,12 +36,12 @@ export async function handleSaveBookmark(
 
     // Prepare data for createBookmark
     // Note: createBookmark might need its own Input type
-    const bookmarkData = {
+    const bookmarkData: CreateBookmarkInput = {
       url: payload.url,
       title: payload.title,
       tags: payload.tags, 
+      selectedText: payload.selectedText,
       // embedding: undefined, // Handle embedding later if needed
-      // Potentially add selectedText to the bookmark record if schema supports it
       // context: payload.selectedText // Example if schema had a context field
     };
 

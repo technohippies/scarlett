@@ -26,6 +26,7 @@ export interface CreateBookmarkInput {
   title?: string | null;
   tags?: string | null;
   embedding?: string | null; 
+  selectedText?: string | null;
 }
 
 // Flashcard structure based on schema.sql

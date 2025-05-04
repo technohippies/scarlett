@@ -196,16 +196,20 @@ export async function updateCachedDistractors(
  * Creates a new bookmark.
  */
 export async function createBookmark(bookmarkData: CreateBookmarkInput): Promise<Bookmark> {
-  console.log("[DB bookmarks] Creating bookmark with params:", [bookmarkData.url, bookmarkData.title, bookmarkData.tags]);
+  // Log selected text snippet if present (truncated)
+  const selectedTextSnippet = bookmarkData.selectedText ? bookmarkData.selectedText.substring(0, 100) + '...' : 'null';
+  console.log(`[DB bookmarks] Creating bookmark with params: url=${bookmarkData.url}, title=${bookmarkData.title}, tags=${bookmarkData.tags}, selectedText=${selectedTextSnippet}`);
   const db = await getDbInstance();
   try {
-    const result = await db.query<Bookmark>( // Specify return type
-      'INSERT INTO bookmarks (url, title, tags, embedding) VALUES ($1, $2, $3, $4) RETURNING *', 
+    const result = await db.query<Bookmark>( 
+      // Added selected_text to INSERT statement
+      'INSERT INTO bookmarks (url, title, tags, embedding, selected_text) VALUES ($1, $2, $3, $4, $5) RETURNING *', 
       [
         bookmarkData.url,
         bookmarkData.title || null,
         bookmarkData.tags || null,
-        bookmarkData.embedding || null // Handle embedding if provided
+        bookmarkData.embedding || null, 
+        bookmarkData.selectedText || null // Added selectedText parameter
       ]
     );
     if (result.rows && result.rows.length > 0) {

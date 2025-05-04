@@ -318,12 +318,13 @@ export function registerMessageHandlers(): void {
 
             // 2. Get Embedding
             console.log('[Message Handlers processPageVisit] Getting embedding...');
-            const embedding = await getOllamaEmbedding(markdown); // Embed the markdown
-            if (!embedding) {
+            const embeddingResult = await getOllamaEmbedding(markdown); // Embed the markdown
+            if (!embeddingResult) { // Check the result object
                 console.warn('[Message Handlers processPageVisit] Embedding generation failed or returned null. Aborting.');
                 return; // Don't proceed without embedding
             }
-            console.log(`[Message Handlers processPageVisit] Embedding generated (dimension: ${embedding.length}).`);
+            // Log dimension from the result
+            console.log(`[Message Handlers processPageVisit] Embedding generated (model: ${embeddingResult.modelName}, dimension: ${embeddingResult.dimension}).`);
 
             // 3. Add/Update Database
             console.log('[Message Handlers processPageVisit] Adding/updating visited page in DB...');
@@ -331,7 +332,7 @@ export function registerMessageHandlers(): void {
                 url, 
                 title, 
                 markdown_content: markdown, 
-                embedding 
+                embeddingInfo: embeddingResult // Pass the whole result object
             });
             console.log(`[Message Handlers processPageVisit] DB operation complete for URL: ${url}`);
 
