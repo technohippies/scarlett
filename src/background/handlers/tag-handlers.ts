@@ -55,9 +55,10 @@ export async function handleTagSuggest(
   }
 
   // TODO: Retrieve actual LLM config from storage
+  // Changed default model to llama3 - MAKE SURE THIS MODEL IS AVAILABLE IN OLLAMA (ollama pull llama3)
   const mockLlmConfig: LLMConfig = {
     provider: 'ollama',
-    model: 'gemma:2b', // Using a smaller model for potentially faster tagging
+    model: 'gemma3:12b',
     baseUrl: 'http://localhost:11434',
     stream: false,
   };

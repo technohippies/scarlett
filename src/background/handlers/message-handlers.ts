@@ -15,7 +15,9 @@ import type {
     SaveBookmarkResponse,
     LoadBookmarksResponse,
     TagListResponse, 
-    TagSuggestResponse
+    TagSuggestResponse,
+    GetPageInfoResponse,
+    GetSelectedTextResponse
 } from '../../shared/messaging-types';
 import {
     getDueLearningItems,
@@ -31,6 +33,7 @@ import { getMCQGenerationPrompt, getMCQGenerationPromptNativeToEn } from '../../
 import type { LLMConfig } from '../../services/llm/types';
 import { handleSaveBookmark, handleLoadBookmarks } from './bookmark-handlers';
 import { handleTagList, handleTagSuggest } from './tag-handlers';
+import { handleGetPageInfo, handleGetSelectedText } from './pageInteractionHandlers';
 import type { Bookmark, Tag } from '../../services/db/types';
 
 // Define the protocol map for messages handled by the background script
@@ -47,6 +50,8 @@ interface BackgroundProtocolMap {
     'tag:list': () => Promise<TagListResponse>;
     'tag:suggest': (data: { title: string; url: string; pageContent?: string | null }) => 
         Promise<TagSuggestResponse>;
+    getPageInfo: () => Promise<GetPageInfoResponse>;
+    getSelectedText: () => Promise<GetSelectedTextResponse>;
 }
 
 // Initialize messaging for the background context
@@ -279,6 +284,18 @@ export function registerMessageHandlers(): void {
     messaging.onMessage('tag:suggest', ({ data, sender }) => {
         console.log('[Message Handlers] Received tag:suggest');
         return handleTagSuggest(data, sender);
+    });
+
+    // --- Listener for getPageInfo --- (Uses new handler)
+    messaging.onMessage('getPageInfo', ({ data, sender }) => {
+        console.log('[Message Handlers] Received getPageInfo');
+        return handleGetPageInfo(data, sender);
+    });
+    
+    // --- Listener for getSelectedText --- (Uses new handler)
+    messaging.onMessage('getSelectedText', ({ data, sender }) => {
+        console.log('[Message Handlers] Received getSelectedText');
+        return handleGetSelectedText(data, sender);
     });
 
     console.log('[Message Handlers] Background message listeners registered.');

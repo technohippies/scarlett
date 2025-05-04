@@ -38,6 +38,8 @@ const App: Component<AppProps> = (props) => {
   const [suggestedTags, setSuggestedTags] = createSignal<string[]>([]);
   const [isSuggestingTags, setIsSuggestingTags] = createSignal(false);
   const [tagSuggestionError, setTagSuggestionError] = createSignal<string | null>(null);
+  // Add signal to track suggestion attempt
+  const [suggestionsAttempted, setSuggestionsAttempted] = createSignal(false);
 
   // --- Effects ---
 
@@ -58,15 +60,17 @@ const App: Component<AppProps> = (props) => {
     }
   });
 
-  // Effect to trigger tag suggestions (Optional - based on inspirational code)
+  // Effect to trigger tag suggestions
   createEffect(async () => {
     const title = pageTitle();
     const url = pageUrl();
     const contextContent = currentSelectedText();
 
-    // Only suggest if we have info, aren't already suggesting, and haven't got suggestions yet
-    if (title && url && !isSuggestingTags() && suggestedTags().length === 0 && !isAlreadyBookmarked()) {
-      console.log('[Popup App Effect] Triggering tag suggestions...');
+    // Add !suggestionsAttempted() to condition
+    if (title && url && !isSuggestingTags() && suggestedTags().length === 0 && !isAlreadyBookmarked() && !suggestionsAttempted()) {
+      console.log('[Popup App Effect] Triggering tag suggestions (first attempt)...');
+      // Set attempt flag immediately
+      setSuggestionsAttempted(true);
       setIsSuggestingTags(true);
       setTagSuggestionError(null);
       setStatusIsError(false);
