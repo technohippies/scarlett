@@ -37,7 +37,7 @@ export default defineConfig({
         foreground: "hsl(210 40% 98%)",
       },
       card: {
-        DEFAULT: "hsl(240 4.8% 9.8%)",
+        DEFAULT: "hsl(240 4.8% 13%)",
         foreground: "hsl(210 40% 98%)",
       },
     },

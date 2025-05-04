@@ -9,12 +9,17 @@ import type {
     CacheDistractorsRequest,
     CacheDistractorsResponse,
     GenerateLLMDistractorsRequest,
-    GenerateLLMDistractorsResponse
+    GenerateLLMDistractorsResponse,
+    GetStudySummaryRequest,
+    GetStudySummaryResponse
 } from '../../shared/messaging-types';
 import {
     getDueLearningItems,
     getDistractors,
-    updateSRSState
+    updateSRSState,
+    // --- NEW: Import the actual function to get summary counts --- 
+    // (Ensure this function exists and is correctly implemented in your SRS service)
+    // getStudySummaryCounts // <-- Commented out until implemented
 } from '../../services/srs/scheduler';
 import { updateCachedDistractors } from '../../services/db/learning';
 import { getDbInstance } from '../../services/db/init';
@@ -29,6 +34,7 @@ interface BackgroundProtocolMap {
     submitReviewResult(data: SubmitReviewRequest): Promise<SubmitReviewResponse>;
     cacheDistractors(data: CacheDistractorsRequest): Promise<CacheDistractorsResponse>;
     generateLLMDistractors(data: GenerateLLMDistractorsRequest): Promise<GenerateLLMDistractorsResponse>;
+    getStudySummary(data: GetStudySummaryRequest): Promise<GetStudySummaryResponse>;
 }
 
 // Initialize messaging for the background context
@@ -205,6 +211,34 @@ export function registerMessageHandlers(): void {
         } catch (error: any) {
             console.error('[Message Handlers] Error handling generateLLMDistractors:', error);
             return { distractors: [], error: error.message || 'Failed to generate distractors.' };
+        }
+    });
+
+    // --- Listener for getStudySummary ---
+    messaging.onMessage('getStudySummary', async (message) => {
+        console.log('[Message Handlers] Received getStudySummary request:', message.data);
+        try {
+            // --- Use the actual function to get counts --- 
+            // TODO: Uncomment and ensure getStudySummaryCounts is implemented and imported
+            // const counts = await getStudySummaryCounts(); 
+            const counts = { due: 0, review: 0, new: 1 }; // Use placeholder WITH A NEW COUNT for testing
+            console.log('[Message Handlers] Retrieved summary counts (Using placeholder):', counts);
+            // ---------
+
+            // Validate and ensure counts are numbers, default to 0 if not
+            const dueCount = typeof counts.due === 'number' ? counts.due : 0;
+            const reviewCount = typeof counts.review === 'number' ? counts.review : 0;
+            const newCount = typeof counts.new === 'number' ? counts.new : 0;
+
+            return { dueCount, reviewCount, newCount };
+        } catch (error: any) {
+            console.error('[Message Handlers] Error handling getStudySummary:', error);
+            return { 
+                dueCount: 0, 
+                reviewCount: 0, 
+                newCount: 0, 
+                error: error.message || 'Failed to get study summary counts.' 
+            };
         }
     });
 

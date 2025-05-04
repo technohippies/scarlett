@@ -51,7 +51,5 @@
     "unocss": "^66.1.0-beta.13",
     "wxt": "^0.20.3"
   },
-  "overrides": {
-    "storybook-solidjs-vite": "file:../../storybook-solidjs/packages/frameworks/solid-vite"
-  }
+  "packageManager": "bun@1.2.12"
 }

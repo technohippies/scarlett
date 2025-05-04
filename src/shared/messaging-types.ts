@@ -93,3 +93,26 @@ export interface GenerateLLMDistractorsResponse {
 // --- Content Script -> Background Communication --- 
 // (Example - if content script needed to send data)
 // ...
+
+// --- Study Summary ---
+
+/** Request to get the counts of due/review/new items. */
+export interface GetStudySummaryRequest {
+  // Currently no parameters needed, but define interface for future use
+}
+
+/** Response containing the counts of due/review/new items. */
+export interface GetStudySummaryResponse {
+  dueCount: number;
+  reviewCount: number;
+  newCount: number;
+  error?: string; // Optional error reporting
+}
+
+// --- Distractor Management ---
+
+/** Request to cache generated distractors for a translation. */
+export interface CacheDistractorsRequest {
+  translationId: number;
+  distractors: string[];
+}
