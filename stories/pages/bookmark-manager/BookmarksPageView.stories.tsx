@@ -53,11 +53,13 @@ export default {
     bookmarks: { control: 'object' }, // Control as object in Storybook UI
     isLoading: { control: 'boolean' },
     error: { control: 'text' },
+    onNavigateBack: { action: 'navigateBack' }, // Add action for the new prop
   },
   args: { // Default args applied to all stories unless overridden
     isLoading: false,
     error: null,
     bookmarks: null, // Default to null (might represent initial state before loading)
+    onNavigateBack: action('navigateBack'), // Add default action
   },
 };
 

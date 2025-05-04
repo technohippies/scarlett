@@ -29,6 +29,7 @@ export default {
     itemError: { control: 'text' },
     distractorError: { control: 'text' },
     onSkipClick: { action: 'skipClicked' },
+    onNavigateBack: { action: 'navigateBack' },
   },
   args: { // Default args
     isLoadingItem: false,
@@ -37,6 +38,7 @@ export default {
     itemError: null,
     distractorError: null,
     onSkipClick: action('skipClicked'),
+    onNavigateBack: action('navigateBack'),
   }
 };
 

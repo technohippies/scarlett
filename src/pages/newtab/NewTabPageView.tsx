@@ -1,107 +1,78 @@
 import { Component, Show } from 'solid-js';
-import { FlashcardStudyPanel } from '../../features/srs/FlashcardStudyPanel';
-import { Card, CardContent } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
-import { browser } from 'wxt/browser';
+import { Spinner } from '../../components/ui/spinner';
+import { FlashcardStudyPanel } from '../../features/srs/FlashcardStudyPanel';
 
-// Props interface for the View component
-export interface NewTabPageViewProps {
-  isLoading: boolean;
-  // Allow null for initial state or when error occurs
-  summaryData: { dueCount: number; reviewCount: number; newCount: number } | null;
-  error: string | null;
-  onStudyClick: () => void;
+// Define the shape of the summary data expected
+export interface StudySummaryData {
+    dueCount: number;
+    reviewCount: number;
+    newCount: number;
 }
 
-// The purely presentational component
+// Props for the View component
+export interface NewTabPageViewProps {
+    isLoading: boolean;
+    summaryData: StudySummaryData | null;
+    error: string | null;
+    onBookmarksClick: () => void; // Callback for Bookmarks button
+    onStudyClick: () => void; // Callback for Study button
+}
+
 export const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
-  
-  // Helper condition to determine if the card should be shown at all
-  const shouldShowCard = () => {
-    return !props.isLoading && !props.error && props.summaryData && 
-           (props.summaryData.dueCount > 0 || 
-            props.summaryData.reviewCount > 0 || 
-            props.summaryData.newCount > 0);
-  };
-
-  // Navigate functions
-  const goToStudyPage = () => {
-    const studyUrl = browser.runtime.getURL('/study.html');
-    window.location.href = studyUrl;
-  };
-
-  const goToBookmarksPage = () => {
-    const bookmarksUrl = browser.runtime.getURL('/bookmark-manager.html');
-    window.location.href = bookmarksUrl;
-  };
-
-  // const goToSettingsPage = () => {
-  //   // Assuming settings page is available via options_ui or a dedicated page
-  //   // browser.runtime.openOptionsPage(); // Use this if options_ui is set
-  //   // Or if it's a regular page:
-  //   const settingsUrl = browser.runtime.getURL('/settings.html');
-  //   window.location.href = settingsUrl;
-  // };
 
   return (
-    <div class="newtab-page-container p-8 font-sans bg-background min-h-screen flex flex-col justify-between items-start">
-      <header class="flex justify-between items-center mb-12">
-        <h1 class="text-3xl font-bold text-foreground mb-8 mt-8">Welcome Back!</h1>
-        <nav class="flex items-center space-x-4">
-          {/* <Button variant="outline" onClick={goToStudyPage}>Start Studying</Button> */}
-          <Button variant="outline" onClick={goToBookmarksPage}>View Bookmarks</Button>
-          {/* Settings Button (Example) */}
-          {/* <Button variant="ghost" size="icon" onClick={goToSettingsPage}><Cog size={20} /></Button> */}
-        </nav>
+    // Use flex-col, justify-between to push items to top and bottom
+    <div class="newtab-page-container p-6 md:p-8 font-sans bg-background min-h-screen flex flex-col justify-between items-center">
+      
+      {/* Header Area (Centered) */}
+      <header class="w-full flex justify-center items-center pt-8 md:pt-12">
+        <h1 class="text-3xl font-bold text-foreground">Welcome Back!</h1>
       </header>
 
-      <div class="study-panel-area mb-4">
-        <Show when={shouldShowCard()} 
-              fallback={
-                // Show loading or error placeholder if card shouldn't be shown yet or has error
-                <Show when={props.isLoading} fallback={
-                  // If not loading, check for error
-                  <Show when={props.error} fallback={
-                    // If no error and not loading, but counts are zero, show nothing or a different message
-                    // For now, showing nothing for the zero-counts-case fallback
-                    <></> 
-                  }>
-                    {/* Error State Placeholder (Optional: Could style differently) */} 
-                    <div class="w-64 p-4 text-center text-red-500 font-semibold">
-                         Error: {props.error ?? 'Unknown error'}
-                    </div>
-                  </Show>
-                }>
-                  {/* Loading State Placeholder (Optional: Could style differently) */} 
-                  <div class="w-64 p-4 text-center text-foreground animate-pulse">
-                      Loading summary...
-                  </div>
-                </Show>
-              }
-        >
-          {/* Render the Card only when shouldShowCard is true */}
-          <Card class="w-64"> 
-              <CardContent class="p-4"> 
-                  {/* summaryData is guaranteed to be non-null here due to shouldShowCard condition */} 
-                  <FlashcardStudyPanel
-                      dueCount={props.summaryData!.dueCount}
-                      reviewCount={props.summaryData!.reviewCount}
-                      newCount={props.summaryData!.newCount}
-                      onStudyClick={props.onStudyClick}
-                  />
-              </CardContent>
-          </Card>
-        </Show>
-      </div>
+      {/* Spacer to push content down - or use justify-between */}
+      {/* <div class="flex-grow"></div> */}
 
-      {/* Link to Bookmarks Manager */}
-      <a
-        href={browser.runtime.getURL('/bookmark-manager.html')}
-        class="absolute bottom-4 right-4 px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-sm"
-        target="_blank" // Open in new tab if desired, or remove for same tab
-      >
-        View Bookmarks
-      </a>
+      {/* Bottom Area - using w-full and justify-between for left/right positioning */}
+      <footer class="w-full flex justify-between items-end px-2 md:px-4 pb-4">
+        {/* Study Panel (Bottom Left) */}
+        <div class="study-panel-area max-w-xs"> {/* Constrain width */}
+            <Show 
+                when={!props.isLoading} 
+                fallback={ <div class="p-4"><Spinner class="h-8 w-8 text-muted-foreground" /></div> }
+            >
+                <Show 
+                    when={!props.error} 
+                    fallback={ <p class="text-destructive p-4">Error: {props.error}</p> }
+                >
+                    <Show 
+                        when={props.summaryData} 
+                        fallback={ <p class="text-muted-foreground p-4 text-sm">No study data available.</p> }
+                    >
+                        {(data) => (
+                            // Render the FlashcardStudyPanel directly
+                            <FlashcardStudyPanel
+                                dueCount={data().dueCount}
+                                reviewCount={data().reviewCount}
+                                newCount={data().newCount}
+                                onStudyClick={props.onStudyClick} 
+                                // Add some padding/margin if needed via class
+                                class="bg-card p-4 rounded-lg shadow-md" // Example styling
+                            />
+                        )}
+                    </Show>
+                </Show>
+            </Show>
+        </div>
+
+        {/* Bookmarks Button (Bottom Right) */}
+        <div class="quick-actions">
+            <Button variant="outline" onClick={props.onBookmarksClick}>
+                Manage Bookmarks
+            </Button>
+        </div>
+      </footer>
+
     </div>
   );
 }; 

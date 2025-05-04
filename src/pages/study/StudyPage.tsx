@@ -26,11 +26,16 @@ interface BackgroundProtocol {
     getDistractorsForItem(data: GetDistractorsRequest): Promise<GetDistractorsResponse>;
 }
 
+// Props for StudyPage
+export interface StudyPageProps {
+  onNavigateBack: () => void;
+}
+
 // Initialize messaging client
 const messaging = defineExtensionMessaging<BackgroundProtocol>();
 
 // --- Container Component ---
-const StudyPage: Component = () => {
+const StudyPage: Component<StudyPageProps> = (props) => {
   const [currentItem, setCurrentItem] = createSignal<DueLearningItem | null>(null);
   const [itemError, setItemError] = createSignal<string | null>(null);
   const [exerciseDirection, setExerciseDirection] = createSignal<'EN_TO_NATIVE' | 'NATIVE_TO_EN'>('EN_TO_NATIVE');
@@ -251,6 +256,7 @@ const StudyPage: Component = () => {
         itemError={itemError()}
         distractorError={distractorResource()?.error ?? null}
         onSkipClick={fetchDueItems}
+        onNavigateBack={props.onNavigateBack}
     />
   );
 };

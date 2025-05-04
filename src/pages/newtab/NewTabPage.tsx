@@ -1,4 +1,4 @@
-import { Component, createResource } from 'solid-js'; // Removed Show
+import { Component, createMemo, createResource, onMount } from 'solid-js';
 import { defineExtensionMessaging } from "@webext-core/messaging";
 import type {
     // --- Import the actual types --- 
@@ -12,90 +12,100 @@ import type {
 // import type { MCQProps, Option } from '../../features/exercises/MCQ';
 
 // --- NEW: Import the View component ---
-import { NewTabPageView } from './NewTabPageView';
+import { NewTabPageView, type NewTabPageViewProps } from './NewTabPageView';
 
-// Use actual types in the protocol map
+// Define the protocol map for messages SENT TO the background
 interface BackgroundProtocol {
     getStudySummary(data: GetStudySummaryRequest): Promise<GetStudySummaryResponse>;
+}
+
+// Interface for the props NewTabPage will now accept
+export interface NewTabPageProps {
+    onNavigateToBookmarks: () => void;
+    onNavigateToStudy: () => void;
 }
 
 // Initialize messaging client
 const messaging = defineExtensionMessaging<BackgroundProtocol>();
 
+// Define a type for the error response structure from the resource fetch
+type FetchErrorResponse = { success: false; error: string };
+// Assume the success response *also* has a success property (even if implicitly true)
+type FetchSuccessResponse = GetStudySummaryResponse & { success?: true }; 
+
 // --- Container Component ---
-const NewTabPage: Component = () => {
+const NewTabPage: Component<NewTabPageProps> = (props) => {
   // Removed signals related to individual items
   // const [currentItem, setCurrentItem] = createSignal<DueLearningItem | null>(null);
   // const [itemError, setItemError] = createSignal<string | null>(null);
   // const [exerciseDirection, setExerciseDirection] = createSignal<'EN_TO_NATIVE' | 'NATIVE_TO_EN'>('EN_TO_NATIVE');
 
-  // --- Resource to fetch study summary counts ---
-  const [summaryResource] = createResource(async () => {
-    console.log('[NewTab Container] Fetching study summary...');
-    try {
-      const response = await messaging.sendMessage('getStudySummary', {});
-      console.log('[NewTab Container] Received study summary:', response);
-      if (typeof response?.dueCount !== 'number' ||
-          typeof response?.reviewCount !== 'number' ||
-          typeof response?.newCount !== 'number') {
-           console.error("[NewTab Container] Invalid summary response structure received:", response);
-           return { dueCount: 0, reviewCount: 0, newCount: 0, error: 'Invalid data received from background.' } as GetStudySummaryResponse;
+  // Resource fetches study summary, returns GetStudySummaryResponse on success, 
+  // or FetchErrorResponse on caught error.
+  const [summaryResource, { refetch }] = createResource<
+      FetchSuccessResponse | FetchErrorResponse
+  >(async () => {
+      console.log('[NewTabPage] Fetching study summary...');
+      try {
+          const response = await messaging.sendMessage('getStudySummary', {});
+          console.log('[NewTabPage] Received study summary:', response);
+          // Return the successful response (potentially add success: true if needed)
+          // If the background response doesn't explicitly include `success: true`, 
+          // we might need to add it here or adjust the type definition.
+          // For now, assuming it *might* be missing and FetchSuccessResponse handles it.
+          return response as FetchSuccessResponse; 
+      } catch (err) {
+          console.error('[NewTabPage] Error fetching study summary:', err);
+          return { success: false, error: (err as Error).message || 'Unknown error' };
       }
-      return response;
-    } catch (err: any) {
-      console.error('[NewTab Container] Error fetching study summary:', err);
-      return { dueCount: 0, reviewCount: 0, newCount: 0, error: err.message || 'Failed to fetch summary.' } as GetStudySummaryResponse;
-    }
   });
 
-  // Removed resources and memos related to individual items/MCQ
-  // const [dueItemResource, { refetch: fetchDueItems }] = createResource(...);
-  // const [distractorResource] = createResource(...);
-  // const mcqProps = createMemo(...);
+  // Refetch data when the component mounts
+  onMount(() => {
+    refetch();
+  });
 
-  // Removed handler for MCQ completion
-  // const handleMcqComplete = async (...) => { ... };
-
-  // --- Handler for Study Button Click ---
-  const handleStudyClick = () => {
-    console.log('[NewTab Container] Study button clicked, navigating to study page...');
-    try {
-      const studyPageUrl = browser.runtime.getURL('/study.html');
-      window.location.href = studyPageUrl;
-    } catch (err) {
-      console.error("[NewTab Container] Failed to get study page URL or navigate:", err);
-      alert("Could not open the study page. Please try again.");
+  // Memo extracts summary data if the resource fetch was successful
+  const summaryDataForView = createMemo<NewTabPageViewProps['summaryData']>(() => {
+    const data = summaryResource();
+    // Type guard: Check if data exists and success is not false (implies true or undefined)
+    if (data && data.success !== false) {
+      return {
+        dueCount: data.dueCount ?? 0,
+        reviewCount: data.reviewCount ?? 0,
+        newCount: data.newCount ?? 0,
+      };
     }
-  };
+    return null;
+  });
+
+  // Memo extracts error message if the resource fetch failed
+  const errorForView = createMemo<NewTabPageViewProps['error']>(() => {
+    const data = summaryResource();
+    // Type guard: Check if data exists and success is explicitly false
+    if (data && data.success === false) {
+      return data.error; 
+    }
+    // Check for resource-level loading errors
+    if (summaryResource.error) {
+      return summaryResource.error.message || 'Failed to load summary data.'; 
+    }
+    // Check if data loaded but wasn't the success structure (shouldn't happen with guards)
+    // if (summaryResource.state === 'ready' && !summaryDataForView()){
+    //     return 'Unexpected data format received.';
+    // }
+    return null;
+  });
 
   // --- Render the View component ---
-  // Helper to get summary data safely
-  const getSummaryData = () => {
-    const resource = summaryResource();
-    // Return data only if resource loaded, has no error property, and has valid counts
-    if (resource && !resource.error && typeof resource.dueCount === 'number') {
-        return { 
-            dueCount: resource.dueCount,
-            reviewCount: resource.reviewCount,
-            newCount: resource.newCount
-        };
-    }
-    return null; // Otherwise, return null
-  };
-
-  // Helper to get error safely
-  const getError = () => {
-    const resource = summaryResource();
-    // Return the error string if it exists, otherwise null
-    return resource?.error ?? null;
-  }
-
   return (
     <NewTabPageView
       isLoading={summaryResource.loading}
-      summaryData={getSummaryData()} // Use helper function
-      error={getError()}             // Use helper function
-      onStudyClick={handleStudyClick}
+      summaryData={summaryDataForView()}
+      error={errorForView()}
+      // Pass navigation handlers down to the View component
+      onBookmarksClick={props.onNavigateToBookmarks}
+      onStudyClick={props.onNavigateToStudy}
     />
   );
 };

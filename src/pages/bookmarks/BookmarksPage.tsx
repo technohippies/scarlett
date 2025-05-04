@@ -9,10 +9,15 @@ interface BackgroundProtocol {
     loadBookmarks(): Promise<LoadBookmarksResponse>;
 }
 
+// Props for BookmarksPage
+export interface BookmarksPageProps {
+  onNavigateBack: () => void;
+}
+
 // Initialize messaging client
 const messaging = defineExtensionMessaging<BackgroundProtocol>();
 
-const BookmarksPage: Component = () => {
+const BookmarksPage: Component<BookmarksPageProps> = (props) => {
   const [error, setError] = createSignal<string | null>(null);
 
   // Fetch bookmarks resource
@@ -40,6 +45,7 @@ const BookmarksPage: Component = () => {
       bookmarks={bookmarksResource() ?? null}
       isLoading={bookmarksResource.loading}
       error={error()}
+      onNavigateBack={props.onNavigateBack}
     />
   );
 };

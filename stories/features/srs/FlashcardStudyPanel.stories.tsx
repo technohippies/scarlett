@@ -1,20 +1,23 @@
 import { FlashcardStudyPanel } from '../../../src/features/srs/FlashcardStudyPanel';
+import type { FlashcardStudyPanelProps } from '../../../src/features/srs/FlashcardStudyPanel';
+import { action } from '@storybook/addon-actions';
+import type { JSX } from 'solid-js';
 
 export default {
   title: 'Features/SRS/FlashcardStudyPanel',
   component: FlashcardStudyPanel,
   tags: ['autodocs'],
   parameters: {
-    layout: 'padded', // Optional: Add padding around the component
+    layout: 'centered', // Center the constrained component
   },
   argTypes: {
     dueCount: { control: 'number' },
     reviewCount: { control: 'number' },
     newCount: { control: 'number' },
-    onStudyClick: { action: 'studyClicked' }, // Configure action directly
+    onStudyClick: { action: 'studyClicked' }, 
     class: { control: 'text' },
   },
-  // No explicit render function needed here
+  // Add a wrapper div directly in render functions if needed, or rely on layout parameter
 };
 
 // Story: Default state with counts
@@ -23,7 +26,8 @@ export const Default = {
     dueCount: 5,
     reviewCount: 10,
     newCount: 2,
-    // onStudyClick is implicitly handled by argTypes action
+    onStudyClick: action('studyClicked'),
+    class: "bg-card p-4 rounded-lg shadow-md max-w-xs w-full" // Apply width constraints here
   },
 };
 
@@ -33,6 +37,8 @@ export const NoCounts = {
     dueCount: 0,
     reviewCount: 0,
     newCount: 0,
+    onStudyClick: action('studyClicked'),
+    class: "bg-card p-4 rounded-lg shadow-md max-w-xs w-full"
   },
 };
 
@@ -42,6 +48,8 @@ export const OnlyNew = {
     dueCount: 0,
     reviewCount: 0,
     newCount: 8,
+    onStudyClick: action('studyClicked'),
+    class: "bg-card p-4 rounded-lg shadow-md max-w-xs w-full"
   },
 };
 
@@ -51,6 +59,8 @@ export const OnlyReview = {
     dueCount: 0,
     reviewCount: 15,
     newCount: 0,
+    onStudyClick: action('studyClicked'),
+    class: "bg-card p-4 rounded-lg shadow-md max-w-xs w-full"
   },
 };
 
@@ -60,15 +70,18 @@ export const OnlyDue = {
     dueCount: 3,
     reviewCount: 0,
     newCount: 0,
+    onStudyClick: action('studyClicked'),
+    class: "bg-card p-4 rounded-lg shadow-md max-w-xs w-full"
   },
 };
 
-// Story: With additional class
+// Story: With additional class (overrides the default example styling)
 export const WithCustomClass = {
   args: {
     dueCount: 5,
     reviewCount: 10,
     newCount: 2,
-    class: 'bg-yellow-100 p-4 rounded', // Example custom class
+    onStudyClick: action('studyClicked'),
+    class: 'bg-yellow-100 p-6 rounded-xl max-w-xs w-full', // Added width constraints
   },
 }; 
