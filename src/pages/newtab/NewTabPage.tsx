@@ -16,7 +16,6 @@ import type { DueLearningItem } from '../../services/srs/types';
 import { Rating } from 'ts-fsrs';
 import { MCQ } from '../../features/exercises/MCQ';
 import type { MCQProps, Option } from '../../features/exercises/MCQ';
-import nlp from 'compromise'; // Added compromise
 
 // Define the protocol map for messages SENT TO the background
 interface BackgroundProtocol {
@@ -29,18 +28,6 @@ interface BackgroundProtocol {
 
 // Initialize messaging client
 const messaging = defineExtensionMessaging<BackgroundProtocol>();
-
-// Helper function to shuffle an array (Fisher-Yates)
-function shuffleArray<T>(array: T[]): T[] {
-  let currentIndex = array.length, randomIndex;
-  while (currentIndex !== 0) {
-    randomIndex = Math.floor(Math.random() * currentIndex);
-    currentIndex--;
-    [array[currentIndex], array[randomIndex]] = [
-      array[randomIndex], array[currentIndex]];
-  }
-  return array;
-}
 
 // --- Main Component ---
 const NewTabPage: Component = () => {
@@ -157,33 +144,7 @@ const NewTabPage: Component = () => {
             console.error('[NewTab Distractors] Error calling generateLLMDistractors:', llmError);
           }
 
-          // 3. Fallback 1: Compromise.js (if still needed)
-          if (finalDistractors.length < requiredDistractors) {
-              console.log('[NewTab Distractors] Using Compromise.js fallback...');
-              try {
-                  const doc = nlp(correctCurrentAnswerText);
-                  // Get nouns/verbs/adjectives related to the target word
-                  const relatedWords = doc.terms().out('terms'); 
-                  let compromiseDistractors = relatedWords
-                      .map((t: any) => t.text.toLowerCase()) // Assuming terms have text property
-                      .filter((w: string) => w !== correctCurrentAnswerText.toLowerCase() && !finalDistractors.includes(w)); 
-                  
-                  // Get synonyms more directly if possible (Compromise structure might vary)
-                  // This is a basic example, might need refinement based on library version/structure
-                  // let synonyms = doc.nouns().out('terms'); // Or verbs(), adjectives() etc.
-
-                  compromiseDistractors = [...new Set(compromiseDistractors)]; // Unique
-
-                  while(finalDistractors.length < requiredDistractors && compromiseDistractors.length > 0) {
-                       finalDistractors.push(compromiseDistractors.shift()!); // Add unique related words
-                  }
-                  console.log('[NewTab Distractors] Added from Compromise:', finalDistractors);
-              } catch(compromiseError) {
-                  console.error('[NewTab Distractors] Error using Compromise:', compromiseError);
-              }
-          }
-
-          // 4. Fallback 2: DB Learned Words (if still needed)
+          // 3. Fallback 1: DB Learned Words (if still needed) - Renumbered from 2
           if (finalDistractors.length < requiredDistractors) {
               console.log('[NewTab Distractors] Using DB fallback...');
               try {
@@ -204,7 +165,7 @@ const NewTabPage: Component = () => {
           finalDistractors = finalDistractors.filter(d => d !== correctCurrentAnswerText);
         }
 
-        // 5. Final Selection & Placeholder Fill (if needed)
+        // 4. Final Selection & Placeholder Fill (if needed) - Renumbered from 5
         let selectedDistractors: string[] = [];
         const pool = [...new Set(finalDistractors)].filter(d => d !== correctCurrentAnswerText);
         

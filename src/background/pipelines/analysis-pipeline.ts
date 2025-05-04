@@ -63,7 +63,7 @@ Respond ONLY with the translated text, nothing else.`;
              // Handle unexpected stream response
              console.error('[Analysis Pipeline V2] Received unexpected streaming response from LLM.');
              // Consume the stream to avoid leaks
-             for await (const part of llmResponse) { /* consume */ } 
+             for await (const _part of llmResponse) { /* consume */ } 
              throw new Error("LLM translation expected non-streaming response but received a stream.");
         }
 
