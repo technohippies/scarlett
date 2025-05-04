@@ -15,6 +15,7 @@ export interface Bookmark {
   id: number;
   url: string;
   title?: string | null;
+  selected_text?: string | null;
   saved_at: string; // Assuming TIMESTAMP comes back as string
   tags?: string | null; // Comma-separated string as per schema
   embedding?: string | null; // TEXT for now

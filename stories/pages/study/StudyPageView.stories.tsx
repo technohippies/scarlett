@@ -1,4 +1,4 @@
-import { StudyPageView, type StudyPageViewProps } from '../../../src/pages/study/StudyPageView';
+import { StudyPageView } from '../../../src/pages/study/StudyPageView';
 import { action } from '@storybook/addon-actions';
 
 // Mock MCQProps for stories that need it

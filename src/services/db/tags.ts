@@ -89,7 +89,7 @@ const initialTagData: { name: string; description?: string }[] = [
   { name: '#food', description: 'Food and Cooking' } 
 ];
 
-/**
+/** 
  * Seeds the database with initial predefined tags if they don't exist.
  * Uses ON CONFLICT DO NOTHING to avoid duplicates.
  */
@@ -142,7 +142,7 @@ export async function seedInitialTags(): Promise<void> {
 export async function getAllTags(): Promise<Tag[]> {
   console.log('[DB Tags] Fetching all tags...');
   try {
-    const db = await getDbInstance();
+  const db = await getDbInstance();
     const result = await db.query<Tag>('SELECT tag_id, tag_name FROM tags ORDER BY tag_name;');
     console.log(`[DB Tags] Found ${result.rows.length} tags.`);
     return result.rows || [];

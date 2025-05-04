@@ -1,6 +1,8 @@
 import { Component, Show } from 'solid-js';
 import { FlashcardStudyPanel } from '../../features/srs/FlashcardStudyPanel';
 import { Card, CardContent } from '../../components/ui/card';
+import { Button } from '../../components/ui/button';
+import { browser } from 'wxt/browser';
 
 // Props interface for the View component
 export interface NewTabPageViewProps {
@@ -22,11 +24,36 @@ export const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
             props.summaryData.newCount > 0);
   };
 
+  // Navigate functions
+  const goToStudyPage = () => {
+    const studyUrl = browser.runtime.getURL('/study.html');
+    window.location.href = studyUrl;
+  };
+
+  const goToBookmarksPage = () => {
+    const bookmarksUrl = browser.runtime.getURL('/bookmark-manager.html');
+    window.location.href = bookmarksUrl;
+  };
+
+  // const goToSettingsPage = () => {
+  //   // Assuming settings page is available via options_ui or a dedicated page
+  //   // browser.runtime.openOptionsPage(); // Use this if options_ui is set
+  //   // Or if it's a regular page:
+  //   const settingsUrl = browser.runtime.getURL('/settings.html');
+  //   window.location.href = settingsUrl;
+  // };
+
   return (
     <div class="newtab-page-container p-8 font-sans bg-background min-h-screen flex flex-col justify-between items-start">
-      <div class="w-full flex justify-center">
+      <header class="flex justify-between items-center mb-12">
         <h1 class="text-3xl font-bold text-foreground mb-8 mt-8">Welcome Back!</h1>
-      </div>
+        <nav class="flex items-center space-x-4">
+          {/* <Button variant="outline" onClick={goToStudyPage}>Start Studying</Button> */}
+          <Button variant="outline" onClick={goToBookmarksPage}>View Bookmarks</Button>
+          {/* Settings Button (Example) */}
+          {/* <Button variant="ghost" size="icon" onClick={goToSettingsPage}><Cog size={20} /></Button> */}
+        </nav>
+      </header>
 
       <div class="study-panel-area mb-4">
         <Show when={shouldShowCard()} 
@@ -66,6 +93,15 @@ export const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
           </Card>
         </Show>
       </div>
+
+      {/* Link to Bookmarks Manager */}
+      <a
+        href={browser.runtime.getURL('/bookmark-manager.html')}
+        class="absolute bottom-4 right-4 px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-sm"
+        target="_blank" // Open in new tab if desired, or remove for same tab
+      >
+        View Bookmarks
+      </a>
     </div>
   );
 }; 

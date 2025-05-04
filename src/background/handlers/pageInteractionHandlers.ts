@@ -93,10 +93,10 @@ export async function handleGetSelectedText(
       console.log(`[handleGetSelectedText] >>> Sending 'requestSelectedText' to tab ${tabId}`);
       // Define expected response structure for type safety
       type ContentScriptResponse = { success: boolean; text?: string | null };
-      
+    
       const response = await messaging.sendMessage('requestSelectedText', {}, tabId) as ContentScriptResponse;
       console.log('[handleGetSelectedText] <<< Received response from content script:', response);
-      
+
       if (response && response.success) {
         return { success: true, text: response.text }; // Pass along text or null/undefined
       } else {
