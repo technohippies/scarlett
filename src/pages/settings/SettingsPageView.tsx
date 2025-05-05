@@ -37,14 +37,13 @@ const settingsMenuItems = [
 // --- Type Definitions for Transient State (Assuming structure from getTransientState) ---
 // Could also be imported from context if exported
 interface TransientStateAccessors {
-  models: Accessor<ModelOption[]>;
-  fetchStatus: Accessor<FetchStatus>; // Use exported type
-  fetchError: Accessor<Error | null>;
-  testStatus: Accessor<TestStatus>; // Use exported type
-  testError: Accessor<Error | null>;
-  showSpinner: Accessor<boolean>;
   localModels: Accessor<ModelOption[]>;
   remoteModels: Accessor<ModelOption[]>;
+  fetchStatus: Accessor<FetchStatus>;
+  fetchError: Accessor<Error | null>;
+  testStatus: Accessor<TestStatus>;
+  testError: Accessor<Error | null>;
+  showSpinner: Accessor<boolean>;
 }
 
 // --- Define Props Interface --- 

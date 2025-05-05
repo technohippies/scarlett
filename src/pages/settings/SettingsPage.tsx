@@ -1,10 +1,9 @@
-import type { Component } from "solid-js";
-import { createSignal } from "solid-js";
+import { Component, createSignal, onMount, Show } from 'solid-js';
 import { SettingsProvider, useSettings } from "../../context/SettingsContext"; // Restore useSettings
 import SettingsPageView from "./SettingsPageView"; // Uncomment view import
 import type { ProviderOption } from "../../features/models/ProviderSelectionPanel";
-import type { ModelOption } from "../../features/models/ModelSelectionPanel";
-import type { FunctionConfig } from "../../services/storage/types";
+import { Spinner } from '../../components/ui/spinner';
+import type { SettingsLoadStatus, FetchStatus, TestStatus } from '../../context/SettingsContext'; // Import status types
 
 const SettingsPage: Component = () => {
   return (
