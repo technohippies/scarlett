@@ -1,89 +1,78 @@
-import { Component, createSignal} from 'solid-js';
-import { SettingsProvider, useSettings } from "../../context/SettingsContext"; // Restore useSettings
-import SettingsPageView from "./SettingsPageView"; // Uncomment view import
+import { Component, createSignal, createEffect } from 'solid-js';
+import SettingsPageView from './SettingsPageView';
+import { useSettings } from '../../context/SettingsContext';
+import type { SettingsLoadStatus, FetchStatus, TestStatus } from '../../context/SettingsContext'; // Import status types
+import type { ProviderOption } from '../../features/models/ProviderSelectionPanel';
+import type { FunctionConfig, RedirectServiceSetting } from '../../services/storage/types'; // Import RedirectServiceSetting
 
-// Define props for the container page
+// Assume mock provider options are fetched or defined elsewhere if needed for the container
+// For now, we rely on the context providing the actual config and the View receiving static options
+
 interface SettingsPageProps {
-  onNavigateBack: () => void;
+  onNavigateBack?: () => void;
 }
 
 const SettingsPage: Component<SettingsPageProps> = (props) => {
-  return (
-    <SettingsProvider>
-      {/* Pass the prop down to the content */}
-      <SettingsPageContent onNavigateBack={props.onNavigateBack} /> 
-    </SettingsProvider>
-  );
-};
+  const settings = useSettings();
 
-// Define props for the content component as well
-interface SettingsPageContentProps {
-  onNavigateBack: () => void;
-}
-
-const SettingsPageContent: Component<SettingsPageContentProps> = (props) => {
-  // 1. Restore context usage
-  const settingsContext = useSettings();
-
-  // 2. Keep signal for testing
+  // State for the active section within the page
   const [activeSection, setActiveSection] = createSignal<string | null>('llm');
-  console.log('[SettingsPageContent] Log 1: After createSignal. typeof activeSection:', typeof activeSection);
 
-  // 3. Restore transient state getters
-  const llmTransientState = settingsContext.getTransientState('LLM');
-  const embeddingTransientState = settingsContext.getTransientState('Embedding');
-  const readerTransientState = settingsContext.getTransientState('Reader');
-  const ttsTransientState = settingsContext.getTransientState('TTS');
+  // Effect to potentially set initial active section based on config/load status
+  createEffect(() => {
+    if (settings.loadStatus() === 'ready' && !activeSection()) {
+      // Optionally set a default section if none is active after load
+      // setActiveSection('llm');
+    }
+    // Or navigate based on onboarding state if needed
+  });
 
-  // 4. Get provider options from context
-  const { 
-      llmProviderOptions, 
-      embeddingProviderOptions, 
-      readerProviderOptions, 
-      ttsProviderOptions 
-  } = settingsContext;
+  // --- Get Transient States via Context Function --- 
+  const llmTransientState = settings.getTransientState('LLM');
+  const embeddingTransientState = settings.getTransientState('Embedding');
+  const readerTransientState = settings.getTransientState('Reader');
+  const ttsTransientState = settings.getTransientState('TTS');
 
-  console.log('[SettingsPageContent] Log 2: After provider options defined/retrieved.');
+  // Mock provider options (can be moved or fetched)
+  // These should ideally come from a shared constants or config file
+  const mockLlmProviderOptions: ProviderOption[] = [
+      { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
+      { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/llm-providers/jan.png' },
+      { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
+  ];
+  const mockEmbeddingProviderOptions: ProviderOption[] = [...mockLlmProviderOptions];
+  const mockReaderProviderOptions: ProviderOption[] = mockLlmProviderOptions.filter(p => p.id === 'ollama');
+  const mockTtsProviderOptions: ProviderOption[] = []; // Example: No TTS providers currently
 
-  // 5. Keep Handlers Commented Out (Placeholders for some)
-  // ...
-  console.log('[SettingsPageContent] Log 3: After getTransientState calls.');
-
-  // Define the back button handler
-  const handleBackClick = () => {
-    console.log('[SettingsPageContent] Back button clicked, navigating back.');
-    // setActiveSection(null); // No longer needed - we navigate away
-    props.onNavigateBack(); // Call the passed navigation function
-  };
-
-  // Restore rendering with correct handlers
   return (
     <SettingsPageView
-      activeSection={activeSection}
-      loadStatus={settingsContext.loadStatus}
-      config={settingsContext.config}
-      llmProviderOptions={llmProviderOptions}
-      embeddingProviderOptions={embeddingProviderOptions}
-      readerProviderOptions={readerProviderOptions}
-      ttsProviderOptions={ttsProviderOptions}
+      loadStatus={settings.loadStatus} // Pass load status accessor
+      config={settings.config} // Pass config signal accessor
+      activeSection={activeSection} // Pass active section signal accessor
+      // Pass the correctly retrieved transient states
       llmTransientState={llmTransientState}
       embeddingTransientState={embeddingTransientState}
       readerTransientState={readerTransientState}
       ttsTransientState={ttsTransientState}
-      // --- Handlers --- 
-      onLlmSelectProvider={(provider) => settingsContext.handleSelectProvider('LLM', provider)} 
-      onLlmSelectModel={(modelId) => settingsContext.handleSelectModel('LLM', modelId)}
-      onLlmTestConnection={() => settingsContext.config.llmConfig && settingsContext.testConnection('LLM', settingsContext.config.llmConfig)}
-      onEmbeddingSelectProvider={(provider) => settingsContext.handleSelectProvider('Embedding', provider)}
-      onEmbeddingSelectModel={(modelId) => settingsContext.handleSelectModel('Embedding', modelId)}
-      onEmbeddingTestConnection={() => settingsContext.config.embeddingConfig && settingsContext.testConnection('Embedding', settingsContext.config.embeddingConfig)}
-      onReaderSelectProvider={(provider) => settingsContext.handleSelectProvider('Reader', provider)}
-      onReaderSelectModel={(modelId) => settingsContext.handleSelectModel('Reader', modelId)}
-      onReaderTestConnection={() => settingsContext.config.readerConfig && settingsContext.testConnection('Reader', settingsContext.config.readerConfig)}
-      // TODO: Add TTS handlers if/when implemented in context
-      onRedirectSettingChange={settingsContext.updateRedirectSetting} 
-      onSectionChange={(section) => setActiveSection(section)}
-      onBackClick={handleBackClick} // Pass the handler to the view
+      // Pass provider options (using mocks for now)
+      llmProviderOptions={mockLlmProviderOptions}
+      embeddingProviderOptions={mockEmbeddingProviderOptions}
+      readerProviderOptions={mockReaderProviderOptions}
+      ttsProviderOptions={mockTtsProviderOptions}
+      // Pass handlers from context
+      onSectionChange={setActiveSection} // Update local active section state
+      onLlmSelectProvider={(provider) => { void settings.handleSelectProvider('LLM', provider); }}
+      onLlmSelectModel={(modelId) => { void settings.handleSelectModel('LLM', modelId); }}
+      onLlmTestConnection={(config: FunctionConfig) => { void settings.testConnection('LLM', config); }}
+      onEmbeddingSelectProvider={(provider) => { void settings.handleSelectProvider('Embedding', provider); }}
+      onEmbeddingSelectModel={(modelId) => { void settings.handleSelectModel('Embedding', modelId); }}
+      onEmbeddingTestConnection={(config: FunctionConfig) => { void settings.testConnection('Embedding', config); }}
+      onReaderSelectProvider={(provider) => { void settings.handleSelectProvider('Reader', provider); }}
+      onReaderSelectModel={(modelId) => { void settings.handleSelectModel('Reader', modelId); }}
+      onReaderTestConnection={(config: FunctionConfig) => { void settings.testConnection('Reader', config); }}
+      onRedirectSettingChange={(service, update) => settings.handleRedirectSettingChange(service, update)}
+      // Pass navigation handler with fallback
+      onBackClick={props.onNavigateBack ?? (() => { console.warn("onBackClick called but no handler provided"); })}
     />
   );
 };

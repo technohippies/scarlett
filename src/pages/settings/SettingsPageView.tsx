@@ -17,7 +17,7 @@ import {
   SidebarProvider,
 } from "../../components/ui/sidebar";
 import RedirectsPanel from "../../features/redirects/RedirectsPanel";
-import type { UserConfiguration, RedirectServiceSetting } from "../../services/storage/types"; 
+import type { UserConfiguration, RedirectServiceSetting, FunctionConfig } from "../../services/storage/types"; 
 import type { ProviderOption } from "../../features/models/ProviderSelectionPanel";
 import type { ModelOption } from "../../features/models/ModelSelectionPanel";
 import type { SettingsLoadStatus, FetchStatus, TestStatus } from "../../context/SettingsContext";
@@ -63,13 +63,13 @@ interface SettingsPageViewProps {
   onSectionChange: (section: string | null) => void;
   onLlmSelectProvider: (provider: ProviderOption) => void;
   onLlmSelectModel: (modelId: string | undefined) => void;
-  onLlmTestConnection: () => void;
+  onLlmTestConnection: (config: FunctionConfig) => void;
   onEmbeddingSelectProvider: (provider: ProviderOption) => void;
   onEmbeddingSelectModel: (modelId: string | undefined) => void;
-  onEmbeddingTestConnection: () => void;
+  onEmbeddingTestConnection: (config: FunctionConfig) => void;
   onReaderSelectProvider: (provider: ProviderOption) => void;
   onReaderSelectModel: (modelId: string | undefined) => void;
-  onReaderTestConnection: () => void;
+  onReaderTestConnection: (config: FunctionConfig) => void;
   onRedirectSettingChange: (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => Promise<void>;
   onBackClick: () => void;
   // Add TTS handlers when needed
@@ -189,7 +189,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                             />
                             <div class="flex space-x-4 mt-6">
                               <Button 
-                                  onClick={props.onLlmTestConnection} 
+                                  onClick={() => props.onLlmTestConnection(props.config.llmConfig as FunctionConfig)} 
                                   disabled={props.llmTransientState.testStatus() === 'testing'}
                               >
                                   {props.llmTransientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}
@@ -229,7 +229,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                             />
                             <div class="flex space-x-4 mt-6">
                               <Button 
-                                  onClick={props.onEmbeddingTestConnection} 
+                                  onClick={() => props.onEmbeddingTestConnection(props.config.embeddingConfig as FunctionConfig)} 
                                   disabled={props.embeddingTransientState.testStatus() === 'testing'}
                               >
                                   {props.embeddingTransientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}
@@ -269,7 +269,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                             />
                             <div class="flex space-x-4 mt-6">
                               <Button 
-                                  onClick={props.onReaderTestConnection} 
+                                  onClick={() => props.onReaderTestConnection(props.config.readerConfig as FunctionConfig)} 
                                   disabled={props.readerTransientState.testStatus() === 'testing'}
                               >
                                   {props.readerTransientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}

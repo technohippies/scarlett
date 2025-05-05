@@ -82,6 +82,7 @@ interface ISettingsContext {
       showSpinner: () => boolean;
   };
   testConnection: (funcType: string, config: FunctionConfig) => Promise<void>; // Make async
+  handleRedirectSettingChange: (serviceName: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => Promise<void>;
 }
 
 // --- Initial State ---
@@ -560,6 +561,37 @@ export const SettingsProvider: ParentComponent = (props) => {
          };
     };
 
+    // --- NEW: Handler for Redirect Setting Change ---
+    const handleRedirectSettingChange = async (serviceName: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => {
+        console.log(`[SettingsContext] Updating redirect for "${serviceName}":`, update);
+        const currentConfig = await userConfigurationStorage.getValue(); // Get latest from storage
+        if (!currentConfig) {
+             console.error("[SettingsContext] Cannot update redirect: config not loaded.");
+             return;
+        }
+
+        const updatedRedirects = {
+            ...(currentConfig.redirectSettings || {}), // Start with existing or empty
+            [serviceName]: {
+                // Preserve existing chosenInstance if it exists, otherwise default to empty string
+                chosenInstance: currentConfig.redirectSettings?.[serviceName]?.chosenInstance || '',
+                ...update, // Apply the isEnabled update
+            }
+        };
+
+        const newConfig = { ...currentConfig, redirectSettings: updatedRedirects };
+
+        try {
+            await userConfigurationStorage.setValue(newConfig);
+            // Update local context state AFTER successful storage update
+            setSettingsStore(prev => ({ ...prev, redirectSettings: updatedRedirects }));
+            console.log(`[SettingsContext] Successfully saved and updated redirect setting for "${serviceName}"`);
+        } catch (error) {
+            console.error(`[SettingsContext] Error saving redirect setting for "${serviceName}":`, error);
+            // Optional: Add user feedback about the save error
+        }
+    };
+
     // --- Context Value ---
     // Assemble the value to be provided by the context
     const value: ISettingsContext = {
@@ -581,6 +613,7 @@ export const SettingsProvider: ParentComponent = (props) => {
         testConnection,
         handleSelectProvider,
         handleSelectModel,
+        handleRedirectSettingChange,
     };
 
     // --- Render Provider ---

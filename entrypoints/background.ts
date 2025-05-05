@@ -13,8 +13,147 @@ import { registerMessageHandlers } from '../src/background/handlers/message-hand
 import { registerContextMenuHandlers } from '../src/background/handlers/context-menu-handler';
 // Import storage to check onboarding status
 import { userConfigurationStorage } from '../src/services/storage/storage';
+import { browser, type WebNavigation } from 'wxt/browser';
+import type { UserConfiguration, RedirectServiceSetting } from '../src/services/storage/types';
+import { REDIRECT_SERVICES, REDIRECT_INSTANCE_LISTS } from '../src/shared/constants'; // Assuming these are defined correctly
 
 console.log('[Scarlett BG Entrypoint] Script loaded. Defining background...');
+
+// --- Redirect Logic ---
+
+// Helper to get the first available instance for a service
+function getDefaultInstance(serviceName: string): string | null {
+  const instances = REDIRECT_INSTANCE_LISTS[serviceName] ?? [];
+  return instances.length > 0 ? instances[0] : null;
+}
+
+// Define hostname checks (can be expanded)
+const serviceHostChecks: { [key: string]: (host: string) => boolean } = {
+    'GitHub': (host) => host.endsWith('github.com'),
+    'ChatGPT': (host) => host.endsWith('chatgpt.com') || host.endsWith('chat.openai.com'), // Example, needs adjustment
+    'X (Twitter)': (host) => host.endsWith('twitter.com') || host.endsWith('x.com'),
+    'Reddit': (host) => host.endsWith('reddit.com') || host.endsWith('redd.it'),
+    'Twitch': (host) => host.endsWith('twitch.tv'),
+    'YouTube': (host) => host.endsWith('youtube.com') || host.endsWith('youtu.be'),
+    'YouTube Music': (host) => host.endsWith('music.youtube.com'),
+    'Medium': (host) => host.endsWith('medium.com'),
+    'Bluesky': (host) => host.endsWith('bsky.app'),
+    'Pixiv': (host) => host.endsWith('pixiv.net'),
+    'Soundcloud': (host) => host.endsWith('soundcloud.com'),
+    'Genius': (host) => host.endsWith('genius.com'),
+    // Add more precise checks as needed
+};
+
+
+async function handleNavigation(details: typeof browser.webNavigation.OnBeforeNavigateDetailsType): Promise<void> {
+  // --- ADDED: Log entry and basic details --- 
+  console.log(`[Redirect] handleNavigation called for URL: ${details.url}, FrameId: ${details.frameId}`);
+
+  // Ignore non-top-level frames and non-http(s) URLs
+  if (details.frameId !== 0 || !details.url || !details.url.startsWith('http')) {
+    // --- ADDED: Log exit reason --- 
+    console.log(`[Redirect] Exiting: Not a top-level HTTP(S) frame.`);
+    return;
+  }
+
+  try {
+    const config = await userConfigurationStorage.getValue();
+    // --- ADDED: Log loaded config BEFORE the check --- 
+    console.log('[Redirect] Loaded config:', JSON.stringify(config, null, 2)); 
+
+    // Check for settings existence AND onboarding completion
+    if (!config?.redirectSettings || !config.onboardingComplete) {
+      // --- ADDED: Log specific exit reason --- 
+      const reason = !config?.redirectSettings ? 'Redirect settings missing' : 'Onboarding incomplete';
+      console.log(`[Redirect] Exiting: ${reason}. (Onboarding complete: ${config?.onboardingComplete})`);
+      return;
+    }
+
+    const currentUrl = new URL(details.url);
+    const originalHost = currentUrl.hostname;
+    // --- ADDED: Log host being checked --- 
+    console.log(`[Redirect] Checking host: ${originalHost}`);
+
+    // Iterate through defined redirectable services
+    for (const serviceName of REDIRECT_SERVICES) {
+      const serviceSetting = config.redirectSettings[serviceName];
+      const hostCheckFn = serviceHostChecks[serviceName];
+      // --- ADDED: Log service check --- 
+      // console.log(`[Redirect] Checking service: "${serviceName}", Enabled: ${serviceSetting?.isEnabled}, Host matches: ${hostCheckFn ? hostCheckFn(originalHost) : 'N/A'}`);
+
+      // Check if this service is enabled, has a check function, and the host matches
+      if (serviceSetting?.isEnabled && hostCheckFn && hostCheckFn(originalHost)) {
+        // TODO: Implement chosenInstance logic later. For now, use the first default.
+        let instanceUrlString = serviceSetting.chosenInstance || getDefaultInstance(serviceName);
+
+        if (!instanceUrlString) {
+          console.warn(`[Redirect] Service "${serviceName}" is enabled but has no chosen or default instance.`);
+          continue; // Skip if no instance is available
+        }
+
+        // --- ADDED: Ensure scheme exists --- 
+        if (!instanceUrlString.startsWith('http://') && !instanceUrlString.startsWith('https://')) {
+            console.warn(`[Redirect] Instance URL "${instanceUrlString}" for "${serviceName}" is missing a scheme. Prepending https://`);
+            instanceUrlString = 'https://' + instanceUrlString;
+        }
+        // --- End Scheme Check ---
+
+        // --- FIXED: Use URL constructor for robust joining ---
+        let newRedirectUrl: string;
+        try {
+            const baseUrl = new URL(instanceUrlString); // Base URL of the instance (NOW should have scheme)
+            const targetUrl = new URL(details.url);   // Original URL
+
+            // Construct the new URL, preserving path, search, and hash
+            baseUrl.pathname = targetUrl.pathname;
+            baseUrl.search = targetUrl.search;
+            baseUrl.hash = targetUrl.hash;
+
+            newRedirectUrl = baseUrl.toString();
+
+        } catch (urlError) {
+             console.error(`[Redirect] Error constructing new URL with instance "${instanceUrlString}" and path from "${details.url}":`, urlError);
+             continue; // Skip to next service if construction fails
+        }
+        // --- End Fix ---
+
+        // --- Log the actual instanceUrlString used ---
+        console.log(`[Redirect] Match found for "${serviceName}". Enabled: ${serviceSetting.isEnabled}. Instance URL: ${instanceUrlString}`);
+        console.log(`[Redirect] Original URL: ${details.url}`);
+        console.log(`[Redirect]   -> New URL: ${newRedirectUrl}`); // Log the final constructed URL
+
+        // Prevent redirect loops (validation should work now)
+        try {
+            const newUrlHost = new URL(newRedirectUrl).hostname;
+             // Don't redirect if the target is the same as the origin OR if the target instance host is the *same* as the original host
+            if (details.url === newRedirectUrl || newUrlHost === originalHost) {
+                console.warn(`[Redirect] Loop detected or target is same as source. Aborting redirect for ${details.url}`);
+                return;
+            }
+        } catch (e) {
+             // This catch block should ideally not be hit now, but keep for safety
+             console.error(`[Redirect] Invalid new URL generated even after using URL constructor: ${newRedirectUrl}`, e);
+             return;
+        }
+
+        // Perform the redirect
+        try {
+          await browser.tabs.update(details.tabId, { url: newRedirectUrl });
+          console.log(`[Redirect] Successfully redirected tab ${details.tabId} to ${newRedirectUrl}`);
+          return; // Stop processing further rules once a redirect occurs
+        } catch (updateError) {
+          console.error(`[Redirect] Error updating tab ${details.tabId}:`, updateError);
+          return; // Stop on error
+        }
+      }
+    }
+     // --- ADDED: Log if no match found AFTER loop --- 
+     console.log(`[Redirect] No matching enabled rule found for ${details.url}`);
+
+  } catch (error) {
+    console.error('[Redirect] Error in handleNavigation:', error);
+  }
+}
 
 export default defineBackground({
   // The main function MUST be synchronous according to WXT warning
@@ -95,6 +234,14 @@ export default defineBackground({
             console.log(`[Scarlett BG Entrypoint] onInstalled specific tasks complete (reason: ${details.reason}).`);
         }
     });
+
+    // --- Add Navigation Listener ---
+    if (!browser.webNavigation.onBeforeNavigate.hasListener(handleNavigation)) {
+        browser.webNavigation.onBeforeNavigate.addListener(handleNavigation);
+        console.log('[Redirect] Added webNavigation listener.');
+    } else {
+         console.log('[Redirect] webNavigation listener already exists.');
+    }
 
     // --- Final Ready Log (from synchronous main) ---
     console.log('[Scarlett BG Entrypoint] Synchronous background setup complete. Ready.');
