@@ -3,8 +3,9 @@ import { Component, createSignal, Match, Switch } from 'solid-js';
 import NewTabPage from '../../src/pages/newtab/NewTabPage';
 import BookmarksPage from '../../src/pages/bookmarks/BookmarksPage';
 import StudyPage from '../../src/pages/study/StudyPage';
+import SettingsPageView from '../../src/pages/settings/SettingsPageView';
 
-type ActiveView = 'newtab' | 'bookmarks' | 'study';
+type ActiveView = 'newtab' | 'bookmarks' | 'study' | 'settings';
 
 const App: Component = () => {
   const [activeView, setActiveView] = createSignal<ActiveView>('newtab');
@@ -21,6 +22,7 @@ const App: Component = () => {
           // Assuming NewTabPage or its View will eventually need these
            onNavigateToBookmarks={() => navigateTo('bookmarks')}
            onNavigateToStudy={() => navigateTo('study')}
+           onNavigateToSettings={() => navigateTo('settings')}
         />
       </Match>
       <Match when={activeView() === 'bookmarks'}>
@@ -34,6 +36,9 @@ const App: Component = () => {
         <StudyPage 
            onNavigateBack={() => navigateTo('newtab')}
         />
+      </Match>
+      <Match when={activeView() === 'settings'}>
+        <SettingsPageView />
       </Match>
     </Switch>
   );
