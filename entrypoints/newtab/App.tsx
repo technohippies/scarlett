@@ -38,7 +38,8 @@ const App: Component = () => {
         />
       </Match>
       <Match when={activeView() === 'settings'}>
-        <SettingsPage /> { /* Render the container Page component */ }
+        {/* Pass the navigation function back to New Tab */}
+        <SettingsPage onNavigateBack={() => navigateTo('newtab')} /> 
       </Match>
     </Switch>
   );

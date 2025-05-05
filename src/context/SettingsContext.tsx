@@ -1,12 +1,10 @@
-import { createContext, useContext, Component, createResource, createSignal, ParentComponent, createEffect } from 'solid-js';
+import { createContext, useContext, createResource, ParentComponent, createEffect } from 'solid-js';
 import { createStore, produce } from 'solid-js/store'; // Import produce for easier updates
 import { userConfigurationStorage } from '../services/storage/storage';
 import type { UserConfiguration, FunctionConfig, RedirectSettings, RedirectServiceSetting } from '../services/storage/types'; // Centralize types
 import type { ProviderOption } from '../features/models/ProviderSelectionPanel'; // Use types from panels where appropriate
 import type { ModelOption } from '../features/models/ModelSelectionPanel'; // Need ModelOption too
 import type { LLMConfig } from '../services/llm/types'; 
-import { getAllTags } from '../services/db/tags'; // Import getAllTags
-import type { Tag as DbTag } from '../services/db/types'; // Import Tag type
 
 // Import provider implementations (adjust as needed, consider a registry)
 // These imports need to be fixed based on the previous correction
@@ -55,8 +53,6 @@ const providerImplementations = {
 interface ISettingsContext {
   config: typeof settingsStore; // Read-only access to store state
   loadStatus: () => SettingsLoadStatus;
-  allTags: () => DbTag[]; // Add accessor for all tags
-  // Add provider options to context value
   llmProviderOptions: ProviderOption[];
   embeddingProviderOptions: ProviderOption[];
   readerProviderOptions: ProviderOption[];
@@ -106,9 +102,6 @@ const initialSettings: UserConfiguration = {
 // Use createStore for potentially complex/nested state
 const [settingsStore, setSettingsStore] = createStore<UserConfiguration>(initialSettings);
 
-// --- Signal for Tags ---
-const [allTags, setAllTags] = createSignal<DbTag[]>([]); // Initialize empty
-
 // --- Context Definition ---
 // Create the actual context object
 const SettingsContext = createContext<ISettingsContext | undefined>(undefined); // Initialize with undefined
@@ -120,16 +113,6 @@ export const SettingsProvider: ParentComponent = (props) => {
         console.log("[SettingsContext] Attempting to load settings from storage...");
         const storedValue = await userConfigurationStorage.getValue();
         console.log("[SettingsContext] Value loaded from storage:", storedValue);
-        // Fetch tags after getting config (or in parallel if desired)
-        try {
-            console.log("[SettingsContext] Fetching all tags...");
-            const fetchedTags = await getAllTags();
-            console.log(`[SettingsContext] Fetched ${fetchedTags.length} tags.`);
-            setAllTags(fetchedTags); // Populate the tags signal
-        } catch (error) {
-            console.error("[SettingsContext] Failed to fetch tags:", error);
-            setAllTags([]); // Set empty on error
-        }
         return storedValue || initialSettings; 
     });
 
@@ -175,7 +158,7 @@ export const SettingsProvider: ParentComponent = (props) => {
                 console.log(`[SettingsContext] Found ${providersToFetch.size} unique providers to fetch models for initial load:`, Array.from(providersToFetch.keys()));
 
                 // Set loading state synchronously first for all relevant funcTypes
-                providersToFetch.forEach((provider, providerId) => {
+                providersToFetch.forEach((_provider, providerId) => {
                     const funcTypes = funcTypesPerProvider.get(providerId) || [];
                     funcTypes.forEach(funcType => {
                         ensureTransientState(funcType);
@@ -588,7 +571,6 @@ export const SettingsProvider: ParentComponent = (props) => {
         embeddingProviderOptions,
         readerProviderOptions,
         ttsProviderOptions,
-        allTags: allTags, // Expose the tags signal accessor
         updateLlmConfig,
         updateEmbeddingConfig,
         updateReaderConfig,

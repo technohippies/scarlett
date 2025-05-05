@@ -1,19 +1,27 @@
-import { Component, createSignal, onMount, Show } from 'solid-js';
+import { Component, createSignal} from 'solid-js';
 import { SettingsProvider, useSettings } from "../../context/SettingsContext"; // Restore useSettings
 import SettingsPageView from "./SettingsPageView"; // Uncomment view import
-import type { ProviderOption } from "../../features/models/ProviderSelectionPanel";
-import { Spinner } from '../../components/ui/spinner';
-import type { SettingsLoadStatus, FetchStatus, TestStatus } from '../../context/SettingsContext'; // Import status types
 
-const SettingsPage: Component = () => {
+// Define props for the container page
+interface SettingsPageProps {
+  onNavigateBack: () => void;
+}
+
+const SettingsPage: Component<SettingsPageProps> = (props) => {
   return (
     <SettingsProvider>
-      <SettingsPageContent />
+      {/* Pass the prop down to the content */}
+      <SettingsPageContent onNavigateBack={props.onNavigateBack} /> 
     </SettingsProvider>
   );
 };
 
-const SettingsPageContent: Component = () => {
+// Define props for the content component as well
+interface SettingsPageContentProps {
+  onNavigateBack: () => void;
+}
+
+const SettingsPageContent: Component<SettingsPageContentProps> = (props) => {
   // 1. Restore context usage
   const settingsContext = useSettings();
 
@@ -32,8 +40,7 @@ const SettingsPageContent: Component = () => {
       llmProviderOptions, 
       embeddingProviderOptions, 
       readerProviderOptions, 
-      ttsProviderOptions, 
-      allTags 
+      ttsProviderOptions 
   } = settingsContext;
 
   console.log('[SettingsPageContent] Log 2: After provider options defined/retrieved.');
@@ -41,6 +48,13 @@ const SettingsPageContent: Component = () => {
   // 5. Keep Handlers Commented Out (Placeholders for some)
   // ...
   console.log('[SettingsPageContent] Log 3: After getTransientState calls.');
+
+  // Define the back button handler
+  const handleBackClick = () => {
+    console.log('[SettingsPageContent] Back button clicked, navigating back.');
+    // setActiveSection(null); // No longer needed - we navigate away
+    props.onNavigateBack(); // Call the passed navigation function
+  };
 
   // Restore rendering with correct handlers
   return (
@@ -56,7 +70,6 @@ const SettingsPageContent: Component = () => {
       embeddingTransientState={embeddingTransientState}
       readerTransientState={readerTransientState}
       ttsTransientState={ttsTransientState}
-      allTags={allTags}
       // --- Handlers --- 
       onLlmSelectProvider={(provider) => settingsContext.handleSelectProvider('LLM', provider)} 
       onLlmSelectModel={(modelId) => settingsContext.handleSelectModel('LLM', modelId)}
@@ -70,6 +83,7 @@ const SettingsPageContent: Component = () => {
       // TODO: Add TTS handlers if/when implemented in context
       onRedirectSettingChange={settingsContext.updateRedirectSetting} 
       onSectionChange={(section) => setActiveSection(section)}
+      onBackClick={handleBackClick} // Pass the handler to the view
     />
   );
 };

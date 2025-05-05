@@ -1,14 +1,13 @@
 // stories/pages/settings/SettingsPageView.stories.tsx
 import { action } from '@storybook/addon-actions'; // For logging handler calls
 // Use createEffect from solid-js
-import { createSignal, createEffect, type Accessor, type Setter } from 'solid-js'; 
+import { createSignal, createEffect, type Accessor } from 'solid-js'; 
 import SettingsPageView from '../../../src/pages/settings/SettingsPageView';
 import type { UserConfiguration, RedirectSettings, RedirectServiceSetting, FunctionConfig } from '../../../src/services/storage/types';
 import type { ProviderOption } from '../../../src/features/models/ProviderSelectionPanel';
 import type { ModelOption } from '../../../src/features/models/ModelSelectionPanel';
 // Import the exported status types
 import type { SettingsLoadStatus, FetchStatus, TestStatus } from '../../../src/context/SettingsContext'; 
-import type { Tag as DbTag } from '../../../src/services/db/types'; // Import Tag type
 
 // --- Mock Data ---
 
@@ -52,15 +51,6 @@ const mockLlmConfigSelected: FunctionConfig = {
     modelId: 'llama3:latest',
     baseUrl: 'http://localhost:11434'
 };
-
-// Add mock tags
-const now = new Date().toISOString();
-const mockTags: DbTag[] = [
-  { tag_id: 1, tag_name: '#solidjs', created_at: now, updated_at: now },
-  { tag_id: 2, tag_name: '#storybook', created_at: now, updated_at: now },
-  { tag_id: 3, tag_name: '#typescript', created_at: now, updated_at: now },
-  { tag_id: 4, tag_name: '#testing', created_at: now, updated_at: now },
-];
 
 // Helper type for the transient state accessors expected by the ViewProps
 interface TransientStateAccessors {
@@ -134,8 +124,7 @@ export default {
      onReaderSelectModel: { action: 'onReaderSelectModel' },
      onReaderTestConnection: { action: 'onReaderTestConnection' },
      onRedirectSettingChange: { action: 'onRedirectSettingChange' },
-     allTags: { table: { disable: true } },
-     onAddTag: { action: 'onAddTag' },
+     onBackClick: { action: 'onBackClick' },
   },
   args: {
     initialActiveSection: 'llm',
@@ -145,8 +134,6 @@ export default {
     embeddingTransientState: createMockTransientState([], []),
     readerTransientState: createMockTransientState([], []),
     ttsTransientState: createMockTransientState([], []),
-    allTags: () => mockTags,
-    onAddTag: action('onAddTag')
   }
 };
 
@@ -172,8 +159,6 @@ const BaseRender = (args: any) => {
         embeddingProviderOptions: mockEmbeddingProviderOptions,
         readerProviderOptions: mockReaderProviderOptions,
         ttsProviderOptions: mockTtsProviderOptions,
-        allTags: () => args.allTags || mockTags,
-        onAddTag: args.onAddTag || action('onAddTag'),
         onSectionChange: (section: string | null) => {
             action('onSectionChange')(section); // Log the action
             setActiveSection(section); // Update the signal for UI feedback
@@ -190,15 +175,14 @@ const BaseRender = (args: any) => {
         onReaderSelectProvider: action('onReaderSelectProvider'),
         onReaderSelectModel: action('onReaderSelectModel'),
         onReaderTestConnection: action('onReaderTestConnection'),
-        // onRedirectSettingChange: action('onRedirectSettingChange'), // Old
-        // Wrap action in async function to match expected Promise<void> return type
         onRedirectSettingChange: async (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => {
             action('onRedirectSettingChange')(service, update);
         },
+        onBackClick: action('onBackClick'),
     };
 
     // Validate required props are present (basic check)
-    if (!viewProps.loadStatus || !viewProps.config || !viewProps.activeSection || !viewProps.llmTransientState || !viewProps.allTags) {
+    if (!viewProps.loadStatus || !viewProps.config || !viewProps.activeSection || !viewProps.llmTransientState) {
         console.error("[Storybook Render Error] Missing required props for SettingsPageView");
         return <div>Error: Missing required props</div>;
     }
