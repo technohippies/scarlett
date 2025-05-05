@@ -58,21 +58,32 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
     setEmbedStatusMessage('Starting embedding process...');
     try {
       const result = await messaging.sendMessage('triggerBatchEmbedding', undefined);
+      
+      // --- Update status message based on new response fields ---
       if (result.success) {
         console.log('[NewTabPage] Batch embedding successful:', result);
-        setEmbedStatusMessage(`Successfully embedded ${result.processedCount || 0} pages.`);
+        let status = `Embedding complete.`;
+        const details = [];
+        if (result.finalizedCount && result.finalizedCount > 0) details.push(`${result.finalizedCount} new pages embedded`);
+        if (result.duplicateCount && result.duplicateCount > 0) details.push(`${result.duplicateCount} duplicates skipped`);
+        if (result.errorCount && result.errorCount > 0) details.push(`${result.errorCount} errors`);
+        if (details.length > 0) status += ` (${details.join(', ')})`;
+        setEmbedStatusMessage(status + '.');
         refetchEmbeddingCount(); // Refresh the count after processing
       } else {
         console.error('[NewTabPage] Batch embedding failed:', result.error);
+        // Use the error message from the response if available
         setEmbedStatusMessage(`Error: ${result.error || 'Embedding failed.'}`);
       }
+      // --- End status message update ---
+
     } catch (error: any) {
       console.error('[NewTabPage] Error sending triggerBatchEmbedding message:', error);
       setEmbedStatusMessage(`Error: ${error.message || 'Could not trigger embedding.'}`);
     } finally {
       setIsEmbedding(false);
       // Optionally clear the status message after a delay
-      setTimeout(() => setEmbedStatusMessage(null), 5000); 
+      setTimeout(() => setEmbedStatusMessage(null), 7000); // Increased delay slightly
     }
   };
   // --- End State for Manual Embedding ---

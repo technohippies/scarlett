@@ -16,7 +16,6 @@ import type {
     DisplayTranslationPayload, // Expect payload from background for displaying
     GenerateTTSPayload,      // Payload sent TO background for TTS
     UpdateAlignmentPayload, // Payload from background with alignment
-    GetPageContentResponse, 
     ExtractMarkdownRequest, // Import new message type
     ExtractMarkdownResponse // Import new message type
 } from '../src/shared/messaging-types.ts';

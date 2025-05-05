@@ -18,10 +18,7 @@ import type {
     TagSuggestResponse,
     GetPageInfoResponse,
     GetSelectedTextResponse,
-    DisplayTranslationPayload,
     GenerateTTSPayload,
-    UpdateAlignmentPayload,
-    GetPageContentResponse,
     ExtractMarkdownRequest,
     ExtractMarkdownResponse
 } from '../../shared/messaging-types';
@@ -40,7 +37,7 @@ import type { LLMConfig } from '../../services/llm/types';
 import { handleSaveBookmark, handleLoadBookmarks } from './bookmark-handlers';
 import { handleTagList, handleTagSuggest } from './tag-handlers';
 import { handleGetPageInfo, handleGetSelectedText } from './pageInteractionHandlers';
-import { getOllamaEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
+import { getOllamaEmbedding } from '../../services/llm/embedding';
 import { 
     recordPageVisitVersion, // Use the new function name
     getPagesNeedingEmbedding, 
@@ -51,7 +48,6 @@ import {
     countPagesNeedingEmbedding 
 } from '../../services/db/visited_pages';
 import type { PageVersionToEmbed, LatestEmbeddedVersion } from '../../services/db/visited_pages'; // Import interfaces
-import type { Bookmark, Tag } from '../../services/db/types';
 import { pageInfoProcessingTimestamps } from '../../services/storage/storage';
 import type { PGlite } from '@electric-sql/pglite';
 
@@ -72,7 +68,13 @@ export interface BackgroundProtocolMap {
     getPageInfo: () => Promise<GetPageInfoResponse>;
     getSelectedText: () => Promise<GetSelectedTextResponse>;
     processPageVisit: (data: { url: string; title: string; htmlContent: string }) => Promise<void>;
-    triggerBatchEmbedding(): Promise<{ success: boolean; finalizedCount?: number; duplicateCount?: number; errorCount?: number }>;
+    triggerBatchEmbedding(): Promise<{ 
+        success: boolean; 
+        finalizedCount?: number; 
+        duplicateCount?: number; 
+        errorCount?: number;
+        error?: string; // Explicitly add the optional error field 
+    }>;
     getPendingEmbeddingCount(): Promise<{ count: number }>;
     generateTTS(data: GenerateTTSPayload): Promise<void>;
     extractMarkdownFromHtml(data: ExtractMarkdownRequest): Promise<ExtractMarkdownResponse>;
@@ -432,6 +434,10 @@ export function registerMessageHandlers(): void {
             for (const candidate of candidates) {
                 console.log(`[Message Handlers triggerBatchEmbedding] Processing candidate version_id: ${candidate.version_id} for URL: ${candidate.url}`);
                 try {
+                    // --- Log the markdown content before embedding --- 
+                    console.log(`[Message Handlers triggerBatchEmbedding] Content for version_id ${candidate.version_id} (length: ${candidate.markdown_content?.length ?? 0}):\n${candidate.markdown_content?.substring(0, 500)}...`); // Log first 500 chars
+                    // --- End Log ---
+
                     // 1. Generate embedding for the candidate
                     const candidateEmbeddingResult = await getOllamaEmbedding(candidate.markdown_content);
                     if (!candidateEmbeddingResult) {
