@@ -23,19 +23,10 @@ import type { LLMConfig } from '../../services/llm/types';
 import { getOS } from '../../lib/os'; // Import OS detection
 import { Motion, Presence } from 'solid-motionone'; // Add correct import
 
-// Reusable interfaces (consider moving to a types file)
-export interface ProviderOption {
-  id: string;
-  name: string;
-  defaultBaseUrl: string;
-  logoUrl: string;
-}
-
-export interface ModelOption {
-  id: string;
-  name: string;
-  description?: string; // Optional description for display
-}
+// --- Import the new panels --- 
+import ProviderSelectionPanel, { type ProviderOption } from '../models/ProviderSelectionPanel';
+import ModelSelectionPanel, { type ModelOption } from '../models/ModelSelectionPanel';
+import ConnectionTestPanel from '../models/ConnectionTestPanel';
 
 // --- Mock Data for Storybook ---
 const storybookMockModels: ModelOption[] = [
@@ -463,6 +454,10 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
     setSelectedModelId(undefined);
   };
 
+  const handleSelectModel = (modelId: string | undefined) => {
+    setSelectedModelId(modelId);
+  };
+
   const handleSubmit = () => {
     const providerId = selectedProviderId();
     const modelId = selectedModelId();
@@ -577,344 +572,44 @@ export const SetupFunction: Component<SetupFunctionProps> = (props) => {
           )}
         </div>
 
-        <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg mb-6">
-            {props.providerOptions.map((provider) => {
-                const isSelected = () => selectedProviderId() === provider.id;
-                return (
-                    <Button
-                        variant="outline"
-                        onClick={() => handleSelectProvider(provider)}
-                        class={cn(
-                            'h-auto p-4 flex flex-col items-center justify-center space-y-2 text-base border relative',
-                            'transition-colors duration-150 ease-in-out',
-                            'cursor-pointer hover:bg-neutral-700 hover:border-neutral-600 focus:outline-none focus:ring-0 border-neutral-700',
-                            isSelected()
-                            ? 'bg-neutral-700 text-foreground border-neutral-500 ring-2 ring-primary ring-offset-2 ring-offset-background'
-                            : ''
-                        )}
-                    >
-                        <img
-                            src={provider.logoUrl}
-                            alt={`${provider.name} Logo`}
-                            class="w-16 h-16 mb-2 object-contain rounded-full"
-                        />
-                        <span class="mb-1.5">{provider.name}</span>
-                    </Button>
-                );
-            })}
+        {/* --- Replace Provider Grid with Panel --- */}
+        <div class="w-full max-w-lg mb-6">
+          <ProviderSelectionPanel
+            providerOptions={props.providerOptions}
+            selectedProviderId={selectedProviderId} // Pass accessor
+            onSelectProvider={handleSelectProvider}
+          />
         </div>
 
-        {/* Restore spinner location: Show while loading, before errors/success */}
-        {/* Spinner: Show only after a delay if still loading */}
-        <Show when={showSpinner()}>
-            <div class="w-full max-w-lg mb-6 flex justify-center items-center space-x-2 text-muted-foreground">
-            <Spinner class="h-6 w-6"/>
-            </div>
-        </Show>
-
-        {/* --- Initial Fetch Error Handling --- */}
-        {fetchStatus() === 'error' && (
-            <div class="w-full max-w-lg space-y-4">
-                <Callout variant="error">
-                    <CalloutContent>
-                        {(fetchError() instanceof TypeError || (fetchError() as any)?.message?.includes('fetch')) ? (
-                            <p class="text-lg">
-                                {i18n().get('onboardingErrorFetchFailed', 'Error: Is the server running on')}{' '}{selectedProvider()?.defaultBaseUrl || ''}? Is CORS enabled?
-                            </p>
-                        ) : (fetchError() as any)?.status ? (
-                            <p class="text-lg">
-                                {i18n().get('onboardingErrorHTTPServerPrefix', 'Server responded with error:') + " "}
-                                {(fetchError() as any).status}.{' '}
-                                {i18n().get('onboardingErrorCheckAPIEndpoint', 'Please check the API endpoint.')}
-                            </p>
-                        ) : (
-                            <p class="text-lg">{i18n().get('onboardingErrorUnknown', 'An unknown error occurred:') + " " + (fetchError()?.message || '')}</p>
-                        )}
-                    </CalloutContent>
-                </Callout>
-
-                {/* Show CORS Help based on error and provider */} 
-                {shouldShowCorsHelp(fetchError()) && (
-                  <Switch fallback={<p class="text-muted-foreground">Ensure CORS is enabled on your LLM server.</p>}>
-                            <Match when={selectedProvider()?.id === 'ollama'}>
-                      <OllamaCorsInstructions _forceOS={props._forceOSForOllamaInstructions} />
-                            </Match>
-                            <Match when={selectedProvider()?.id === 'jan'}>
-                                <img 
-                                    src="/images/llm-providers/Jan-help.png" 
-                                    alt="Jan CORS setting location" 
-                        class="rounded border border-neutral-700"
-                                />
-                            </Match>
-                            <Match when={selectedProvider()?.id === 'lmstudio'}>
-                                <img 
-                                    src="/images/llm-providers/LMStudio-help.png" 
-                                    alt="LM Studio CORS setting location" 
-                        class="rounded border border-neutral-700"
-                                />
-                            </Match>
-                        </Switch>
-                )}
-            </div>
-        )}
-
-        {/* --- Model Selection and Connection Test --- */}
-        {/* Wrap with Presence for solid-motionone */}
-        <Presence>
-          {/* Use For loop with provider ID as the item to force remounting */}
-          <For each={selectedProviderId() ? [selectedProviderId()] : []}>
-            {() => (
-              // Ensure Motion.div and its entire content is returned as a single element
-              <Motion.div
-                class="w-full max-w-lg"
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, easing: "ease-out" }}
-              >
-                {/* Content starts here */}
-                {/* Show Download instructions specifically for Ollama Reader - Simplified */}
-                <Show when={props.functionName === 'Reader' && selectedProvider()?.id === 'ollama'}>
-                  <div class="w-full max-w-lg mt-4 mb-4 space-y-2">
-                    <CodeBlock
-                      language="bash"
-                      code="ollama run milkey/reader-lm-v2"
-                      label="Download"
-                    />
-                  </div>
-                </Show>
-                {/* Show Download instructions specifically for Ollama Embedding */}
-                <Show when={props.functionName === 'Embedding' && selectedProvider()?.id === 'ollama'}>
-                  <div class="w-full max-w-lg mt-4 mb-4 space-y-2">
-                    <CodeBlock
-                      language="bash"
-                      code="ollama pull bge-m3"
-                      label="Download"
-                    />
-                  </div>
-                </Show>
-                {/* Main content div for dropdowns/test */}
-                <div class="w-full max-w-lg mt-6 space-y-4">
-                  <Show when={fetchStatus() === 'success'}>
-                    <Switch>
-                      {/* Case: Jan Provider */}
-                      <Match when={selectedProvider()?.id === 'jan'}>
-                        {/* Add nested Motion.div for Jan-specific controls fade-in */}
-                        <Motion.div 
-                          initial={{ opacity: 0 }} 
-                          animate={{ opacity: 1 }} 
-                          transition={{ delay: 0.15, duration: 0.2 }} // Delay slightly after main animation
-                        >
-                          {/* Local Models Dropdown */}
-                          <div>
-                            <Label for="local-model-select" class="font-medium text-muted-foreground mb-1 block">Local LLM</Label>
-                            <Select<ModelOption>
-                              options={fetchedModels()}
-                              optionValue="id"
-                              optionTextValue="name"
-                              onChange={(value: ModelOption | null) => {
-                                console.log("[SetupFunction] Jan Local onChange triggered. Selected object:", value);
-                                setSelectedModelId(value?.id);
-                                console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
-                              }}
-                              value={fetchedModels().find(m => m.id === selectedModelId()) || null}
-                              itemComponent={(props) => (
-                                <SelectItem item={props.item}>{props.item.rawValue.name}</SelectItem>
-                              )}
-                            >
-                              <SelectTrigger id="local-model-select">
-                                <SelectValue>
-                                  {(() => {
-                                    const selectedName = fetchedModels().find(m => m.id === selectedModelId())?.name;
-                                    return selectedName
-                                      ? selectedName
-                                      : <span class="text-muted-foreground">Select Local Model</span>;
-                                  })()}
-                                </SelectValue>
-                              </SelectTrigger>
-                              <SelectContent>
-                                <Show when={!fetchedModels() || fetchedModels().length === 0}>
-                                  <div class="px-2 py-1.5 text-muted-foreground">No local models found.</div>
-                                </Show>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                          {/* Log length immediately before Show for remote section */}
-                          {( () => {
-                            console.log(`[JSX Render] remoteModels().length check: ${remoteModels().length}`);
-                            return null;
-                          })()}
-                          <Show when={remoteModels().length > 0}>
-                            {/* Divider text */}
-                            <div class="text-left text-muted-foreground my-2">or</div>
-
-                            {/* Remote/Downloadable Models Dropdown - Changed to Combobox */}
-                            <div class="w-full">
-                              <Label for="remote-model-combo" class="font-medium text-muted-foreground mb-1 block">Remote LLM</Label>
-                              <Combobox<ModelOption>
-                                id="remote-model-combo" // Add id for label association
-                                options={remoteModels().sort((a, b) => a.name.localeCompare(b.name))}
-                                optionValue="id"
-                                optionTextValue="name"
-                                placeholder="Search"
-                                value={remoteModels().find(m => m.id === selectedModelId()) || null}
-                                onChange={(value: ModelOption | null) => {
-                                  console.log("[SetupFunction] Jan Remote Combobox onChange triggered. Selected object:", value);
-                                  setSelectedModelId(value?.id);
-                                  console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
-                                }}
-                                itemComponent={(props) => (
-                                  <ComboboxItem item={props.item}>
-                                    <ComboboxItemLabel>{props.item.rawValue.name}</ComboboxItemLabel>
-                                    <ComboboxItemIndicator />
-                                  </ComboboxItem>
-                                )}
-                              >
-                                <ComboboxControl aria-label="Remote Model">
-                                  {/* Bind input value to selected model name or empty string */}
-                                  <ComboboxInput
-                                    value={remoteModels().find(m => m.id === selectedModelId())?.name || ''}
-                                  />
-                                  <ComboboxTrigger />
-                                </ComboboxControl>
-                                <ComboboxContent class="max-h-72 overflow-y-auto">
-                                  <Show when={!remoteModels() || remoteModels().length === 0}>
-                                    <div class="px-2 py-1.5 text-muted-foreground">No remote models found.</div>
-                                  </Show>
-                                </ComboboxContent>
-                              </Combobox>
-                            </div>
-                          </Show>
-                        </Motion.div> { /* End nested Motion.div */}
-                      </Match>
-
-                      {/* Case: Other Providers (Ollama, LMStudio, etc.) */}
-                      <Match when={selectedProvider()?.id !== 'jan'}>
-                        {/* Wrap Label and Select in a div for consistent structure */}
-                        <div>
-                          {/* Use dynamic functionName for the Label */}
-                          <Label for="model-select-other" class="font-medium text-muted-foreground mb-1 block">{props.functionName}</Label>
-                          <Select<ModelOption>
-                            options={fetchedModels()}
-                            optionValue="id"
-                            optionTextValue="name"
-                            onChange={(value: ModelOption | null) => {
-                              console.log("[SetupFunction] Other Provider onChange triggered. Selected object:", value);
-                              setSelectedModelId(value?.id);
-                              console.log("[SetupFunction] State updated. selectedModelId:", selectedModelId());
-                            }}
-                            value={fetchedModels().find(m => m.id === selectedModelId()) || null}
-                            itemComponent={(props) => (
-                              <SelectItem item={props.item}>{props.item.rawValue.name}</SelectItem>
-                            )}
-                          >
-                            {/* Add id to SelectTrigger */}
-                            <SelectTrigger id="model-select-other">
-                              <SelectValue>
-                                {(() => {
-                                  const selectedName = fetchedModels().find(m => m.id === selectedModelId())?.name;
-                                  return selectedName
-                                    ? selectedName
-                                    : <span class="text-muted-foreground">Select Model</span>;
-                                })()}
-                              </SelectValue>
-                            </SelectTrigger>
-                            {/* Apply scrolling classes here too for consistency */}
-                            <SelectContent class="max-h-72 overflow-y-auto">
-                              {/* Remove manual mapping */}
-                              <Show when={!fetchedModels() || fetchedModels().length === 0}>
-                                <div class="px-2 py-1.5 text-muted-foreground">No models found for this provider.</div>
-                              </Show>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </Match>
-                    </Switch>
-
-                    {/* Log the value being passed to the Select components */}
-                    {(() => {
-                      const provider = selectedProvider();
-                      if (provider?.id === 'jan') {
-                        console.log("[SetupFunction] Rendering Jan. Value for local Select:", fetchedModels().find(m => m.id === selectedModelId()) || null);
-                        console.log("[SetupFunction] Rendering Jan. Value for remote Select:", remoteModels().find(m => m.id === selectedModelId()) || null);
-                      } else if (provider) {
-                        console.log(`[SetupFunction] Rendering ${provider.name}. Value for Select:`, fetchedModels().find(m => m.id === selectedModelId()) || null);
-                      }
-                      return null; // Don't render anything
-                    })()}
-
-                    {/* --- Connection Test Section --- */}
-                    <Show when={selectedModelId()}>
-                      <div class="flex flex-col space-y-2">
-                        {/* Test status messages */}
-                        <Show when={testStatus() === 'testing'}>
-                          <div class="flex items-center text-muted-foreground">
-                            <Spinner class="mr-2 h-4 w-4 animate-spin" />
-                            <span>Testing connection... (Max {props.functionName === 'LLM' ? '15' : '5'}s)</span>
-                          </div>
-                        </Show>
-                        <Show when={testStatus() === 'error' && testError()}>
-                          {/* Test Error Message AND CORS Help */}
-                          {testStatus() === 'error' && testError() && (
-                            <>
-                              {/* Original error message display - NOW MODIFIED for 403 */}
-                              <div class="text-destructive flex items-center">
-                                <WarningCircle class="mr-2 h-4 w-4" />
-                                <span>
-                                  {(() => {
-                                    const error = testError();
-                                    const status = (error as any)?.status;
-                                    if (status === 403) {
-                                      return 'Error: Connection failed (403)'; // Custom message for 403
-                                    } else if (error?.name === 'TimeoutError') {
-                                      return i18n().get('onboardingErrorTimeout', 'Connection failed: Timed out');
-                                    } else {
-                                      return `Connection test failed: ${error?.message || 'Unknown error'}`;
-                                    }
-                                  })()}
-                                </span>
-                              </div>
-
-                              {/* Show CORS Help based on error and provider */}
-                              {shouldShowCorsHelp(testError()) && (
-                                <Switch fallback={<p class="text-muted-foreground">Ensure CORS is enabled on your LLM server.</p>}>
-                                  <Match when={selectedProvider()?.id === 'ollama'}>
-                                    <OllamaCorsInstructions _forceOS={props._forceOSForOllamaInstructions} />
-                                  </Match>
-                                  <Match when={selectedProvider()?.id === 'jan'}>
-                                    <img
-                                      src="/images/llm-providers/Jan-help.png"
-                                      alt="Jan CORS setting location"
-                                      class="rounded border border-neutral-700"
-                                    />
-                                  </Match>
-                                  <Match when={selectedProvider()?.id === 'lmstudio'}>
-                                    <img
-                                      src="/images/llm-providers/LMStudio-help.png"
-                                      alt="LM Studio CORS setting location"
-                                      class="rounded border border-neutral-700"
-                                    />
-                                  </Match>
-                                </Switch>
-                              )}
-                            </>
-                          )}
-                        </Show>
-                        <Show when={testStatus() === 'success'}>
-                          <div class="text-green-500 flex items-center">
-                            <CheckCircle class="mr-2 h-4 w-4" />
-                            <span>Connection successful!</span>
-                          </div>
-                        </Show>
-                      </div>
+        {/* --- Replace Model Selection Logic with Panels --- */}
+        {/* Only render model/test panels if a provider is selected */} 
+        <Show when={selectedProviderId() !== undefined}>
+          <ModelSelectionPanel
+            functionName={props.functionName}
+            selectedProvider={selectedProvider} // Pass accessor
+            fetchStatus={fetchStatus} // Pass accessor
+            showSpinner={showSpinner} // Pass accessor
+            fetchError={fetchError} // Pass accessor
+            fetchedModels={fetchedModels} // Pass accessor
+            remoteModels={remoteModels} // Pass accessor
+            selectedModelId={selectedModelId} // Pass accessor
+            onSelectModel={handleSelectModel} // Pass new handler
+            _forceOSForOllamaInstructions={props._forceOSForOllamaInstructions}
+            // Pass messages if needed: messages={props.messages}
+          />
+          
+          {/* Conditionally show Test Panel only when a model is selected AND fetch was successful */} 
+          <Show when={fetchStatus() === 'success' && selectedModelId() !== undefined}>
+            <ConnectionTestPanel
+              testStatus={testStatus} // Pass accessor
+              testError={testError} // Pass accessor
+              functionName={props.functionName}
+              selectedProvider={selectedProvider} // Pass accessor
+              _forceOSForOllamaInstructions={props._forceOSForOllamaInstructions}
+              // Pass messages if needed: messages={props.messages}
+            />
                     </Show>
                   </Show>
-                </div>
-              </Motion.div>
-              // End of returned element
-            )}
-          </For>
-        </Presence> { /* Closing Presence */ }
        
         {/* End of main content area */}
       </div>

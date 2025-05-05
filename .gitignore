@@ -29,3 +29,6 @@ web-ext.config.ts
 # Build artifacts / Release packages
 dist/
 *.zip
+
+# Storybook build output
+storybook-static/

@@ -23,6 +23,18 @@ import {
 import RedirectsPanel from "../../features/redirects/RedirectsPanel";
 import type { RedirectSettings, RedirectServiceSetting } from "../../services/storage/types";
 
+// Import the new model panels
+import ProviderSelectionPanel, { type ProviderOption } from "../../features/models/ProviderSelectionPanel";
+import ModelSelectionPanel, { type ModelOption } from "../../features/models/ModelSelectionPanel";
+import ConnectionTestPanel from "../../features/models/ConnectionTestPanel";
+
+// Import necessary types/functions from SetupFunction or services
+import type { LLMConfig } from "../../services/llm/types";
+// Import providers individually
+import { OllamaProvider } from "../../services/llm/providers/ollama"; 
+import { JanProvider } from "../../services/llm/providers/jan"; 
+import { LMStudioProvider } from "../../services/llm/providers/lmstudio";
+
 // Remove Placeholder Icons
 // const IconPlaceholder: Component = () => <svg class="size-4" viewBox="0 0 24 24"><path d="M12 2 L2 22 L22 22 Z" /></svg>;
 // const IconUser = IconPlaceholder;
@@ -52,6 +64,18 @@ const settingsMenuItems = [
   },
 ];
 
+// Helper Types (Consider moving to shared location)
+type FetchStatus = 'idle' | 'loading' | 'success' | 'error';
+type TestStatus = 'idle' | 'testing' | 'success' | 'error';
+
+// TODO: Define actual provider options (move to constants?)
+const llmProviderOptions: ProviderOption[] = [
+  { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://127.0.0.1:11434', logoUrl: '/images/llm-providers/ollama.png' },
+  { id: 'jan', name: 'Jan', defaultBaseUrl: 'ws://127.0.0.1:1337', logoUrl: '/images/llm-providers/jan.png' },
+  { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
+];
+const embeddingProviderOptions: ProviderOption[] = [/* ... define ... */];
+const readerProviderOptions: ProviderOption[] = [/* ... define ... */];
 const SettingsPageView: Component = () => {
   // --- Temporary State Management for Settings Sections --- 
   // TODO: Replace with actual routing or more robust state management

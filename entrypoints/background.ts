@@ -11,64 +11,93 @@ import { registerMessageHandlers } from '../src/background/handlers/message-hand
 
 // Import handler registration functions
 import { registerContextMenuHandlers } from '../src/background/handlers/context-menu-handler';
+// Import storage to check onboarding status
+import { userConfigurationStorage } from '../src/services/storage';
 
 console.log('[Scarlett BG Entrypoint] Script loaded. Defining background...');
 
 export default defineBackground({
-  // The main function now lives inside the defineBackground config
-  async main() {
-    console.log('[Scarlett BG Entrypoint] Background main() function running.');
+  // The main function MUST be synchronous according to WXT warning
+  main() {
+    console.log('[Scarlett BG Entrypoint] Background main() function running (synchronous).');
 
+    // --- Synchronous Setup ---
+    // Register listeners immediately when the worker starts.
     try {
-        // --- Initialize Database (Schema Only) --- 
-        console.log('[Scarlett BG Entrypoint] Ensuring database schema is applied (awaiting ensureDbInitialized)...');
-        await ensureDbInitialized();
-        console.log('[Scarlett BG Entrypoint] DB schema check/application complete.'); 
-        
-        // --- Seed Initial Tags (AFTER schema is ready) --- 
-        console.log('[Scarlett BG Entrypoint] Attempting to seed initial tags...');
-        await seedInitialTags(); // Call seeding AFTER DB init
-        console.log('[Scarlett BG Entrypoint] Initial tag seeding attempt complete.');
-
-        // 2. Load Dictionaries into memory - REMOVED
-        // await loadDictionaries();
-        // console.log('[Scarlett BG Entrypoint] Dictionaries loaded.');
-
-        // 3. Setup Context Menus (might only need onInstalled, but safe to run always)
-        // Let's assume setupContextMenu handles idempotency or is fine to run multiple times
-        console.log('[Scarlett BG Entrypoint] Setting up context menus...');
-        await setupContextMenu();
-        console.log('[Scarlett BG Entrypoint] Context menu setup complete.');
-
-        // 4. Register message listeners
+        // 1. Register message listeners
         console.log('[Scarlett BG Entrypoint] Registering message handlers...');
         registerMessageHandlers();
         console.log('[Scarlett BG Entrypoint] Message handlers registered.');
 
-        // Register Context Menu Click Handler
+        // 2. Register Context Menu Click Handler
         console.log('[Scarlett BG Entrypoint] Registering context menu handlers...');
-        registerContextMenuHandlers();
+        registerContextMenuHandlers(); // Registers the onClicked listener
         console.log('[Scarlett BG Entrypoint] Context menu handlers registered.');
 
-        // --- Event-specific logic (like onInstalled) --- 
-        // onInstalled listener might still be useful for one-time setup tasks 
-        // if needed, but core setup runs above.
-        chrome.runtime.onInstalled.addListener(async (details) => {
-            console.log('[Scarlett BG Entrypoint] onInstalled event triggered:', details.reason);
-            // Example: Maybe trigger a specific migration only on update
-            // if (details.reason === 'update') { /* ... */ }
-            // We could potentially move DB init/seeding here for 'install' reason
-            // but doing it in main() ensures it runs on every worker start.
-            console.log('[Scarlett BG Entrypoint] onInstalled specific tasks complete (if any).');
-        });
-
-        // --- Final Ready Log ---
-        console.log('[Scarlett BG Entrypoint] Background setup complete. Ready.');
+        // --- Defer Async Setup to onInstalled ---
+        // The main setup logic is now primarily event-driven via onInstalled
 
     } catch (error) {
-        console.error('[Scarlett BG Entrypoint] CRITICAL ERROR during background setup:', error);
-        // Consider notifying the user or logging to a more persistent store if possible
+      console.error('[Scarlett BG Entrypoint] CRITICAL ERROR during synchronous background setup:', error);
     }
+
+    // --- Event Listeners ---
+    // Use browser namespace for cross-browser compatibility
+    browser.runtime.onInstalled.addListener(async (details) => {
+        console.log('[Scarlett BG Entrypoint] onInstalled event triggered:', details);
+
+        // --- Perform Async Setup Tasks on Install/Update ---
+        try {
+            if (details.reason === 'install' || details.reason === 'update') {
+                // Setup context menus (idempotent or recreate as needed)
+                // Doing this here ensures they are set up after install/update.
+                console.log(`[Scarlett BG Entrypoint] Setting up context menus (reason: ${details.reason})...`);
+                await setupContextMenu();
+                console.log('[Scarlett BG Entrypoint] Context menu setup complete.');
+            }
+
+            if (details.reason === 'install') {
+                console.log('[Scarlett BG Entrypoint] Reason is "install". Performing first-time setup...');
+
+                // Initialize DB Schema
+                console.log('[Scarlett BG Entrypoint] Ensuring database schema is applied...');
+                await ensureDbInitialized();
+                console.log('[Scarlett BG Entrypoint] DB schema check/application complete.');
+
+                // Seed Initial Tags
+                console.log('[Scarlett BG Entrypoint] Attempting to seed initial tags...');
+                await seedInitialTags();
+                console.log('[Scarlett BG Entrypoint] Initial tag seeding attempt complete.');
+
+                // Check and Open Onboarding page
+                console.log('[Scarlett BG Entrypoint] Checking onboarding status...');
+                const currentConfig = await userConfigurationStorage.getValue();
+                console.log('[Scarlett BG Entrypoint] Current config:', currentConfig);
+                console.log('[Scarlett BG Entrypoint] Onboarding complete:', currentConfig?.onboardingComplete);
+
+                if (currentConfig?.onboardingComplete) {
+                    console.log('[Scarlett BG Entrypoint] Onboarding already marked as complete. Skipping tab creation.');
+                } else {
+                    console.log('[Scarlett BG Entrypoint] Onboarding not complete. Opening onboarding tab...');
+                    const onboardingUrl = browser.runtime.getURL('/oninstall.html');
+                    await browser.tabs.create({ url: onboardingUrl });
+                    console.log(`[Scarlett BG Entrypoint] Onboarding tab created at ${onboardingUrl}`);
+                }
+            } else if (details.reason === 'update') {
+                // Optional: Add logic specifically for updates if needed
+                console.log('[Scarlett BG Entrypoint] Extension updated from version:', details.previousVersion);
+                // Maybe run migrations or re-check context menus here as well
+            }
+
+        } catch(error) {
+             console.error(`[Scarlett BG Entrypoint] Error during onInstalled tasks (reason: ${details.reason}):`, error);
+        } finally {
+            console.log(`[Scarlett BG Entrypoint] onInstalled specific tasks complete (reason: ${details.reason}).`);
+        }
+    });
+
+    // --- Final Ready Log (from synchronous main) ---
+    console.log('[Scarlett BG Entrypoint] Synchronous background setup complete. Ready.');
   },
 
   // Include other background script options if needed, e.g.:
