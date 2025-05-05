@@ -194,32 +194,44 @@ export const SettingsProvider: ParentComponent = (props) => {
     };
 
     // --- UI Interaction Handler Implementations ---
-    const handleSelectProvider = async (funcType: string, provider: ProviderOption) => {
-        console.log(`[SettingsContext] handleSelectProvider called for ${funcType} with provider:`, provider);
-        const configKey = `${funcType.toLowerCase()}Config` as keyof UserConfiguration;
-        const newConfig: FunctionConfig = {
-            providerId: provider.id,
-            modelId: '', // Use empty string instead of undefined
-            baseUrl: provider.defaultBaseUrl || '' // Use provider default, ensure string
-        };
+    const handleSelectProvider = async (funcType: string, provider: ProviderOption | undefined) => {
+      console.log(`[SettingsContext] handleSelectProvider called for ${funcType} with provider:`, provider);
+      
+      ensureTransientState(funcType); // Initializes transientState[funcType]
 
-        // Update the config first
-        switch (configKey) {
-            case 'llmConfig': await updateLlmConfig(newConfig); break;
-            case 'embeddingConfig': await updateEmbeddingConfig(newConfig); break;
-            case 'readerConfig': await updateReaderConfig(newConfig); break;
-            // Add case for TTS when implemented
-            default: console.warn(`[SettingsContext] Unknown funcType in handleSelectProvider: ${funcType}`); return; // Exit if unknown type
-        }
+      // Determine the key for the specific function config
+      const configKey = `${funcType.toLowerCase()}Config` as keyof UserConfiguration;
 
-        // --- ADDED: Trigger fetchModels after updating config ---
-        try {
-            console.log(`[SettingsContext] Triggering fetchModels for ${funcType} after provider selection.`);
-            await fetchModels(funcType, provider); 
-        } catch (error) {
-            console.error(`[SettingsContext] Error triggering fetchModels after provider selection for ${funcType}:`, error);
-            // Handle error appropriately, maybe update fetchStatus/fetchError in transient state
-        }
+      // Update the store directly, resetting model ID
+      setSettingsStore(configKey, {
+          providerId: provider?.id,
+          modelId: undefined, // <-- RESET modelId here
+          baseUrl: provider?.defaultBaseUrl || undefined, // Use default or undefined
+      });
+
+      await saveCurrentSettings(); // Save the updated config
+
+      // Clear transient state for the function type using funcType as the key
+      setTransientState(funcType, 'fetchStatus', 'idle'); 
+      setTransientState(funcType, 'fetchError', null);
+      setTransientState(funcType, 'testStatus', 'idle');
+      setTransientState(funcType, 'testError', null);
+      setTransientState(funcType, 'localModels', []); // Clear models immediately
+      setTransientState(funcType, 'remoteModels', []); 
+
+      // Also reset spinner state using funcType as the key
+      const currentTimeoutId = transientState[funcType]?.spinnerTimeoutId;
+      if (currentTimeoutId) clearTimeout(currentTimeoutId);
+      setTransientState(funcType, 'showSpinner', false);
+      setTransientState(funcType, 'spinnerTimeoutId', undefined);
+
+      if (provider) {
+        console.log(`[SettingsContext] Triggering fetchModels for ${funcType} after provider selection.`);
+        await fetchModels(funcType, provider); // Fetch models for the new provider
+      } else {
+         console.log(`[SettingsContext] Provider deselected for ${funcType}. Models cleared.`);
+         // No fetch needed if provider is deselected
+      }
     };
 
     const handleSelectModel = async (funcType: string, modelId: string | undefined) => {
@@ -332,16 +344,27 @@ export const SettingsProvider: ParentComponent = (props) => {
             // --- Function-Specific Filtering (e.g., for Embeddings) ---
             if (funcType === 'Embedding') {
                 console.log(`[SettingsContext] Applying Embedding filter for provider: ${provider.id}`);
+                
+                // Filter both local and remote lists based on keywords
                 localModels = localModels.filter(model => {
                     const lowerCaseId = model.id.toLowerCase();
                     return EMBEDDING_KEYWORDS.some(keyword => lowerCaseId.includes(keyword));
                 });
-                // For Jan, explicitly clear remote models for embedding as it doesn't support remote embedding models
+
+                // Also filter remote models for embeddings (especially for Jan)
+                remoteModels = remoteModels.filter(model => {
+                    const lowerCaseId = model.id.toLowerCase();
+                    return EMBEDDING_KEYWORDS.some(keyword => lowerCaseId.includes(keyword));
+                });
+
+                // Special case: If Jan is the provider, we generally don't expect remote embedding models
+                // even if the API lists them without 'downloaded' status. Clear remoteModels for Jan.
                 if (provider.id === 'jan') {
-                     console.log("[SettingsContext] Clearing remote models for Jan Embedding.");
-                    remoteModels = [];
+                    console.log('[SettingsContext] Clearing remote models for Jan Embedding based on provider type.');
+                    remoteModels = []; 
                 }
-                 console.log(`[SettingsContext] Embedding models after filtering: ${localModels.length}`);
+
+                 console.log(`[SettingsContext] Embedding models after filtering: Local ${localModels.length}, Remote ${remoteModels.length}`);
             }
              // TODO: Add filtering for LLM/Reader if needed (e.g., exclude embedding models from LLM list)
             else if (funcType === 'LLM') {

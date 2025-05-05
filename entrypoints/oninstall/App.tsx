@@ -1,4 +1,4 @@
-import { Component, createSignal, createResource, createEffect } from 'solid-js';
+import { Component, createSignal, createResource, createEffect, Show } from 'solid-js';
 import { Language, LanguageOptionStub } from '../../src/features/oninstall/Language';
 import { LearningGoal } from '../../src/features/oninstall/LearningGoal';
 import { userConfigurationStorage } from '../../src/services/storage/storage';
@@ -18,6 +18,7 @@ import { SettingsProvider, useSettings } from '../../src/context/SettingsContext
 import ProviderSelectionPanel, { type ProviderOption } from '../../src/features/models/ProviderSelectionPanel';
 import ModelSelectionPanel from '../../src/features/models/ModelSelectionPanel';
 import ConnectionTestPanel from '../../src/features/models/ConnectionTestPanel';
+import type { FetchStatus, TestStatus } from '../../src/context/SettingsContext'; // Import status types
 
 // Define language lists here (could also be moved)
 const nativeLanguagesList: LanguageOptionStub[] = [
@@ -270,28 +271,20 @@ const App: Component = () => {
    // Handler for Reader setup step
    const handleReaderComplete = async (config: FunctionConfig) => {
     console.log('[App] Reader Setup Complete. Saving config.', config);
-
-    // Use type assertion here
-    const currentConfig = (await userConfigurationStorage.getValue() || {}) as UserConfiguration;
-    // Construct full config, providing defaults for potentially missing fields
-    const updatedConfig: UserConfiguration = {
-      nativeLanguage: currentConfig.nativeLanguage || null,
-      targetLanguage: currentConfig.targetLanguage || null,
-      learningGoal: currentConfig.learningGoal || null,
-      llmConfig: currentConfig.llmConfig || null,
-      embeddingConfig: currentConfig.embeddingConfig || null,
-      readerProvider: config.providerId, // Set reader info
-      readerModel: config.modelId,
-      readerBaseUrl: config.baseUrl,
-      redirectSettings: currentConfig.redirectSettings || null, // Preserve existing or null
-      onboardingComplete: false, // Ensure false before final step
-    };
-    await userConfigurationStorage.setValue(updatedConfig);
-    console.log('[App] Config after saving Reader:', updatedConfig);
-    
-    // Proceed to Redirects step
-    console.log('[App] Proceeding to Redirects setup step.');
-    setCurrentStep('redirects'); 
+     if (!config.providerId || !config.modelId) {
+        console.warn('[App] Reader setup skipped or incomplete.');
+        // Even if skipped, proceed to next step
+    } else {
+        const currentConfig = (await userConfigurationStorage.getValue() || {}) as UserConfiguration;
+        // Correctly assign the config object to readerConfig
+        const updatedConfig = { 
+          ...currentConfig, 
+          readerConfig: config 
+        };
+        await userConfigurationStorage.setValue(updatedConfig);
+        console.log('[App] Config after saving Reader:', updatedConfig);
+    }
+    setCurrentStep('redirects');
   };
 
   // Handler for Redirects setup step (FINAL STEP)
@@ -299,20 +292,17 @@ const App: Component = () => {
       console.log('[App] Redirects Setup Complete (Final Step). Saving final settings.');
       const finalRedirectSettings = redirectSettings();
       
-      // Use type assertion here
       const currentConfig = (await userConfigurationStorage.getValue() || {}) as UserConfiguration;
-      // Construct full config, providing defaults for potentially missing fields
+      // Construct final config, preserving existing configs correctly
       const updatedConfig: UserConfiguration = {
           nativeLanguage: currentConfig.nativeLanguage || null,
           targetLanguage: currentConfig.targetLanguage || null,
           learningGoal: currentConfig.learningGoal || null,
           llmConfig: currentConfig.llmConfig || null,
           embeddingConfig: currentConfig.embeddingConfig || null,
-          readerProvider: currentConfig.readerProvider || null, // Preserve existing reader info
-          readerModel: currentConfig.readerModel || null,
-          readerBaseUrl: currentConfig.readerBaseUrl || null,
-          redirectSettings: finalRedirectSettings, // Save the latest redirect settings
-          onboardingComplete: true, // Mark complete HERE
+          readerConfig: currentConfig.readerConfig || null, // Preserve existing readerConfig OBJECT
+          redirectSettings: finalRedirectSettings, 
+          onboardingComplete: true, 
       };
       await userConfigurationStorage.setValue(updatedConfig);
       console.log('[App] Final config after saving Redirects:', updatedConfig);
@@ -494,12 +484,13 @@ const OnboardingContent: Component = () => {
     console.log('[App] Reader Setup Complete. Saving config.', config);
      if (!config.providerId || !config.modelId) {
         console.warn('[App] Reader setup skipped or incomplete.');
+        // Even if skipped, proceed to next step
     } else {
-        const currentConfig = await userConfigurationStorage.getValue() || {};
-        // --- Ensure only readerConfig is used --- 
+        const currentConfig = (await userConfigurationStorage.getValue() || {}) as UserConfiguration;
+        // Correctly assign the config object to readerConfig
         const updatedConfig = { 
           ...currentConfig, 
-          readerConfig: config // Assign the whole config object to the readerConfig property
+          readerConfig: config 
         };
         await userConfigurationStorage.setValue(updatedConfig);
         console.log('[App] Config after saving Reader:', updatedConfig);
@@ -525,6 +516,114 @@ const OnboardingContent: Component = () => {
   const handleBack = () => {
      // ... (existing logic using setCurrentStep) ...
   };
+
+  // --- Footer Button Logic --- 
+  const getCurrentTransientState = () => {
+    const step = currentStep();
+    switch (step) {
+      case 'setupLLM': return settingsContext.getTransientState('LLM');
+      case 'setupEmbedding': return settingsContext.getTransientState('Embedding');
+      case 'setupReader': return settingsContext.getTransientState('Reader');
+      default: return null; // No relevant state for other steps
+    }
+  };
+
+  const getCurrentConfig = (): FunctionConfig | null | undefined => {
+      const step = currentStep();
+      switch (step) {
+          case 'setupLLM': return settingsContext.config.llmConfig;
+          case 'setupEmbedding': return settingsContext.config.embeddingConfig;
+          case 'setupReader': return settingsContext.config.readerConfig;
+          default: return undefined;
+      }
+  };
+
+  // Dynamic Button Label
+  const footerButtonLabel = () => {
+    const step = currentStep();
+    const state = getCurrentTransientState();
+    const config = getCurrentConfig();
+
+    if (step === 'setupLLM' || step === 'setupEmbedding' || step === 'setupReader') {
+      if (!config?.providerId) return i18n().get('onboardingContinue', 'Continue'); // Should be disabled anyway
+      if (state?.fetchStatus() === 'success' && config?.modelId) {
+        if (state?.testStatus() === 'idle' || state?.testStatus() === 'error') {
+          return i18n().get('onboardingTestConnection', 'Test Connection');
+        } else if (state?.testStatus() === 'testing') {
+          return i18n().get('onboardingTestingConnection', 'Testing...');
+        } else { // testStatus === 'success'
+          return i18n().get('onboardingContinue', 'Continue');
+        }
+      } 
+    }
+    // Default label for non-model steps or initial states
+    if (step === 'redirects') return i18n().get('onboardingFinishSetup', 'Finish Setup');
+    return i18n().get('onboardingContinue', 'Continue');
+  };
+
+  // Dynamic Button Disabled State
+  const isFooterButtonDisabled = () => {
+    const step = currentStep();
+    const state = getCurrentTransientState();
+    const config = getCurrentConfig();
+    
+    switch (step) {
+      case 'language': 
+        // Add logic if language step needs disabling (e.g., no target selected)
+        return false; // Assuming enabled for now
+      case 'learningGoal': 
+         // Add logic if goal step needs disabling
+        return false; // Assuming enabled for now
+      case 'setupLLM':
+      case 'setupEmbedding':
+      case 'setupReader':
+        if (!config?.providerId) return true; // No provider selected
+        if (state?.fetchStatus() === 'loading') return true; // Loading models
+        if (state?.fetchStatus() === 'success' && !config?.modelId) return true; // No model selected
+        if (state?.testStatus() === 'testing') return true; // Currently testing
+        return false;
+      case 'redirects':
+        // Disable if loading initial settings?
+        return initialRedirectSettingsData.loading;
+      default: 
+        return true; // Disable by default for unknown steps
+    }
+  };
+
+  // Dynamic Button onClick Action
+  const handleFooterButtonClick = () => {
+    const step = currentStep();
+    const state = getCurrentTransientState();
+    const config = getCurrentConfig();
+
+    switch (step) {
+      case 'language':
+        // Trigger language completion logic if needed (currently handled internally by Language component)
+        // Maybe manually trigger if the Language component doesn't call onComplete itself?
+        console.warn("[App] Footer button clicked on language step - action needed?");
+        break;
+      case 'learningGoal':
+        // Trigger goal completion logic if needed (currently handled internally by LearningGoal component)
+        console.warn("[App] Footer button clicked on goal step - action needed?");
+        break;
+      case 'setupLLM':
+      case 'setupEmbedding':
+      case 'setupReader':
+        if (config && state && (state.testStatus() === 'idle' || state.testStatus() === 'error')) {
+          settingsContext.testConnection(step.substring(5) as 'LLM' | 'Embedding' | 'Reader', config);
+        } else if (config && state && state.testStatus() === 'success') {
+          // Call the appropriate step completion handler
+          if (step === 'setupLLM') handleLLMComplete(config);
+          else if (step === 'setupEmbedding') handleEmbeddingComplete(config);
+          else if (step === 'setupReader') handleReaderComplete(config);
+        }
+        break;
+      case 'redirects':
+        handleRedirectsComplete();
+        break;
+    }
+  };
+  // --- End Footer Button Logic ---
 
   // --- Render Step Logic (Needs Major Update) ---
   const renderStep = () => {
@@ -565,46 +664,45 @@ const OnboardingContent: Component = () => {
         const transientState = settingsContext.getTransientState(funcType);
         const config = settingsContext.config.llmConfig;
         return (
-          <div class="flex flex-col items-center w-full max-w-lg space-y-6">
-            <ProviderSelectionPanel
-              providerOptions={availableLLMProviders}
-              selectedProviderId={() => config?.providerId}
-              onSelectProvider={(provider) => settingsContext.handleSelectProvider(funcType, provider)}
-            />
+          <div class="w-full max-w-lg">
+             {/* Add Title and Description */}
+             <p class="text-xl md:text-2xl mb-2">
+               {i18n().get('onboardingSetupLLMTitle', 'Choose an LLM')}
+             </p>
+             <p class="text-lg text-muted-foreground mb-6">
+               {i18n().get('onboardingSetupLLMDescription', 'Cant run a 4B+ model locally like Gemma3 or Qwen3? Use Jan with an OpenRouter model, many are free!')}
+             </p>
+            {/* Provider Panel */}
+             <div class="mb-6">
+                <ProviderSelectionPanel
+                  providerOptions={availableLLMProviders}
+                  selectedProviderId={() => config?.providerId}
+                  onSelectProvider={(provider) => settingsContext.handleSelectProvider(funcType, provider)}
+                />
+            </div>
+            {/* Model/Test Panels */} 
             <Show when={config?.providerId !== undefined}>
-              <ModelSelectionPanel
-                functionName={funcType}
-                selectedProvider={() => availableLLMProviders.find(p => p.id === config?.providerId)}
-                fetchStatus={transientState.fetchStatus}
-                showSpinner={transientState.showSpinner}
-                fetchError={transientState.fetchError}
-                fetchedModels={transientState.localModels}
-                remoteModels={transientState.remoteModels}
-                selectedModelId={() => config?.modelId}
-                onSelectModel={(modelId) => settingsContext.handleSelectModel(funcType, modelId)}
-              />
-              <Show when={transientState.fetchStatus() === 'success' && config?.modelId}>
-                <ConnectionTestPanel
-                  testStatus={transientState.testStatus}
-                  testError={transientState.testError}
+              <div class="space-y-6"> {/* Wrap model/test panels for spacing */}
+                <ModelSelectionPanel
                   functionName={funcType}
                   selectedProvider={() => availableLLMProviders.find(p => p.id === config?.providerId)}
+                  fetchStatus={transientState.fetchStatus}
+                  showSpinner={transientState.showSpinner}
+                  fetchError={transientState.fetchError}
+                  fetchedModels={transientState.localModels}
+                  remoteModels={transientState.remoteModels}
+                  selectedModelId={() => config?.modelId}
+                  onSelectModel={(modelId) => settingsContext.handleSelectModel(funcType, modelId)}
                 />
-                <div class="flex space-x-4 mt-4">
-                   <Button 
-                      onClick={() => config && settingsContext.testConnection(funcType, config)}
-                      disabled={transientState.testStatus() === 'testing' || !config?.modelId}
-                    >
-                      {transientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}
-                    </Button>
-                    <Button 
-                      onClick={() => config && handleLLMComplete(config)} 
-                      disabled={transientState.testStatus() !== 'success'}
-                    >
-                      {i18n().get('onboardingContinue', 'Continue')}
-                    </Button>
-                </div>
-              </Show>
+                <Show when={transientState.fetchStatus() === 'success' && config?.modelId}>
+                  <ConnectionTestPanel
+                    testStatus={transientState.testStatus}
+                    testError={transientState.testError}
+                    functionName={funcType}
+                    selectedProvider={() => availableLLMProviders.find(p => p.id === config?.providerId)}
+                  />
+                </Show>
+              </div>
             </Show>
           </div>
         );
@@ -615,46 +713,42 @@ const OnboardingContent: Component = () => {
         const transientState = settingsContext.getTransientState(funcType);
         const config = settingsContext.config.embeddingConfig;
         return (
-          <div class="flex flex-col items-center w-full max-w-lg space-y-6">
-            <ProviderSelectionPanel
-              providerOptions={availableEmbeddingProviders}
-              selectedProviderId={() => config?.providerId}
-              onSelectProvider={(provider) => settingsContext.handleSelectProvider(funcType, provider)}
-            />
-            <Show when={config?.providerId !== undefined}>
-              <ModelSelectionPanel
-                functionName={funcType}
-                selectedProvider={() => availableEmbeddingProviders.find(p => p.id === config?.providerId)}
-                fetchStatus={transientState.fetchStatus}
-                showSpinner={transientState.showSpinner}
-                fetchError={transientState.fetchError}
-                fetchedModels={transientState.localModels}
-                remoteModels={transientState.remoteModels}
-                selectedModelId={() => config?.modelId}
-                onSelectModel={(modelId) => settingsContext.handleSelectModel(funcType, modelId)}
+          <div class="w-full max-w-lg">
+            <p class="text-xl md:text-2xl mb-2">
+              {i18n().get('onboardingSetupEmbeddingTitle', 'Choose Embedding')}
+            </p>
+             <p class="text-lg text-muted-foreground mb-6">
+               {i18n().get('onboardingSetupEmbeddingDescription', 'Bge-m3 or bge-large are best due to multi-language support.')}
+             </p>
+            <div class="mb-6">
+              <ProviderSelectionPanel
+                providerOptions={availableEmbeddingProviders}
+                selectedProviderId={() => config?.providerId}
+                onSelectProvider={(provider) => settingsContext.handleSelectProvider(funcType, provider)}
               />
-              <Show when={transientState.fetchStatus() === 'success' && config?.modelId}>
-                <ConnectionTestPanel
-                  testStatus={transientState.testStatus}
-                  testError={transientState.testError}
+            </div>
+            <Show when={config?.providerId !== undefined}>
+              <div class="space-y-6">
+                <ModelSelectionPanel
                   functionName={funcType}
                   selectedProvider={() => availableEmbeddingProviders.find(p => p.id === config?.providerId)}
+                  fetchStatus={transientState.fetchStatus}
+                  showSpinner={transientState.showSpinner}
+                  fetchError={transientState.fetchError}
+                  fetchedModels={transientState.localModels}
+                  remoteModels={transientState.remoteModels}
+                  selectedModelId={() => config?.modelId}
+                  onSelectModel={(modelId) => settingsContext.handleSelectModel(funcType, modelId)}
                 />
-                <div class="flex space-x-4 mt-4">
-                   <Button 
-                      onClick={() => config && settingsContext.testConnection(funcType, config)}
-                      disabled={transientState.testStatus() === 'testing' || !config?.modelId}
-                    >
-                      {transientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}
-                    </Button>
-                    <Button 
-                      onClick={() => config && handleEmbeddingComplete(config)} 
-                      disabled={transientState.testStatus() !== 'success'}
-                    >
-                      {i18n().get('onboardingContinue', 'Continue')}
-                    </Button>
-                </div>
-              </Show>
+                <Show when={transientState.fetchStatus() === 'success' && config?.modelId}>
+                  <ConnectionTestPanel
+                    testStatus={transientState.testStatus}
+                    testError={transientState.testError}
+                    functionName={funcType}
+                    selectedProvider={() => availableEmbeddingProviders.find(p => p.id === config?.providerId)}
+                  />
+                </Show>
+              </div>
             </Show>
           </div>
         );
@@ -665,46 +759,42 @@ const OnboardingContent: Component = () => {
         const transientState = settingsContext.getTransientState(funcType);
         const config = settingsContext.config.readerConfig;
         return (
-          <div class="flex flex-col items-center w-full max-w-lg space-y-6">
-            <ProviderSelectionPanel
-              providerOptions={availableReaderProviders}
-              selectedProviderId={() => config?.providerId}
-              onSelectProvider={(provider) => settingsContext.handleSelectProvider(funcType, provider)}
-            />
-            <Show when={config?.providerId !== undefined}>
-              <ModelSelectionPanel
-                functionName={funcType}
-                selectedProvider={() => availableReaderProviders.find(p => p.id === config?.providerId)}
-                fetchStatus={transientState.fetchStatus}
-                showSpinner={transientState.showSpinner}
-                fetchError={transientState.fetchError}
-                fetchedModels={transientState.localModels}
-                remoteModels={transientState.remoteModels}
-                selectedModelId={() => config?.modelId}
-                onSelectModel={(modelId) => settingsContext.handleSelectModel(funcType, modelId)}
+          <div class="w-full max-w-lg">
+            <p class="text-xl md:text-2xl mb-2">
+              {"Go Faster with ReaderLM"} {/* Using default title from old component */}
+            </p>
+             <p class="text-lg text-muted-foreground mb-6">
+               {"ReaderLM 1.5B converts webpages to Markdown text."} {/* Using default desc */} 
+             </p>
+             <div class="mb-6">
+              <ProviderSelectionPanel
+                providerOptions={availableReaderProviders}
+                selectedProviderId={() => config?.providerId}
+                onSelectProvider={(provider) => settingsContext.handleSelectProvider(funcType, provider)}
               />
-              <Show when={transientState.fetchStatus() === 'success' && config?.modelId}>
-                <ConnectionTestPanel
-                  testStatus={transientState.testStatus}
-                  testError={transientState.testError}
+            </div>
+            <Show when={config?.providerId !== undefined}>
+              <div class="space-y-6">
+                <ModelSelectionPanel
                   functionName={funcType}
                   selectedProvider={() => availableReaderProviders.find(p => p.id === config?.providerId)}
+                  fetchStatus={transientState.fetchStatus}
+                  showSpinner={transientState.showSpinner}
+                  fetchError={transientState.fetchError}
+                  fetchedModels={transientState.localModels}
+                  remoteModels={transientState.remoteModels}
+                  selectedModelId={() => config?.modelId}
+                  onSelectModel={(modelId) => settingsContext.handleSelectModel(funcType, modelId)}
                 />
-                <div class="flex space-x-4 mt-4">
-                   <Button 
-                      onClick={() => config && settingsContext.testConnection(funcType, config)}
-                      disabled={transientState.testStatus() === 'testing' || !config?.modelId}
-                    >
-                      {transientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}
-                    </Button>
-                    <Button 
-                      onClick={() => config && handleReaderComplete(config)} 
-                      disabled={transientState.testStatus() !== 'success'}
-                    >
-                      {i18n().get('onboardingContinue', 'Continue')}
-                    </Button>
-                </div>
-              </Show>
+                <Show when={transientState.fetchStatus() === 'success' && config?.modelId}>
+                  <ConnectionTestPanel
+                    testStatus={transientState.testStatus}
+                    testError={transientState.testError}
+                    functionName={funcType}
+                    selectedProvider={() => availableReaderProviders.find(p => p.id === config?.providerId)}
+                  />
+                </Show>
+              </div>
             </Show>
           </div>
         );
@@ -732,7 +822,7 @@ const OnboardingContent: Component = () => {
   return (
     <div class="relative flex flex-col h-full bg-background text-foreground">
         {/* Progress Bar */}
-        <div class="fixed top-0 left-0 right-0 z-20 px-4 pt-4 bg-background/80 backdrop-blur-sm">
+        <div class="fixed top-0 left-0 right-0 z-20 bg-background/80 backdrop-blur-sm">
             <Progress value={progressValue()} maxValue={progressMax()} />
         </div>
         {/* Back Button */}
@@ -751,7 +841,22 @@ const OnboardingContent: Component = () => {
             {renderStep()}
         </div>
 
-         {/* Removed fixed footer - buttons are now part of model setup steps */}
+        {/* ADD BACK Fixed Footer with Dynamic Button */} 
+        {/* Show footer only for relevant steps */} 
+        <Show when={currentStep() !== 'language' && currentStep() !== 'learningGoal'}>
+          <div class="fixed bottom-0 left-0 right-0 p-4 md:p-6 border-t border-neutral-800 bg-background flex justify-center z-10">
+            <div class="w-full max-w-xs">
+              <Button
+                size="lg"
+                class="w-full"
+                onClick={handleFooterButtonClick} // Use the dynamic handler
+                disabled={isFooterButtonDisabled()} // Use the dynamic disabled state
+              >
+                {footerButtonLabel()} {/* Use the dynamic label */}
+              </Button>
+            </div>
+          </div>
+        </Show>
     </div>
   );
 };

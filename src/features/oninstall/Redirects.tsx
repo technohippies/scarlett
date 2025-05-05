@@ -26,25 +26,12 @@ export const Redirects: Component<RedirectsProps> = (props) => {
 
   return (
     <div class="relative flex flex-col h-full bg-background text-foreground">
-      {props.onBack && (
-          <Button 
-              variant="ghost"
-              size="icon"
-              onClick={props.onBack}
-              aria-label="Go back"
-              class="absolute top-4 left-4 text-muted-foreground hover:text-foreground z-10"
-          >
-              <ArrowLeft class="h-6 w-6" />
-          </Button>
-      )}
-
       <div class="flex-grow overflow-y-auto flex flex-col items-center p-4 pt-16 md:p-8 md:pt-20">
         <div class="w-full max-w-lg mb-8"> 
            <h1 class="text-3xl md:text-4xl font-semibold mb-3">{props.title}</h1>
            <p class="text-md text-muted-foreground">{props.description}</p>
         </div>
 
-        {/* Replace the old div and For loop with the RedirectsPanel */}
         <RedirectsPanel 
             allRedirectSettings={props.allRedirectSettings}
             isLoading={props.isLoading}

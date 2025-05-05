@@ -59,18 +59,7 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
   };
 
   return (
-    // Add relative positioning for the absolute back button
     <div class="relative flex flex-col h-full bg-background text-foreground">
-      {/* Back Button (Top Left) */}
-      <Button 
-          variant="ghost"
-          size="icon"
-          onClick={props.onBack}
-          aria-label="Go back"
-          class="absolute top-4 left-4 text-muted-foreground hover:text-foreground z-10"
-      >
-          <ArrowLeft class="h-6 w-6" />
-      </Button>
       {/* Content Area: Remove justify-center, adjust padding */}
       <div class="flex-grow overflow-y-auto flex flex-col items-center p-4 pt-24 md:p-8 md:pt-24">
         {/* Image at the top - Same as Language step */}
