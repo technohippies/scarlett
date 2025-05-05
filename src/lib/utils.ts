@@ -1,7 +1,10 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 
+// Placeholder cn function - you might want to install clsx and tailwind-merge
+// or use a simpler implementation if preferred.
 export function cn(...inputs: ClassValue[]) {
+  // return inputs.filter(Boolean).join(' ')
   return twMerge(clsx(inputs))
 }
 

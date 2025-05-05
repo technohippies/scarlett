@@ -2,6 +2,7 @@ import { Component, Show } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { Spinner } from '../../components/ui/spinner';
 import { FlashcardStudyPanel } from '../../features/srs/FlashcardStudyPanel';
+import { BookmarkSimple, Gear } from 'phosphor-solid';
 
 // Define the shape of the summary data expected
 export interface StudySummaryData {
@@ -17,6 +18,7 @@ export interface NewTabPageViewProps {
     error: string | null;
     onBookmarksClick: () => void; // Callback for Bookmarks button
     onStudyClick: () => void; // Callback for Study button
+    onSettingsClick: () => void; // <-- Add callback for Settings button
 }
 
 export const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
@@ -27,15 +29,15 @@ export const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
       
       {/* Header Area (Centered) */}
       <header class="w-full flex justify-center items-center pt-8 md:pt-12">
-        <h1 class="text-3xl font-bold text-foreground">Welcome Back!</h1>
+        {/* Removed Welcome Back! text */}
       </header>
 
       {/* Spacer to push content down - or use justify-between */}
       {/* <div class="flex-grow"></div> */}
 
-      {/* Bottom Area - using w-full and justify-between for left/right positioning */}
-      <footer class="w-full flex justify-between items-end px-2 md:px-4 pb-4">
-        {/* Study Panel (Bottom Left) */}
+      {/* Bottom Area - Reverse order and add Settings button */}
+      <footer class="w-full flex justify-between flex-row-reverse items-end px-2 md:px-4 pb-4"> {/* <-- Added flex-row-reverse */}
+        {/* Study Panel (Now Bottom Right due to reverse) */}
         <div class="study-panel-area max-w-xs"> {/* Constrain width */}
             <Show 
                 when={!props.isLoading} 
@@ -65,10 +67,16 @@ export const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
             </Show>
         </div>
 
-        {/* Bookmarks Button (Bottom Right) */}
-        <div class="quick-actions">
-            <Button variant="outline" onClick={props.onBookmarksClick}>
-                Manage Bookmarks
+        {/* Action Buttons (Now Bottom Left due to reverse) */}
+        <div class="quick-actions flex flex-col gap-2"> {/* <-- Added flex-col and gap-2 */}
+            <Button onClick={props.onBookmarksClick} class="flex items-center justify-start gap-2"> {/* <-- Adjusted justify-start */}
+                <BookmarkSimple weight="fill" size={18} />
+                Bookmarks
+            </Button>
+            {/* <-- Add Settings button --> */}
+            <Button onClick={props.onSettingsClick} class="flex items-center justify-start gap-2"> {/* <-- Adjusted justify-start */}
+                <Gear weight="fill" size={18} />
+                Settings
             </Button>
         </div>
       </footer>

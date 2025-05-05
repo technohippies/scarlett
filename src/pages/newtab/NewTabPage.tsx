@@ -23,6 +23,7 @@ interface BackgroundProtocol {
 export interface NewTabPageProps {
     onNavigateToBookmarks: () => void;
     onNavigateToStudy: () => void;
+    onNavigateToSettings: () => void;
 }
 
 // Initialize messaging client
@@ -106,6 +107,7 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
       // Pass navigation handlers down to the View component
       onBookmarksClick={props.onNavigateToBookmarks}
       onStudyClick={props.onNavigateToStudy}
+      onSettingsClick={props.onNavigateToSettings}
     />
   );
 };

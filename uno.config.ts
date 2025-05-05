@@ -40,6 +40,20 @@ export default defineConfig({
         DEFAULT: "hsl(240 4.8% 13%)",
         foreground: "hsl(210 40% 98%)",
       },
+      sidebar: {
+        DEFAULT: "hsl(240 5.9% 10%)", // dark mode background
+        foreground: "hsl(240 4.8% 95.9%)", // dark mode foreground
+        primary: "hsl(224.3 76.3% 48%)", // dark mode primary
+        "primary-foreground": "hsl(0 0% 100%)", // dark mode primary-foreground
+        accent: "hsl(240 3.7% 15.9%)", // dark mode accent
+        "accent-foreground": "hsl(240 4.8% 95.9%)", // dark mode accent-foreground
+        border: "hsl(240 3.7% 15.9%)", // dark mode border
+        ring: "hsl(217.2 91.2% 59.8%)", // dark mode ring
+      },
+    },
+    spacing: {
+      // Add other spacing values as needed
+      '4': "1rem", // Standard value for 4 is often 1rem (16px)
     },
     // Removed borderRadius to resolve linter error
     // borderRadius: {
