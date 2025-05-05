@@ -20,8 +20,15 @@ export type SettingsLoadStatus = 'pending' | 'ready' | 'errored' | 'unresolved' 
 
 // --- Constants ---
 const EMBEDDING_KEYWORDS = [
-    'embed', 'bge', 'minilm', 'paraphrase', 'nomic', 
-    'mxbai', 'snowflake', 'granite' // Simplified keywords
+    'embed', 
+    'bge',
+    'minilm',
+    'paraphrase',
+    'nomic-embed', // Use more specific keyword from SetupFunction
+    'mxbai-embed', // Use more specific keyword from SetupFunction
+    'snowflake-arctic-embed', // Use more specific keyword from SetupFunction
+    'granite-embedding' // Use more specific keyword from SetupFunction
+    // Add other relevant keywords or model name fragments here if needed
 ];
 
 // --- Provider Implementations Map (Keep close to usage or in a service) ---

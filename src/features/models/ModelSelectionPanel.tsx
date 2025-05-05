@@ -6,7 +6,7 @@ import { Spinner } from '../../components/ui/spinner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select';
 import { 
   Combobox, 
-  ComboboxContent, 
+  ComboboxContent,
   ComboboxControl, 
   ComboboxInput, 
   ComboboxItem, 
@@ -41,6 +41,16 @@ const shouldShowCorsHelp = (error: Error | null): boolean => {
     error.message?.includes('fetch') ||
     status === 403 // Explicitly include 403 Forbidden
   );
+};
+
+// Helper function (can be placed inside the component or outside)
+const getModelTypeLabel = (funcName: string): string => {
+  switch (funcName) {
+    case 'Embedding': return 'Embedding Model';
+    case 'Reader': return 'Reader Model';
+    case 'LLM': // Fallthrough intended
+    default: return 'LLM'; // Default to LLM
+  }
 };
 
 // --- Ollama CORS Instructions Component (Remove this internal definition) ---
@@ -176,17 +186,13 @@ export const ModelSelectionPanel: Component<ModelSelectionPanelProps> = (props) 
         </Show>
 
         {/* --- Model Selection UI --- */}
-        {/* Wrap with Presence for solid-motionone */}
-        {/* Keying the Presence/Motion on selectedProviderId helps trigger animations on provider change */}
         <Presence>
-          <Show when={props.selectedProvider()}>
+          <Show when={props.selectedProvider() && props.fetchStatus() === 'success'}>
               <Motion.div
-                class="w-full max-w-lg"
+                class="w-full max-w-lg space-y-4"
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.3, easing: "ease-out" }}
-                // Use exitBeforeEnter if providers change rapidly and animations overlap
-                // exitBeforeEnter 
               >
                   {/* --- Download Instructions (Ollama specific) --- */}
                   <Show when={props.functionName === 'Reader' && props.selectedProvider()?.id === 'ollama'}>
@@ -200,112 +206,71 @@ export const ModelSelectionPanel: Component<ModelSelectionPanelProps> = (props) 
                     </div>
                   </Show>
                   
-                  {/* --- Selectors (Conditional on successful fetch) --- */}
-                  <Show when={props.fetchStatus() === 'success'}>
-                      <div class="mt-6 space-y-4"> {/* Added margin top */}
-                          <Switch>
-                              {/* --- Jan Provider UI --- */}
-                              <Match when={props.selectedProvider()?.id === 'jan'}>
-                                  <Motion.div 
-                                    initial={{ opacity: 0 }} 
-                                    animate={{ opacity: 1 }} 
-                                    transition={{ delay: 0.15, duration: 0.2 }}
-                                  >
-                                    {/* Local Models */}
-                                    <div>
-                                      <Label for="local-model-select" class="font-medium text-muted-foreground mb-1 block">Local LLM</Label>
-                                      <Select<ModelOption>
-                                        options={props.fetchedModels()}
-                                        optionValue="id"
-                                        optionTextValue="name"
-                                        onChange={(value) => { 
-                                            console.log('[ModelSelectionPanel] Local Select onChange fired. Value:', value);
-                                            props.onSelectModel(value?.id);
-                                        }}
-                                        value={props.fetchedModels().find(m => m.id === props.selectedModelId()) || null}
-                                        itemComponent={(itemProps) => (
-                                          <SelectItem item={itemProps.item}>{itemProps.item.rawValue.name}</SelectItem>
-                                        )}
-                                      >
-                                        <SelectTrigger id="local-model-select">
-                                          <SelectValue>
-                                            {props.fetchedModels().find(m => m.id === props.selectedModelId())?.name || 
-                                             <span class="text-muted-foreground">Select Local Model</span>}
-                                          </SelectValue>
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          <Show when={!props.fetchedModels() || props.fetchedModels().length === 0}>
-                                            <div class="px-2 py-1.5 text-muted-foreground">No local models found.</div>
-                                          </Show>
-                                        </SelectContent>
-                                      </Select>
-                                    </div>
+                  {/* --- Local Model Selection --- */}
+                  <Show when={props.fetchedModels().length > 0}>
+                    <Label for="local-model-select">Local {getModelTypeLabel(props.functionName)}</Label>
+                    <Select<ModelOption>
+                      id="local-model-select"
+                      value={props.fetchedModels().find(m => m.id === props.selectedModelId())}
+                      onChange={(selectedOption: ModelOption | null) => {
+                        props.onSelectModel(selectedOption?.id);
+                      }}
+                      options={props.fetchedModels()}
+                      optionValue="id"
+                      optionTextValue="name"
+                      placeholder="Select a downloaded model..."
+                      itemComponent={(itemProps) => (
+                        <SelectItem item={itemProps.item}>{itemProps.item.rawValue.name}</SelectItem>
+                      )}
+                    >
+                      <SelectTrigger aria-label="Model">
+                        <SelectValue<ModelOption>>
+                          {(state) => state.selectedOption()?.name}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent />
+                    </Select>
+                  </Show>
 
-                                    {/* Remote/Downloadable Models */}
-                                    <Show when={props.remoteModels().length > 0}>
-                                      <div class="text-left text-muted-foreground my-2">or</div>
-                                      <div class="w-full">
-                                        <Label for="remote-model-combo" class="font-medium text-muted-foreground mb-1 block">Remote LLM</Label>
-                                        <Combobox<ModelOption>
-                                          id="remote-model-combo"
-                                          options={[...props.remoteModels()].sort((a, b) => a.name.localeCompare(b.name))}
-                                          optionValue="id"
-                                          optionTextValue="name"
-                                          placeholder="Search"
-                                          value={props.remoteModels().find(m => m.id === props.selectedModelId()) || null}
-                                          onChange={(value) => props.onSelectModel(value?.id)}
-                                          itemComponent={(itemProps) => (
-                                            <ComboboxItem item={itemProps.item}>
-                                              <ComboboxItemLabel>{itemProps.item.rawValue.name}</ComboboxItemLabel>
-                                              <ComboboxItemIndicator />
-                                            </ComboboxItem>
-                                          )}
-                                        >
-                                          <ComboboxControl aria-label="Remote Model">
-                                            <ComboboxInput value={props.remoteModels().find(m => m.id === props.selectedModelId())?.name || ''}/>
-                                            <ComboboxTrigger />
-                                          </ComboboxControl>
-                                          <ComboboxContent class="max-h-72 overflow-y-auto">
-                                            <Show when={!props.remoteModels() || props.remoteModels().length === 0}>
-                                                <div class="px-2 py-1.5 text-muted-foreground">No remote models found.</div>
-                                            </Show>
-                                          </ComboboxContent>
-                                        </Combobox>
-                                      </div>
-                                    </Show>
-                                  </Motion.div>
-                              </Match>
+                  {/* --- Remote Model Selection (Jan specific) --- */}
+                  <Show when={props.remoteModels().length > 0}>
+                      <Label for="remote-model-combobox">Remote LLM</Label>
+                      <Combobox<ModelOption>
+                          id="remote-model-combobox"
+                          options={props.remoteModels()}
+                          optionValue="id"
+                          optionTextValue="name"
+                          placeholder={`Search downloadable LLMs...`}
+                          onChange={(selectedOption: ModelOption | null) => {
+                            console.log(`[ModelSelectionPanel] Remote model selected via Combobox: ${selectedOption?.id}`);
+                            props.onSelectModel(selectedOption?.id);
+                          }}
+                          itemComponent={(itemProps) => (
+                            <ComboboxItem item={itemProps.item}>
+                              <ComboboxItemLabel>{itemProps.item.rawValue.name}</ComboboxItemLabel>
+                              <ComboboxItemIndicator />
+                            </ComboboxItem>
+                          )}
+                      >
+                          <ComboboxControl<ModelOption>
+                              aria-label={`Select remote LLM`}>
+                              {(state) => (
+                                  <>
+                                      <ComboboxInput value={state.selectedOptions().length > 0 ? state.selectedOptions()[0].name : ''} />
+                                      <ComboboxTrigger />
+                                  </>
+                              )}
+                          </ComboboxControl>
+                          <ComboboxContent class="combobox__content max-h-72 overflow-y-auto">
+                          </ComboboxContent>
+                      </Combobox>
+                  </Show>
 
-                              {/* --- Other Providers UI --- */}
-                              <Match when={props.selectedProvider()?.id !== 'jan'}>
-                                  <div>
-                                    <Label for="model-select-other" class="font-medium text-muted-foreground mb-1 block">{props.functionName}</Label>
-                                    <Select<ModelOption>
-                                      options={props.fetchedModels()}
-                                      optionValue="id"
-                                      optionTextValue="name"
-                                      onChange={(value) => props.onSelectModel(value?.id)}
-                                      value={props.fetchedModels().find(m => m.id === props.selectedModelId()) || null}
-                                      itemComponent={(itemProps) => (
-                                        <SelectItem item={itemProps.item}>{itemProps.item.rawValue.name}</SelectItem>
-                                      )}
-                                    >
-                                      <SelectTrigger id="model-select-other">
-                                        <SelectValue>
-                                          {props.fetchedModels().find(m => m.id === props.selectedModelId())?.name ||
-                                           <span class="text-muted-foreground">Select Model</span>}
-                                        </SelectValue>
-                                      </SelectTrigger>
-                                      <SelectContent class="max-h-72 overflow-y-auto">
-                                        <Show when={!props.fetchedModels() || props.fetchedModels().length === 0}>
-                                            <div class="px-2 py-1.5 text-muted-foreground">No models found for this provider.</div>
-                                        </Show>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-                              </Match>
-                          </Switch>
-                      </div>
+                  {/* --- No Models Found Message --- */}
+                  <Show when={props.fetchStatus() === 'success' && props.fetchedModels().length === 0 && props.remoteModels().length === 0}>
+                      <p class="text-muted-foreground text-center py-4">
+                          No {getModelTypeLabel(props.functionName).toLowerCase()} models found for {props.selectedProvider()?.name || 'this provider'}.
+                      </p>
                   </Show>
               </Motion.div>
           </Show>
