@@ -341,35 +341,6 @@ const App: Component = () => {
     });
   };
 
-  // Back navigation handler
-  const handleBack = () => {
-    const step = currentStep();
-    console.log(`[App] Back requested from step: ${step}`);
-    switch (step) {
-      case 'learningGoal':
-        setCurrentStep('language');
-        break;
-      case 'setupLLM':
-        setCurrentStep('learningGoal');
-        break;
-      case 'setupEmbedding':
-        setCurrentStep('setupLLM'); // Go back to LLM setup
-        break;
-      case 'setupReader':
-        setCurrentStep('setupEmbedding');
-        break;
-      case 'redirects': // Added case for redirects
-        setCurrentStep('setupReader');
-        break;
-      // Add cases for other steps if needed
-      default:
-        console.warn('[App] Back requested from unhandled step:', step);
-        // Optionally go back to a default previous step like language
-        // setCurrentStep('language');
-        break;
-    }
-  };
-
   // Wrap the main return in SettingsProvider
   return (
     <SettingsProvider>
@@ -521,7 +492,31 @@ const OnboardingContent: Component = () => {
 
   // Back Handler (Keep as is)
   const handleBack = () => {
-     // ... (existing logic using setCurrentStep) ...
+    const step = currentStep();
+    console.log(`[App] Back requested from step: ${step}`); // Good logging
+    switch (step) {
+      case 'learningGoal':
+        setCurrentStep('language');
+        break;
+      case 'setupLLM':
+        setCurrentStep('learningGoal');
+        break;
+      case 'setupEmbedding':
+        setCurrentStep('setupLLM'); // Go back to LLM setup
+        break;
+      case 'setupReader':
+        setCurrentStep('setupEmbedding');
+        break;
+      case 'redirects': // Added case for redirects
+        setCurrentStep('setupReader');
+        break;
+      // Add cases for other steps if needed
+      default:
+        console.warn('[App] Back requested from unhandled step:', step);
+        // Optionally go back to a default previous step like language
+        // setCurrentStep('language');
+        break;
+    }
   };
 
   // --- Footer Button Logic --- 
@@ -835,13 +830,15 @@ const OnboardingContent: Component = () => {
         </div>
         {/* Back Button */}
         <Show when={currentStep() !== 'language'}>
-            <button 
+            <Button 
                 onClick={handleBack} 
+                variant="ghost"
+                size="icon"
                 class="absolute top-12 left-4 text-muted-foreground hover:text-foreground z-10 p-2 rounded-full hover:bg-muted transition-colors"
                 aria-label="Go back"
             >
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 256 256"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"></path></svg>
-            </button>
+            </Button>
         </Show>
         
         {/* Step Content Area */}
