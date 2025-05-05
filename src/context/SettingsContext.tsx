@@ -18,6 +18,12 @@ export type TestStatus = 'idle' | 'testing' | 'success' | 'error';
 // Update SettingsLoadStatus to include all possible states from createResource
 export type SettingsLoadStatus = 'pending' | 'ready' | 'errored' | 'unresolved' | 'refreshing';
 
+// --- Constants ---
+const EMBEDDING_KEYWORDS = [
+    'embed', 'bge', 'minilm', 'paraphrase', 'nomic', 
+    'mxbai', 'snowflake', 'granite' // Simplified keywords
+];
+
 // --- Provider Implementations Map (Keep close to usage or in a service) ---
 const providerImplementations = {
   ollama: OllamaProvider,
@@ -303,6 +309,7 @@ export const SettingsProvider: ParentComponent = (props) => {
             let localModels: ModelOption[] = [];
             let remoteModels: ModelOption[] = [];
 
+            // --- Initial Filtering based on Provider Structure (e.g., Jan status) ---
             if (provider.id === 'jan') {
                 localModels = fetchedModelInfoWithOptions
                     .filter(m => m.status === 'downloaded')
@@ -312,7 +319,53 @@ export const SettingsProvider: ParentComponent = (props) => {
                     .map(({ id, name }) => ({ id, name }));
             } else {
                 localModels = fetchedModelInfoWithOptions.map(({ id, name }) => ({ id, name }));
+                // remoteModels remains [] for non-Jan providers
             }
+
+            // --- Function-Specific Filtering (e.g., for Embeddings) ---
+            if (funcType === 'Embedding') {
+                console.log(`[SettingsContext] Applying Embedding filter for provider: ${provider.id}`);
+                localModels = localModels.filter(model => {
+                    const lowerCaseId = model.id.toLowerCase();
+                    return EMBEDDING_KEYWORDS.some(keyword => lowerCaseId.includes(keyword));
+                });
+                // For Jan, explicitly clear remote models for embedding as it doesn't support remote embedding models
+                if (provider.id === 'jan') {
+                     console.log("[SettingsContext] Clearing remote models for Jan Embedding.");
+                    remoteModels = [];
+                }
+                 console.log(`[SettingsContext] Embedding models after filtering: ${localModels.length}`);
+            }
+             // TODO: Add filtering for LLM/Reader if needed (e.g., exclude embedding models from LLM list)
+            else if (funcType === 'LLM') {
+                 console.log(`[SettingsContext] Applying LLM filter for provider: ${provider.id}`);
+                 localModels = localModels.filter(model => {
+                     const lowerCaseId = model.id.toLowerCase();
+                     // Exclude models containing embedding keywords
+                     const isEmbeddingModel = EMBEDDING_KEYWORDS.some(keyword => lowerCaseId.includes(keyword));
+                     // TODO: Exclude Reader model if applicable? 
+                     // const isReaderModel = lowerCaseId.includes('reader-lm');
+                     return !isEmbeddingModel; // && !isReaderModel;
+                 });
+                 // Keep remote models for Jan LLM
+                 if (provider.id === 'jan') {
+                     remoteModels = remoteModels.filter(model => {
+                        const lowerCaseId = model.id.toLowerCase();
+                        const isEmbeddingModel = EMBEDDING_KEYWORDS.some(keyword => lowerCaseId.includes(keyword));
+                        return !isEmbeddingModel;
+                     });
+                 }
+                  console.log(`[SettingsContext] LLM models after filtering: Local ${localModels.length}, Remote ${remoteModels.length}`);
+             }
+             else if (funcType === 'Reader') {
+                 // Add specific filter for Reader if needed
+                 const readerModelId = 'milkey/reader-lm-v2'; // Assuming this is the target ID structure
+                 console.log(`[SettingsContext] Applying Reader filter for provider: ${provider.id}. Target: ${readerModelId}`);
+                 localModels = localModels.filter(model => model.id.includes(readerModelId));
+                 // No remote models expected for Reader
+                 remoteModels = [];
+                 console.log(`[SettingsContext] Reader models after filtering: ${localModels.length}`);
+             }
 
             // --- Update state --- 
             setTransientState(funcType, 'localModels', localModels);
