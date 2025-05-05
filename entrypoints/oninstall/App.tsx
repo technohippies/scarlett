@@ -22,16 +22,23 @@ import type { FetchStatus, TestStatus } from '../../src/context/SettingsContext'
 
 // Define language lists here (could also be moved)
 const nativeLanguagesList: LanguageOptionStub[] = [
-  { value: 'en', emoji: '🇺🇸' }, { value: 'zh', emoji: '🇨🇳' }, 
-  { value: 'th', emoji: '🇹🇭' }, { value: 'id', emoji: '🇮🇩' }, 
-  { value: 'ar', emoji: '🇸🇦' }, { value: 'ja', emoji: '🇯🇵' }, 
-  { value: 'ko', emoji: '🇰🇷' }, { value: 'es', emoji: '🇪🇸' },
-  { value: 'vi', emoji: '🇻🇳' } // Added Vietnamese stub
+  { value: 'en', emoji: '🇺🇸', name: 'English' }, 
+  { value: 'zh', emoji: '🇨🇳', name: 'Chinese' }, 
+  { value: 'th', emoji: '🇹🇭', name: 'Thai' }, 
+  { value: 'id', emoji: '🇮🇩', name: 'Indonesian' }, 
+  { value: 'ar', emoji: '🇸🇦', name: 'Arabic' }, 
+  { value: 'ja', emoji: '🇯🇵', name: 'Japanese' }, 
+  { value: 'ko', emoji: '🇰🇷', name: 'Korean' }, 
+  { value: 'es', emoji: '🇪🇸', name: 'Spanish' },
+  { value: 'vi', emoji: '🇻🇳', name: 'Vietnamese' } 
 ];
 
+// Update target languages: Add name, remove Korean
 const allTargetLanguagesList: LanguageOptionStub[] = [
-  { value: 'en', emoji: '🇺🇸' }, { value: 'zh', emoji: '🇨🇳' }, 
-  { value: 'ja', emoji: '🇯🇵' }, { value: 'ko', emoji: '🇰🇷' },
+  { value: 'en', emoji: '🇺🇸', name: 'English' }, 
+  { value: 'zh', emoji: '🇨🇳', name: 'Chinese' }, 
+  { value: 'ja', emoji: '🇯🇵', name: 'Japanese' },
+  // { value: 'ko', emoji: '🇰🇷', name: 'Korean' }, // Removed Korean
 ];
 
 // Define available LLM Providers (Chat/Completion)
@@ -642,6 +649,7 @@ const OnboardingContent: Component = () => {
             availableNativeLanguages={nativeLanguagesList}
             availableTargetLanguages={allTargetLanguagesList}
             messages={messagesData() || {}} 
+            messagesLoading={messagesData.loading} 
           />
         );
       case 'learningGoal':

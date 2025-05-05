@@ -65,7 +65,14 @@ export default defineConfig({
   },
   preflights: [
     {
-      getCSS: () => `
+      getCSS: ({ theme }) => `
+        html,
+        body,
+        #root {
+          height: 100%;
+          background-color: ${theme.colors.background};
+          color: ${theme.colors.foreground};
+        }
         /* Original preflights */
         input[role="combobox"] {
           outline: none !important;

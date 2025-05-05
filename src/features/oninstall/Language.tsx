@@ -1,4 +1,4 @@
-import { Component, createSignal, For } from 'solid-js';
+import { Component, createSignal, For, Show } from 'solid-js';
 import {
   Select,
   SelectContent,
@@ -9,11 +9,13 @@ import {
 import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
 import type { Messages } from '../../types/i18n';
+import { Label } from '../../components/ui/label';
 
 // LanguageOption now might only need value and emoji if name comes from messages
 export interface LanguageOptionStub {
   value: string;
-  emoji: string; 
+  emoji: string;
+  name?: string;
 }
 
 // No longer defining lists here
@@ -34,6 +36,7 @@ interface LanguageProps {
   availableNativeLanguages: LanguageOptionStub[];
   availableTargetLanguages: LanguageOptionStub[];
   messages: Messages | undefined;
+  messagesLoading: boolean;
 }
 
 // Helper function to get translated name (could be moved)
@@ -59,12 +62,29 @@ export const Language: Component<LanguageProps> = (props) => {
   console.log(`[Language] Initial selectedNativeLangStub signal set to:`, selectedNativeLangStub());
 
   // State for target language VALUE
-  const [selectedTargetLangValue, setSelectedTargetLangValue] = createSignal<string | undefined>();
+  const [selectedTargetLang, setSelectedTargetLang] = createSignal<LanguageOptionStub | undefined>();
 
   // Filter target languages based on selected native language
-  const targetLanguages = (): LanguageOptionStub[] => props.availableTargetLanguages.filter(
-    lang => lang.value !== selectedNativeLangStub()?.value
-  );
+  const targetLanguages = (): LanguageOptionStub[] => {
+      const nativeLang = selectedNativeLangStub()?.value;
+      if (!nativeLang) {
+          // Default: Show all except English if no native selected? Or maybe just English?
+          // Let's default to showing only English if native isn't selected yet.
+          return props.availableTargetLanguages.filter(lang => lang.value === 'en'); 
+      }
+      
+      if (nativeLang === 'en') {
+          // If native is English, show Chinese and Japanese
+          return props.availableTargetLanguages.filter(
+              lang => lang.value === 'zh' || lang.value === 'ja'
+          );
+      } else {
+          // If native is NOT English, show only English
+          return props.availableTargetLanguages.filter(
+              lang => lang.value === 'en'
+          );
+      }
+  };
 
   const handleNativeChange = (stub: LanguageOptionStub | null) => {
     console.log('[Language] handleNativeChange triggered. Received stub:', stub);
@@ -79,24 +99,21 @@ export const Language: Component<LanguageProps> = (props) => {
     }
   };
 
+  // Handler for target language selection
+  const handleTargetLanguageSelect = (option: LanguageOptionStub | null) => {
+    if (option) {
+      setSelectedTargetLang(option);
+    }
+  };
+
+  // Handler for form submission
   const handleSubmit = () => {
-    // Native value is now handled by onChange, just get target
-    const nativeLangValue = selectedNativeLangStub()?.value; // Still need for filtering/saving
-    const targetLangValue = selectedTargetLangValue();
-    if (!nativeLangValue || !targetLangValue) return;
-
-    // Find the full target label (emoji + translated name) for the callback
-    const targetStub = props.availableTargetLanguages.find(l => l.value === targetLangValue);
-    const targetEmoji = targetStub?.emoji || '';
-    const targetTranslatedName = getLangName(targetLangValue, props.messages);
-    const fullTargetLabel = `${targetEmoji} ${targetTranslatedName}`.trim();
-
-    const dataToPass = { 
-      targetValue: targetLangValue, 
-      targetLabel: fullTargetLabel 
-    };
-    console.log('[Language] handleSubmit: Calling onComplete with:', dataToPass);
-    props.onComplete(dataToPass);
+    const native = selectedNativeLangStub();
+    const target = selectedTargetLang();
+    if (native && target) {
+      const targetLabel = `${target.emoji} ${target.name || target.value}`;
+      props.onComplete({ targetValue: target.value, targetLabel: targetLabel });
+    }
   };
 
   return (
@@ -127,7 +144,7 @@ export const Language: Component<LanguageProps> = (props) => {
                   value={selectedNativeLangStub()}
                   onChange={handleNativeChange}
                   optionValue="value"
-                  optionTextValue={stub => `${stub.emoji} ${getLangName(stub.value, props.messages)}`.trim()}
+                  optionTextValue={(option) => `${option.emoji} ${getLangName(option.value, props.messages)}`}
                   placeholder={props.selectLanguagePlaceholder}
                   itemComponent={(itemProps) => {
                     const name = getLangName(itemProps.item.rawValue.value, props.messages);
@@ -160,29 +177,34 @@ export const Language: Component<LanguageProps> = (props) => {
           </div>
 
           {/* Target Language Grid: Limit width */}
-          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg mb-6">
-              <For each={targetLanguages()}> 
-                {(langStub) => {
-                  const name = getLangName(langStub.value, props.messages);
-                  return (
-                    <Button
-                      variant="outline"
-                      onClick={() => setSelectedTargetLangValue(langStub.value)}
-                      class={cn(
-                        'h-auto p-4 flex flex-col items-center justify-center space-y-2 text-base border',
-                        'cursor-pointer hover:bg-neutral-700 hover:border-neutral-600 focus:outline-none focus:ring-0',
-                        selectedTargetLangValue() === langStub.value
-                          ? 'bg-neutral-800 text-foreground border-neutral-700'
-                          : 'border-neutral-700'
-                      )}
-                    >
-                      <span class="text-4xl">{langStub.emoji}</span>
-                      <span>{name}</span> 
-                    </Button>
-                  );
-                }}
-              </For>
-          </div>
+          {/* Wrap in Show to wait for messages */}
+          <Show when={!props.messagesLoading} fallback={<div>Loading languages...</div>}> 
+            <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg mb-6">
+                <For each={targetLanguages()}> 
+                  {(langStub) => {
+                    // Revert to using getLangName for localization
+                    const nameToShow = getLangName(langStub.value, props.messages); 
+                    return (
+                      <Button
+                        variant="outline"
+                        onClick={() => setSelectedTargetLang(langStub)}
+                        class={cn(
+                          'h-auto p-4 flex flex-col items-center justify-center space-y-2 text-base border',
+                          'cursor-pointer hover:bg-neutral-700 hover:border-neutral-600 focus:outline-none focus:ring-0',
+                          selectedTargetLang() === langStub
+                            ? 'bg-neutral-800 text-foreground border-neutral-700'
+                            : 'border-neutral-700'
+                        )}
+                      >
+                        <span class="text-4xl">{langStub.emoji}</span>
+                        {/* Display the localized nameToShow */}
+                        <span>{nameToShow}</span> 
+                      </Button>
+                    );
+                  }}
+                </For>
+            </div>
+          </Show>
       </div> 
       {/* Footer Area: Fixed at bottom */}
       <div class="flex-shrink-0 p-4 md:p-6 border-t border-neutral-800 bg-background flex justify-center">
@@ -191,7 +213,7 @@ export const Language: Component<LanguageProps> = (props) => {
                size="lg"
                class="w-full"
                onClick={handleSubmit}
-               disabled={!selectedTargetLangValue()}
+               disabled={!selectedTargetLang()}
              >
                {props.continueLabel}
              </Button>
