@@ -43,6 +43,8 @@ interface TransientStateAccessors {
   testStatus: Accessor<TestStatus>; // Use exported type
   testError: Accessor<Error | null>;
   showSpinner: Accessor<boolean>;
+  localModels: Accessor<ModelOption[]>;
+  remoteModels: Accessor<ModelOption[]>;
 }
 
 // --- Define Props Interface --- 
@@ -81,41 +83,41 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
 
   return (
     <>
-      <SidebarProvider>
-        <Sidebar collapsible="icon" variant="sidebar">
-          <SidebarContent>
+    <SidebarProvider>
+      <Sidebar collapsible="icon" variant="sidebar">
+        <SidebarContent>
             {/* Model Group */}
-            <SidebarGroup>
-              <SidebarGroupLabel>MODELS</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
+          <SidebarGroup>
+            <SidebarGroupLabel>MODELS</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
                   <For each={settingsMenuItems.filter(item => item.icon !== TrendUp)}>
-                    {(item) => (
-                      <SidebarMenuItem>
+                  {(item) => (
+                    <SidebarMenuItem>
                         <SidebarMenuButton 
                           as="button" 
                           onClick={() => props.onSectionChange(item.title.toLowerCase())} 
                           tooltip={item.title}
                           class={props.activeSection() === item.title.toLowerCase() ? 'bg-muted' : ''}
                         >
-                          <item.icon />
-                          <span>{item.title}</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    )}
-                  </For>
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-            
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                </For>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+          
             {/* Censorship Group */}
-            <SidebarGroup>
-              <SidebarGroupLabel>CENSORSHIP</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
+          <SidebarGroup>
+            <SidebarGroupLabel>CENSORSHIP</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
                   <For each={settingsMenuItems.filter(item => item.icon === TrendUp)}>
                     {(item) => (
-                      <SidebarMenuItem>
+                <SidebarMenuItem>
                         <SidebarMenuButton 
                           as="button" 
                           onClick={() => props.onSectionChange(item.title.toLowerCase())} 
@@ -124,18 +126,18 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                         >
                           <item.icon />
                           <span>{item.title}</span>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
                     )}
                   </For>
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </SidebarContent>
-        </Sidebar>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+      </Sidebar>
 
         {/* Main Content Area uses Props */}
-        <main class="flex-1 p-4 overflow-y-auto">
+        <main class="flex-1 p-4 overflow-y-auto bg-background text-foreground">
           <Show when={props.loadStatus() === 'pending'}>
               <div class="flex items-center justify-center h-full">
                   <p class="text-muted-foreground">Loading settings...</p>
@@ -165,8 +167,8 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                     fetchStatus={props.llmTransientState.fetchStatus} 
                     showSpinner={props.llmTransientState.showSpinner}
                     fetchError={props.llmTransientState.fetchError}
-                    fetchedModels={props.llmTransientState.models}
-                    remoteModels={() => []}
+                    fetchedModels={props.llmTransientState.localModels}
+                    remoteModels={props.llmTransientState.remoteModels}
                     selectedModelId={() => props.config.llmConfig?.modelId}
                     onSelectModel={props.onLlmSelectModel}
                   />
@@ -206,8 +208,8 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                     fetchStatus={props.embeddingTransientState.fetchStatus} 
                     showSpinner={props.embeddingTransientState.showSpinner}
                     fetchError={props.embeddingTransientState.fetchError}
-                    fetchedModels={props.embeddingTransientState.models}
-                    remoteModels={() => []} 
+                    fetchedModels={props.embeddingTransientState.localModels}
+                    remoteModels={props.embeddingTransientState.remoteModels}
                     selectedModelId={() => props.config.embeddingConfig?.modelId}
                     onSelectModel={props.onEmbeddingSelectModel}
                   />
@@ -247,8 +249,8 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                     fetchStatus={props.readerTransientState.fetchStatus} 
                     showSpinner={props.readerTransientState.showSpinner}
                     fetchError={props.readerTransientState.fetchError}
-                    fetchedModels={props.readerTransientState.models}
-                    remoteModels={() => []} 
+                    fetchedModels={props.readerTransientState.localModels}
+                    remoteModels={props.readerTransientState.remoteModels}
                     selectedModelId={() => props.config.readerConfig?.modelId}
                     onSelectModel={props.onReaderSelectModel}
                   />
@@ -295,8 +297,8 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                <p class="text-muted-foreground mt-2">Select a category from the sidebar to configure.</p>
             </Show>
           </Show> 
-        </main>
-      </SidebarProvider>
+      </main>
+    </SidebarProvider>
     </>
   );
 };

@@ -218,7 +218,10 @@ export const ModelSelectionPanel: Component<ModelSelectionPanelProps> = (props) 
                                         options={props.fetchedModels()}
                                         optionValue="id"
                                         optionTextValue="name"
-                                        onChange={(value) => props.onSelectModel(value?.id)}
+                                        onChange={(value) => { 
+                                            console.log('[ModelSelectionPanel] Local Select onChange fired. Value:', value);
+                                            props.onSelectModel(value?.id);
+                                        }}
                                         value={props.fetchedModels().find(m => m.id === props.selectedModelId()) || null}
                                         itemComponent={(itemProps) => (
                                           <SelectItem item={itemProps.item}>{itemProps.item.rawValue.name}</SelectItem>
@@ -245,7 +248,7 @@ export const ModelSelectionPanel: Component<ModelSelectionPanelProps> = (props) 
                                         <Label for="remote-model-combo" class="font-medium text-muted-foreground mb-1 block">Remote LLM</Label>
                                         <Combobox<ModelOption>
                                           id="remote-model-combo"
-                                          options={props.remoteModels().sort((a, b) => a.name.localeCompare(b.name))}
+                                          options={[...props.remoteModels()].sort((a, b) => a.name.localeCompare(b.name))}
                                           optionValue="id"
                                           optionTextValue="name"
                                           placeholder="Search"

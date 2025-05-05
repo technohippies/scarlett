@@ -46,7 +46,8 @@ interface ISettingsContext {
   // --- Dynamic Operations + Transient State --- 
   fetchModels: (funcType: string, provider: ProviderOption) => Promise<ModelOption[]>; // Make async, return models
   getTransientState: (funcType: string) => { // Get transient state scoped by function type
-      models: () => ModelOption[];
+      localModels: () => ModelOption[];
+      remoteModels: () => ModelOption[];
       fetchStatus: () => FetchStatus;
       fetchError: () => Error | null;
       testStatus: () => TestStatus;
@@ -104,7 +105,8 @@ export const SettingsProvider: ParentComponent = (props) => {
 
     // --- Transient state signals MAP for fetch/test (scoped by function type) ---
     const [transientState, setTransientState] = createStore<Record<string, {
-        models: ModelOption[];
+        localModels: ModelOption[];
+        remoteModels: ModelOption[];
         fetchStatus: FetchStatus;
         fetchError: Error | null;
         testStatus: TestStatus;
@@ -117,7 +119,8 @@ export const SettingsProvider: ParentComponent = (props) => {
     const ensureTransientState = (funcType: string) => {
         if (!transientState[funcType]) {
             setTransientState(funcType, {
-                models: [],
+                localModels: [],
+                remoteModels: [],
                 fetchStatus: 'idle',
                 fetchError: null,
                 testStatus: 'idle',
@@ -232,60 +235,92 @@ export const SettingsProvider: ParentComponent = (props) => {
 
     const fetchModels = async (funcType: string, provider: ProviderOption): Promise<ModelOption[]> => {
         ensureTransientState(funcType);
-        // Clear previous spinner timeout
         const currentTimeoutId = transientState[funcType]?.spinnerTimeoutId;
         if (currentTimeoutId) clearTimeout(currentTimeoutId);
 
         setTransientState(funcType, 'fetchStatus', 'loading');
         setTransientState(funcType, 'fetchError', null);
-        setTransientState(funcType, 'models', []);
-        setTransientState(funcType, 'showSpinner', false); // Hide initially
+        setTransientState(funcType, 'localModels', []);
+        setTransientState(funcType, 'remoteModels', []);
+        setTransientState(funcType, 'showSpinner', false);
 
-        // Start spinner delay timer
         const timeoutId = setTimeout(() => {
-            // Only show if still loading
             if (transientState[funcType]?.fetchStatus === 'loading') {
                 setTransientState(funcType, 'showSpinner', true);
             }
-        }, 200); // 200ms delay
+        }, 200);
         setTransientState(funcType, 'spinnerTimeoutId', timeoutId);
 
+        let fetchedModelInfoWithOptions: ({ id: string; name: string; status?: string })[] = [];
 
         try {
-            // Get the current Base URL for the function type from the main store
-            let baseUrl: string | undefined | null = null;
-            if (funcType === 'LLM' && settingsStore.llmConfig) {
-                baseUrl = settingsStore.llmConfig.baseUrl;
-            } else if (funcType === 'Embedding' && settingsStore.embeddingConfig) {
-                baseUrl = settingsStore.embeddingConfig.baseUrl;
-            } else if (funcType === 'Reader' && settingsStore.readerConfig) {
-                baseUrl = settingsStore.readerConfig.baseUrl;
-            }
-
-            if (!baseUrl) {
-                baseUrl = provider.defaultBaseUrl; // Fallback to default if not set
-                console.warn(`[SettingsContext] Base URL not found in config for ${funcType}, using default: ${baseUrl}`);
-                if (!baseUrl) {
-                    throw new Error(`Cannot fetch models for ${funcType}: Base URL is missing in config and provider has no default.`);
+             // --- Special handling for Jan to replicate SetupFunction logic ---
+            if (provider.id === 'jan') {
+                const httpBaseUrl = (settingsStore.llmConfig?.baseUrl || provider.defaultBaseUrl || '').replace(/^ws:/, 'http:');
+                const apiUrl = `${httpBaseUrl}/v1/models`;
+                console.log(`[SettingsContext] Fetching RAW Jan models from ${apiUrl}`);
+                const response = await fetch(apiUrl, { signal: AbortSignal.timeout(15000) });
+                if (!response.ok) {
+                    const error = new Error(`HTTP error! status: ${response.status}`);
+                    (error as any).status = response.status;
+                    throw error;
                 }
+                const data = await response.json();
+                console.log('[SettingsContext] RAW Jan JSON Response Data:', JSON.stringify(data, null, 2));
+                if (data.data) {
+                    fetchedModelInfoWithOptions = data.data.map((m: any) => ({
+                        id: m.id,
+                        name: m.name || m.id,
+                        status: m.status
+                    }));
+                } else {
+                     console.warn('[SettingsContext] Unexpected Jan API response format:', data);
+                }
+            } else {
+                // --- Standard handling for other providers ---
+                let baseUrl = provider.defaultBaseUrl || '';
+                if (funcType === 'LLM' && settingsStore.llmConfig) baseUrl = settingsStore.llmConfig.baseUrl || baseUrl;
+                else if (funcType === 'Embedding' && settingsStore.embeddingConfig) baseUrl = settingsStore.embeddingConfig.baseUrl || baseUrl;
+                else if (funcType === 'Reader' && settingsStore.readerConfig) baseUrl = settingsStore.readerConfig.baseUrl || baseUrl;
+                
+                if (!baseUrl) {
+                     throw new Error(`Cannot fetch models for ${funcType}: Base URL is missing.`);
+                }
+
+                console.log(`[SettingsContext] Fetching models via ${provider.id} provider listModels`);
+                const fetchedModelInfo = await providerImplementations[provider.id as keyof typeof providerImplementations].listModels({ baseUrl });
+                // Map to include potential (but untyped) status for consistency, though it might be null
+                fetchedModelInfoWithOptions = fetchedModelInfo.map((info: any) => ({
+                    id: info.id,
+                    name: info.name || info.id,
+                    status: info.status 
+                }));
             }
 
-            // Call the actual provider's listModels function
-            const fetchedModelInfo = await providerImplementations[provider.id as keyof typeof providerImplementations].listModels({ baseUrl });
+            // --- SORTING & FILTERING (Common Logic) ---
+            fetchedModelInfoWithOptions.sort((a, b) => a.name.localeCompare(b.name));
+            
+            let localModels: ModelOption[] = [];
+            let remoteModels: ModelOption[] = [];
 
-            // Map ModelInfo to ModelOption, ensuring name is a string
-            const fetchedModelOptions: ModelOption[] = fetchedModelInfo.map(info => ({
-                id: info.id,
-                name: info.name || info.id // Use ID as fallback name
-            }));
+            if (provider.id === 'jan') {
+                localModels = fetchedModelInfoWithOptions
+                    .filter(m => m.status === 'downloaded')
+                    .map(({ id, name }) => ({ id, name }));
+                remoteModels = fetchedModelInfoWithOptions
+                    .filter(m => m.status !== 'downloaded')
+                    .map(({ id, name }) => ({ id, name }));
+            } else {
+                localModels = fetchedModelInfoWithOptions.map(({ id, name }) => ({ id, name }));
+            }
 
-            // Sort models alphabetically by name
-            fetchedModelOptions.sort((a: ModelOption, b: ModelOption) => a.name.localeCompare(b.name));
-
-            setTransientState(funcType, 'models', fetchedModelOptions);
+            // --- Update state --- 
+            setTransientState(funcType, 'localModels', localModels);
+            setTransientState(funcType, 'remoteModels', remoteModels);
             setTransientState(funcType, 'fetchStatus', 'success');
-            console.log(`[SettingsContext] Models fetched successfully for ${funcType} / ${provider.id}.`);
-            return fetchedModelOptions;
+            console.log(`[SettingsContext] Models processed for ${funcType} / ${provider.id}. Local: ${localModels.length}, Remote: ${remoteModels.length}`);
+            
+            return localModels.concat(remoteModels); 
         } catch (err: any) {
             console.error(`[SettingsContext] Error fetching models for ${funcType} / ${provider.id}:`, err);
             setTransientState(funcType, 'fetchError', err);
@@ -341,7 +376,8 @@ export const SettingsProvider: ParentComponent = (props) => {
     const getTransientState = (funcType: string) => {
          ensureTransientState(funcType); // Make sure the state exists
          return {
-            models: () => transientState[funcType]?.models || [],
+            localModels: () => transientState[funcType]?.localModels || [],
+            remoteModels: () => transientState[funcType]?.remoteModels || [],
             fetchStatus: () => transientState[funcType]?.fetchStatus || 'idle',
             fetchError: () => transientState[funcType]?.fetchError || null,
             testStatus: () => transientState[funcType]?.testStatus || 'idle',
