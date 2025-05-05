@@ -3,7 +3,7 @@ import { Button } from '../../components/ui/button';
 import { Spinner } from '../../components/ui/spinner';
 import { FlashcardStudyPanel } from '../../features/srs/FlashcardStudyPanel';
 import { EmbeddingProcessingPanel } from '../../features/embedding/EmbeddingProcessingPanel';
-import { BookmarkSimple, Gear, ArrowClockwise } from 'phosphor-solid';
+import { BookmarkSimple, Gear } from 'phosphor-solid';
 import type { StudySummary } from '../../services/srs/types';
 
 // Props for the View component

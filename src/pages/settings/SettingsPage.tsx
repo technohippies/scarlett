@@ -29,7 +29,6 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
   // --- Get Transient States via Context Function --- 
   const llmTransientState = settings.getTransientState('LLM');
   const embeddingTransientState = settings.getTransientState('Embedding');
-  const readerTransientState = settings.getTransientState('Reader');
   const ttsTransientState = settings.getTransientState('TTS');
 
   // Mock provider options (can be moved or fetched)
@@ -40,7 +39,6 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
   ];
   const mockEmbeddingProviderOptions: ProviderOption[] = [...mockLlmProviderOptions];
-  const mockReaderProviderOptions: ProviderOption[] = mockLlmProviderOptions.filter(p => p.id === 'ollama');
   const mockTtsProviderOptions: ProviderOption[] = []; // Example: No TTS providers currently
 
   return (
@@ -51,12 +49,10 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       // Pass the correctly retrieved transient states
       llmTransientState={llmTransientState}
       embeddingTransientState={embeddingTransientState}
-      readerTransientState={readerTransientState}
       ttsTransientState={ttsTransientState}
       // Pass provider options (using mocks for now)
       llmProviderOptions={mockLlmProviderOptions}
       embeddingProviderOptions={mockEmbeddingProviderOptions}
-      readerProviderOptions={mockReaderProviderOptions}
       ttsProviderOptions={mockTtsProviderOptions}
       // Pass handlers from context
       onSectionChange={setActiveSection} // Update local active section state
@@ -66,9 +62,6 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       onEmbeddingSelectProvider={(provider) => { void settings.handleSelectProvider('Embedding', provider); }}
       onEmbeddingSelectModel={(modelId) => { void settings.handleSelectModel('Embedding', modelId); }}
       onEmbeddingTestConnection={(config: FunctionConfig) => { void settings.testConnection('Embedding', config); }}
-      onReaderSelectProvider={(provider) => { void settings.handleSelectProvider('Reader', provider); }}
-      onReaderSelectModel={(modelId) => { void settings.handleSelectModel('Reader', modelId); }}
-      onReaderTestConnection={(config: FunctionConfig) => { void settings.testConnection('Reader', config); }}
       onRedirectSettingChange={(service, update) => settings.handleRedirectSettingChange(service, update)}
       // Pass navigation handler with fallback
       onBackClick={props.onNavigateBack ?? (() => { console.warn("onBackClick called but no handler provided"); })}

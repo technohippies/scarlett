@@ -10,16 +10,25 @@ import type { UserConfiguration, FunctionConfig, RedirectSettings } from './type
 //   onboardingComplete: boolean;
 // }
 
-// Use the imported type for the default configuration
+// Default values for user configuration
 const defaultUserConfiguration: UserConfiguration = {
-  nativeLanguage: null,
+  nativeLanguage: null, // Or a sensible default like 'en'?
   targetLanguage: null,
   learningGoal: null,
-  // Add the missing fields with default values based on the imported type
-  llmConfig: null,
+  llmConfig: null, 
   embeddingConfig: null,
-  readerConfig: null,
-  redirectSettings: {}, // Default to empty object
+  ttsConfig: null,
+  redirectSettings: { // Default redirect settings
+    // Provide default values for all required fields
+    "youtube": { isEnabled: false, chosenInstance: '' },
+    "x": { isEnabled: false, chosenInstance: '' },
+    "reddit": { isEnabled: false, chosenInstance: '' },
+    "medium": { isEnabled: false, chosenInstance: '' },
+    "wikipedia": { isEnabled: false, chosenInstance: '' },
+    "imdb": { isEnabled: false, chosenInstance: '' },
+    "quora": { isEnabled: false, chosenInstance: '' },
+    "reuters": { isEnabled: false, chosenInstance: '' },
+  },
   onboardingComplete: false,
 };
 
@@ -30,8 +39,8 @@ const defaultUserConfiguration: UserConfiguration = {
 export const userConfigurationStorage = storage.defineItem<UserConfiguration>(
   'local:userConfiguration',
   {
-    // Use a default object that matches the type
-    fallback: defaultUserConfiguration,
+    defaultValue: defaultUserConfiguration,
+    // Add migration logic if needed
   }
 );
 

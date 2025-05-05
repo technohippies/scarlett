@@ -2,7 +2,7 @@ import type { Component, Accessor } from "solid-js";
 import { For, Show } from "solid-js";
 import { Button } from "../../components/ui/button";
 import { 
-  Brain, ChartLine, BookOpen, SpeakerHigh,
+  Brain, ChartLine, SpeakerHigh,
   TrendUp
 } from "phosphor-solid";
 import {
@@ -30,7 +30,6 @@ import { Header } from '../../components/layout/Header';
 const settingsMenuItems = [
   { title: "LLM", url: "/settings/models/llm", icon: Brain },
   { title: "Embedding", url: "/settings/models/embedding", icon: ChartLine },
-  { title: "Reader", url: "/settings/models/reader", icon: BookOpen },
   { title: "TTS", url: "/settings/models/tts", icon: SpeakerHigh },
   { title: "Redirects", url: "/settings/redirects", icon: TrendUp }
 ];
@@ -54,11 +53,9 @@ interface SettingsPageViewProps {
   activeSection: Accessor<string | null>;
   llmTransientState: TransientStateAccessors;
   embeddingTransientState: TransientStateAccessors;
-  readerTransientState: TransientStateAccessors;
   ttsTransientState: TransientStateAccessors;
   llmProviderOptions: ProviderOption[];
   embeddingProviderOptions: ProviderOption[];
-  readerProviderOptions: ProviderOption[];
   ttsProviderOptions: ProviderOption[];
   onSectionChange: (section: string | null) => void;
   onLlmSelectProvider: (provider: ProviderOption) => void;
@@ -67,9 +64,6 @@ interface SettingsPageViewProps {
   onEmbeddingSelectProvider: (provider: ProviderOption) => void;
   onEmbeddingSelectModel: (modelId: string | undefined) => void;
   onEmbeddingTestConnection: (config: FunctionConfig) => void;
-  onReaderSelectProvider: (provider: ProviderOption) => void;
-  onReaderSelectModel: (modelId: string | undefined) => void;
-  onReaderTestConnection: (config: FunctionConfig) => void;
   onRedirectSettingChange: (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => Promise<void>;
   onBackClick: () => void;
   // Add TTS handlers when needed
@@ -233,46 +227,6 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                                   disabled={props.embeddingTransientState.testStatus() === 'testing'}
                               >
                                   {props.embeddingTransientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}
-                              </Button>
-                            </div>
-                          </Show>
-                        </Show>
-                      </div>
-                    </Show>
-
-                    {/* --- Reader Section --- */} 
-                    <Show when={props.activeSection() === 'reader'}>
-                      <div class="space-y-4">
-                        <ProviderSelectionPanel
-                          providerOptions={props.readerProviderOptions} 
-                          selectedProviderId={() => props.config.readerConfig?.providerId}
-                          onSelectProvider={props.onReaderSelectProvider}
-                        />
-                        <Show when={props.config.readerConfig?.providerId !== undefined}>
-                          <ModelSelectionPanel
-                            functionName="Reader"
-                            selectedProvider={() => props.readerProviderOptions.find(p => p.id === props.config.readerConfig?.providerId)}
-                            fetchStatus={props.readerTransientState.fetchStatus} 
-                            showSpinner={props.readerTransientState.showSpinner}
-                            fetchError={props.readerTransientState.fetchError}
-                            fetchedModels={props.readerTransientState.localModels}
-                            remoteModels={props.readerTransientState.remoteModels}
-                            selectedModelId={() => props.config.readerConfig?.modelId}
-                            onSelectModel={props.onReaderSelectModel}
-                          />
-                          <Show when={props.readerTransientState.fetchStatus() === 'success' && props.config.readerConfig?.modelId}>
-                            <ConnectionTestPanel
-                              testStatus={props.readerTransientState.testStatus}
-                              testError={props.readerTransientState.testError}
-                              functionName="Reader"
-                              selectedProvider={() => props.readerProviderOptions.find(p => p.id === props.config.readerConfig?.providerId)}
-                            />
-                            <div class="flex space-x-4 mt-6">
-                              <Button 
-                                  onClick={() => props.onReaderTestConnection(props.config.readerConfig as FunctionConfig)} 
-                                  disabled={props.readerTransientState.testStatus() === 'testing'}
-                              >
-                                  {props.readerTransientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}
                               </Button>
                             </div>
                           </Show>

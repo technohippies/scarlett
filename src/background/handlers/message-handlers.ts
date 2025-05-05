@@ -33,11 +33,11 @@ import { updateCachedDistractors } from '../../services/db/learning';
 import { getDbInstance } from '../../services/db/init';
 import { ollamaChat } from '../../services/llm/providers/ollama/chat';
 import { getMCQGenerationPrompt, getMCQGenerationPromptNativeToEn } from '../../services/llm/prompts/exercises';
-import type { LLMConfig, LLMChatResponse, LLMProviderId } from '../../services/llm/types';
+import type { LLMConfig, LLMChatResponse, LLMProviderId, ChatMessage } from '../../services/llm/types';
 import { handleSaveBookmark, handleLoadBookmarks } from './bookmark-handlers';
 import { handleTagList, handleTagSuggest } from './tag-handlers';
 import { handleGetPageInfo, handleGetSelectedText } from './pageInteractionHandlers';
-import { getOllamaEmbedding } from '../../services/llm/embedding';
+import { getEmbedding } from '../../services/llm/embedding';
 import { 
     recordPageVisitVersion, // Use the new function name
     getPagesNeedingEmbedding, 
@@ -99,54 +99,74 @@ const REPROCESS_INFO_THRESHOLD_MS = 1000; // Original: 1 * 60 * 60 * 1000;
 // Lower value = more similar. E.g., 0.1 means very similar. Adjust as needed.
 const EMBEDDING_SIMILARITY_THRESHOLD = 0.1;
 
+// --- Dynamic Chat Helper (Simplified to only handle confirmed non-streaming) --- 
+async function dynamicChat(messages: ChatMessage[], config: FunctionConfig): Promise<LLMChatResponse | null> {
+    const { providerId, modelId, baseUrl, apiKey } = config;
+    if (!providerId || !modelId || !baseUrl) {
+        console.error('[dynamicChat] Incomplete LLM configuration:', config);
+        throw new Error('Incomplete LLM configuration for chat.');
+    }
+
+    const chatConfig: LLMConfig = {
+        provider: providerId as LLMProviderId,
+        model: modelId,
+        baseUrl: baseUrl!,
+        apiKey: apiKey ?? undefined,
+        stream: false, // Explicitly set stream to false
+        options: { temperature: 0 } 
+    };
+
+    console.log(`[dynamicChat] Calling provider: ${providerId}, Model: ${modelId}`);
+
+    switch (providerId) {
+        case 'ollama':
+            // ollamaChat correctly handles stream: false and returns LLMChatResponse
+            return ollamaChat(messages, chatConfig);
+        // --- Removed other cases until non-streaming behavior is confirmed/handled --- 
+        // case 'jan':
+        // case 'lmstudio':
+        default:
+            // Throw error for any provider other than ollama for now
+            console.error(`[dynamicChat] Unsupported or unverified non-streaming chat provider: ${providerId}`);
+            throw new Error(`Unsupported or unverified non-streaming chat provider: ${providerId}`);
+    }
+}
+// --- End Dynamic Chat Helper --- 
+
 /**
  * Registers message listeners for background script operations (SRS, etc.).
  */
 export function registerMessageHandlers(): void {
     console.log('[Message Handlers] Registering background message listeners...');
 
-    // --- Define helper for LLM call (Uses User Config) --- 
+    // --- Define helper for LLM call (Uses User Config & Dynamic Chat) --- 
     async function getSummaryFromLLM(text: string): Promise<string | null> {
         if (!text) return null;
         console.log('[Message Handlers getSummaryFromLLM] Requesting summary from LLM...');
         
-        let userLlmSettings: FunctionConfig | null = null; 
+        let userLlmConfig: FunctionConfig | null = null; 
         try {
             const settings = await userConfigurationStorage.getValue(); 
-            // --- Check and Assign userLlmSettings --- 
-            if (!settings || !settings.llmConfig || !settings.llmConfig.providerId || !settings.llmConfig.modelId || !settings.llmConfig.baseUrl) {
-                console.error('[Message Handlers getSummaryFromLLM] LLM configuration not found or incomplete in user settings. Cannot generate summary.');
+            if (!settings || !settings.llmConfig) {
+                console.error('[Message Handlers getSummaryFromLLM] LLM configuration not found in user settings. Cannot generate summary.');
                 return null; 
             }
-            userLlmSettings = settings.llmConfig;
-            // --- End Check and Assign ---
+            userLlmConfig = settings.llmConfig;
 
-            // --- Build the config for the chat function --- 
-            const chatConfig: LLMConfig = {
-                provider: userLlmSettings.providerId as LLMProviderId, 
-                model: userLlmSettings.modelId,
-                baseUrl: userLlmSettings.baseUrl!, 
-                apiKey: userLlmSettings.apiKey ?? undefined, 
-                stream: false, 
-                options: { temperature: 0 } 
-            };
-
-            const prompt = getSummarizationPrompt(text);
-            console.log(`[Message Handlers getSummaryFromLLM] Using LLM config: Provider=${chatConfig.provider}, Model=${chatConfig.model}, BaseUrl=${chatConfig.baseUrl}`);
-            
-            // --- Select provider dynamically --- 
-            let response;
-            // --- No longer possibly null here --- 
-            if (chatConfig.provider === 'ollama') {
-                 // --- Pass the correctly typed config --- 
-                 response = await ollamaChat([{ role: 'user', content: prompt }], chatConfig);
-            } else {
-                 console.error(`[Message Handlers getSummaryFromLLM] Unsupported LLM provider configured for summarization: ${chatConfig.provider}. Only 'ollama' is currently handled directly.`);
+            // --- Check if config is complete --- 
+            if (!userLlmConfig.providerId || !userLlmConfig.modelId || !userLlmConfig.baseUrl) {
+                 console.error('[Message Handlers getSummaryFromLLM] LLM configuration is incomplete:', userLlmConfig);
                  return null;
             }
-            // --- End Provider Selection --- 
+
+            const prompt = getSummarizationPrompt(text);
+            console.log(`[Message Handlers getSummaryFromLLM] Using LLM config: Provider=${userLlmConfig.providerId}, Model=${userLlmConfig.modelId}, BaseUrl=${userLlmConfig.baseUrl}`);
             
-            const summary = (response as LLMChatResponse)?.choices?.[0]?.message?.content?.trim();
+            // --- Use the dynamic chat helper --- 
+            const response = await dynamicChat([{ role: 'user', content: prompt }], userLlmConfig);
+            // --- End dynamic chat call --- 
+            
+            const summary = response?.choices?.[0]?.message?.content?.trim();
             if (!summary) {
                 console.warn('[Message Handlers getSummaryFromLLM] LLM returned empty summary.');
                 return null;
@@ -155,9 +175,8 @@ export function registerMessageHandlers(): void {
             return summary;
         } catch (error) {
             console.error('[Message Handlers getSummaryFromLLM] Error getting summary from LLM:', error);
-            // --- Log failed config details if available --- 
-            if (userLlmSettings) {
-                 console.error(`[Message Handlers getSummaryFromLLM] Failed using config: Provider=${userLlmSettings.providerId}, Model=${userLlmSettings.modelId}, BaseUrl=${userLlmSettings.baseUrl}`);
+            if (userLlmConfig) {
+                 console.error(`[Message Handlers getSummaryFromLLM] Failed using config: Provider=${userLlmConfig.providerId}, Model=${userLlmConfig.modelId}, BaseUrl=${userLlmConfig.baseUrl}`);
             }
             return null;
         }
@@ -249,7 +268,7 @@ export function registerMessageHandlers(): void {
         }
     });
 
-    // --- Listener for generateLLMDistractors ---
+    // --- Listener for generateLLMDistractors (Uses Dynamic Chat) --- 
     messaging.onMessage('generateLLMDistractors', async (message) => {
         console.log('[Message Handlers] Received generateLLMDistractors request:', message.data);
         const { sourceText, targetText, targetLang, count, direction } = message.data;
@@ -265,39 +284,34 @@ export function registerMessageHandlers(): void {
         // Log the direction being processed
         console.log(`[Message Handlers] Distractor generation direction: ${direction} (${sourceLang} -> ${effectiveTargetLang})`);
 
-        // TODO: Retrieve actual LLM config from storage
-        const mockLlmConfig: LLMConfig = {
-            provider: 'ollama', // No assertion needed now
-            model: 'gemma3:12b',
-            baseUrl: 'http://localhost:11434',
-            stream: false,
-        };
-
+        let userLlmConfig: FunctionConfig | null = null; 
         try {
+            // --- Load user LLM config --- 
+            const settings = await userConfigurationStorage.getValue(); 
+            if (!settings || !settings.llmConfig) {
+                throw new Error('LLM configuration not found for distractor generation.');
+            }
+            userLlmConfig = settings.llmConfig;
+            // --- Check if config is complete --- 
+            if (!userLlmConfig.providerId || !userLlmConfig.modelId || !userLlmConfig.baseUrl) {
+                 throw new Error('LLM configuration is incomplete for distractor generation.');
+            }
+            // --- End Load/Check Config --- 
+
             let prompt: string;
-            // Choose prompt based on direction
             if (direction === 'NATIVE_TO_EN') {
-                // We need the Native phrase as the prompt ('sourceText' in this context)
-                // and the English phrase as the correct answer ('targetText' in this context)
                  prompt = getMCQGenerationPromptNativeToEn(sourceText, targetText, sourceLang, effectiveTargetLang); 
                  console.log(`[Message Handlers] Using NATIVE_TO_EN prompt generator.`);
             } else { // Default to EN_TO_NATIVE
-                // Here, sourceText is English, targetText is Native
                 prompt = getMCQGenerationPrompt(sourceText, targetText, sourceLang, effectiveTargetLang);
                  console.log(`[Message Handlers] Using EN_TO_NATIVE prompt generator.`);
             }
             
-            const llmResponse = await ollamaChat([{ role: 'user', content: prompt }], mockLlmConfig);
+            // --- Use the dynamic chat helper --- 
+            const llmResponse = await dynamicChat([{ role: 'user', content: prompt }], userLlmConfig);
+            // --- End dynamic chat call --- 
             
-            // Handle both streamed and non-streamed responses
-            let rawContent: string | undefined;
-            if (typeof llmResponse === 'object' && llmResponse && 'choices' in llmResponse) {
-                // Non-streamed response
-                rawContent = llmResponse.choices?.[0]?.message?.content?.trim();
-            } else {
-                console.warn('[Message Handlers] Received unexpected response type from ollamaChat (expected non-streamed object).');
-                 throw new Error('Unexpected LLM response format. Expected non-streamed.');
-            }
+            let rawContent = llmResponse?.choices?.[0]?.message?.content?.trim();
 
             if (!rawContent) throw new Error('LLM returned empty content.');
 
@@ -332,6 +346,9 @@ export function registerMessageHandlers(): void {
             }
         } catch (error: any) {
             console.error('[Message Handlers] Error handling generateLLMDistractors:', error);
+            if (userLlmConfig) {
+                console.error(`[Message Handlers generateLLMDistractors] Failed using config: Provider=${userLlmConfig.providerId}, Model=${userLlmConfig.modelId}, BaseUrl=${userLlmConfig.baseUrl}`);
+           }
             return { distractors: [], error: error.message || 'Failed to generate distractors.' };
         }
     });
@@ -477,18 +494,34 @@ export function registerMessageHandlers(): void {
         }
     });
 
-    // --- Listener for triggerBatchEmbedding (incorporating Summarization) ---
+    // --- Listener for triggerBatchEmbedding (Uses Dynamic Embedding) --- 
     messaging.onMessage('triggerBatchEmbedding', async () => {
-        console.log('[Message Handlers] Received triggerBatchEmbedding request (with summarization logic).');
+        console.log('[Message Handlers] Received triggerBatchEmbedding request (with dynamic embedding).');
         let finalizedCount = 0;
         let duplicateCount = 0;
         let errorCount = 0;
         let db: PGlite | null = null;
         let candidates: PageVersionToEmbed[] = [];
+        let userEmbeddingConfig: FunctionConfig | null = null; // Store user config
 
         try {
-            db = await getDbInstance(); // Get DB instance once
-            candidates = await getPagesNeedingEmbedding(20); // Reduced limit due to LLM calls
+            // --- Load user embedding config ONCE at the start --- 
+            const settings = await userConfigurationStorage.getValue(); 
+            if (!settings || !settings.embeddingConfig) {
+                console.error('[Message Handlers triggerBatchEmbedding] Embedding configuration not found in user settings. Aborting batch.');
+                return { success: false, finalizedCount, duplicateCount, errorCount: 0, error: 'Embedding configuration not found.' }; 
+            }
+            userEmbeddingConfig = settings.embeddingConfig;
+            // --- Check if config is complete --- 
+            if (!userEmbeddingConfig.providerId || !userEmbeddingConfig.modelId || !userEmbeddingConfig.baseUrl) {
+                 console.error('[Message Handlers triggerBatchEmbedding] Embedding configuration is incomplete:', userEmbeddingConfig);
+                 return { success: false, finalizedCount, duplicateCount, errorCount: 0, error: 'Embedding configuration incomplete.' }; 
+            }
+            console.log('[Message Handlers triggerBatchEmbedding] Using embedding config:', userEmbeddingConfig);
+            // --- End Load/Check Config --- 
+
+            db = await getDbInstance(); 
+            candidates = await getPagesNeedingEmbedding(20); 
 
             if (candidates.length === 0) {
                 console.log('[Message Handlers triggerBatchEmbedding] No page versions found needing embedding.');
@@ -505,11 +538,11 @@ export function registerMessageHandlers(): void {
 
                     // 2. Compare Original Markdown Hashes (Quick check for exact content match)
                     if (latestEmbedded && candidate.markdown_hash && latestEmbedded.markdown_hash && candidate.markdown_hash === latestEmbedded.markdown_hash) {
-                        console.log(`[Message Handlers triggerBatchEmbedding] Exact ORIGINAL markdown hash match found for version_id: ${candidate.version_id} with version_id: ${latestEmbedded.version_id}. Handling as duplicate.`);
+                        console.log(`[Message Handlers triggerBatchEmbedding] Exact ORIGINAL markdown hash match found... Handling as duplicate.`);
                         await incrementPageVersionVisitCount(latestEmbedded.version_id);
-                        await deletePageVersion(candidate.version_id); // Delete the row with the identical raw markdown
+                        await deletePageVersion(candidate.version_id); 
                         duplicateCount++;
-                        continue; // Move to next candidate
+                        continue; 
                     }
 
                     // --- Markdown differs (or first time), proceed with summarization & semantic check --- 
@@ -524,8 +557,11 @@ export function registerMessageHandlers(): void {
                     }
                     const summaryHash = await calculateHash(summary);
 
-                    // 4. Embed the generated SUMMARY
-                    const summaryEmbeddingResult = await getOllamaEmbedding(summary);
+                    // 4. Embed the generated SUMMARY (Use dynamic function)
+                    // --- Use the dynamic getEmbedding function --- 
+                    const summaryEmbeddingResult = await getEmbedding(summary, userEmbeddingConfig); // Pass loaded config
+                    // --- End dynamic embedding call --- 
+
                     if (!summaryEmbeddingResult) {
                         console.warn(`[Message Handlers triggerBatchEmbedding] SUMMARY embedding generation failed for version_id: ${candidate.version_id}. Skipping.`);
                         errorCount++;
@@ -533,9 +569,6 @@ export function registerMessageHandlers(): void {
                     }
                     
                     // --- Update DB with Summary Info BEFORE comparison --- 
-                    // We need the summary/hash stored even if it ends up being a duplicate semantically, 
-                    // so the *next* comparison has the correct previous summary hash. 
-                    // This function will also set raw markdown to NULL.
                     await updatePageVersionSummaryAndCleanup({ 
                         version_id: candidate.version_id, 
                         summary_content: summary, 
@@ -545,34 +578,31 @@ export function registerMessageHandlers(): void {
 
                     // 5. Compare Summaries
                     if (latestEmbedded) {
-                        // 5a. Check Summary Hashes (Optimization for deterministic LLM)
+                        // 5a. Check Summary Hashes (Optimization)
                         if (summaryHash && latestEmbedded.summary_hash && summaryHash === latestEmbedded.summary_hash) {
-                            console.log(`[Message Handlers triggerBatchEmbedding] Exact SUMMARY hash match found for version_id: ${candidate.version_id} with version_id: ${latestEmbedded.version_id}. Handling as duplicate.`);
+                            console.log(`[Message Handlers triggerBatchEmbedding] Exact SUMMARY hash match found... Handling as duplicate.`);
                             await incrementPageVersionVisitCount(latestEmbedded.version_id);
-                            await deletePageVersion(candidate.version_id); // Delete the candidate (summary was identical)
+                            await deletePageVersion(candidate.version_id);
                             duplicateCount++;
                             continue;
                         }
 
-                        // 5b. Hashes differ (or missing), compare SUMMARY embeddings
-                        // Ensure dimensions match
+                        // 5b. Hashes differ, compare SUMMARY embeddings
                         if (summaryEmbeddingResult.dimension !== latestEmbedded.active_embedding_dimension) {
-                            console.warn(`[Message Handlers triggerBatchEmbedding] SUMMARY Embedding dimension mismatch for version_id: ${candidate.version_id} (${summaryEmbeddingResult.dimension}) vs latest embedded (${latestEmbedded.active_embedding_dimension}). Skipping comparison, finalizing new version.`);
+                            console.warn(`[Message Handlers triggerBatchEmbedding] SUMMARY Embedding dimension mismatch... Skipping comparison, finalizing new version.`);
                              await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
                              finalizedCount++;
                              continue;
                         }
                         
-                        // Get the latest embedded SUMMARY vector
                         const latestSummaryVector = await getSummaryEmbeddingForVersion(latestEmbedded.version_id);
                         const candidateSummaryVector = summaryEmbeddingResult.embedding;
 
                         if (!latestSummaryVector || !candidateSummaryVector) {
-                            console.error(`[Message Handlers triggerBatchEmbedding] Could not retrieve one or both SUMMARY vectors for comparison. Candidate: ${candidate.version_id}, Latest: ${latestEmbedded.version_id}. Finalizing candidate.`);
-                            // Finalize candidate if we can't compare
+                            console.error(`[Message Handlers triggerBatchEmbedding] Could not retrieve SUMMARY vectors for comparison... Finalizing candidate.`);
                             await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
                             finalizedCount++;
-                            errorCount++; // Log as error because comparison failed
+                            errorCount++;
                             continue;
                         }
 
@@ -585,11 +615,10 @@ export function registerMessageHandlers(): void {
                         const distance = distanceResult.rows[0]?.distance;
 
                         if (typeof distance !== 'number') {
-                             console.error(`[Message Handlers triggerBatchEmbedding] Failed to calculate SUMMARY vector distance between ${candidate.version_id} and ${latestEmbedded.version_id}. Finalizing candidate.`);
-                             // Finalize candidate if distance calc fails
+                             console.error(`[Message Handlers triggerBatchEmbedding] Failed to calculate SUMMARY vector distance... Finalizing candidate.`);
                              await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
                              finalizedCount++;
-                             errorCount++; // Log as error
+                             errorCount++;
                              continue;
                         }
 
@@ -597,21 +626,19 @@ export function registerMessageHandlers(): void {
 
                         // Check threshold
                         if (distance < EMBEDDING_SIMILARITY_THRESHOLD) {
-                            // Similar Summary: Increment previous count, delete candidate
-                            console.log(`[Message Handlers triggerBatchEmbedding] SUMMARY semantically similar. Handling version_id: ${candidate.version_id} as duplicate of ${latestEmbedded.version_id}.`);
+                            console.log(`[Message Handlers triggerBatchEmbedding] SUMMARY semantically similar... Handling as duplicate.`);
                             await incrementPageVersionVisitCount(latestEmbedded.version_id);
-                            await deletePageVersion(candidate.version_id); // Delete the candidate
+                            await deletePageVersion(candidate.version_id);
                             duplicateCount++;
                         } else {
-                            // Different Summary: Finalize the candidate embedding
-                            console.log(`[Message Handlers triggerBatchEmbedding] SUMMARY semantically different. Finalizing embedding for version_id: ${candidate.version_id}.`);
+                            console.log(`[Message Handlers triggerBatchEmbedding] SUMMARY semantically different. Finalizing embedding.`);
                             await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
                             finalizedCount++;
                         }
 
                     } else {
                         // 5c. No previous embedded version found. Finalize this one.
-                        console.log(`[Message Handlers triggerBatchEmbedding] No previous embedded version found for URL ${candidate.url}. Finalizing SUMMARY embedding for version_id: ${candidate.version_id}.`);
+                        console.log(`[Message Handlers triggerBatchEmbedding] No previous embedded version found... Finalizing SUMMARY embedding.`);
                         await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
                         finalizedCount++;
                     }
@@ -619,7 +646,6 @@ export function registerMessageHandlers(): void {
                 } catch (processingError) {
                     console.error(`[Message Handlers triggerBatchEmbedding] Error processing candidate version_id ${candidate.version_id}:`, processingError);
                     errorCount++;
-                    // Continue to the next candidate even if one fails
                 }
             } // End for loop
 
@@ -628,10 +654,14 @@ export function registerMessageHandlers(): void {
 
         } catch (error: any) {
             console.error('[Message Handlers triggerBatchEmbedding] Unexpected error during batch embedding:', error);
+            // Log config if error occurs
+            if (userEmbeddingConfig) {
+                 console.error(`[Message Handlers triggerBatchEmbedding] Failed using embedding config: Provider=${userEmbeddingConfig.providerId}, Model=${userEmbeddingConfig.modelId}, BaseUrl=${userEmbeddingConfig.baseUrl}`);
+            }
             return { success: false, finalizedCount, duplicateCount, errorCount: candidates.length, error: error.message || 'Batch embedding failed.' };
         }
     });
-    // --- End Listener for triggerBatchEmbedding ---
+    // --- End Listener for triggerBatchEmbedding --- 
 
     // --- Listener for getPendingEmbeddingCount (Should be correct already) ---
     messaging.onMessage('getPendingEmbeddingCount', async () => {

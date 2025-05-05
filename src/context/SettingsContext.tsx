@@ -82,23 +82,22 @@ interface ISettingsContext {
   handleRedirectSettingChange: (serviceName: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => Promise<void>;
 }
 
-// --- Initial State ---
-// Define the default structure of your settings
-const initialSettings: UserConfiguration = {
-    nativeLanguage: null,
-    targetLanguage: null,
-    learningGoal: null,
-    llmConfig: null,
-    embeddingConfig: null,
-    // Default reader config to null instead of specific provider
-    readerConfig: null, // Use the new object structure
-    redirectSettings: {}, // Default empty object
-    onboardingComplete: false,
+// --- Initial Empty Config & State --- 
+const initialConfig: UserConfiguration = {
+  nativeLanguage: 'en', // Sensible default
+  targetLanguage: '', // Needs to be set
+  learningGoal: '', // Needs to be set
+  onboardingComplete: false,
+  llmConfig: null, // Use the new object structure
+  embeddingConfig: null, // Use the new object structure
+  // readerConfig: null, // Removed Reader
+  ttsConfig: null, // Use the new object structure
+  redirectSettings: {}
 };
 
 // --- Store Definition ---
 // Use createStore for potentially complex/nested state
-const [settingsStore, setSettingsStore] = createStore<UserConfiguration>(initialSettings);
+const [settingsStore, setSettingsStore] = createStore<UserConfiguration>(initialConfig);
 
 // --- Context Definition ---
 // Create the actual context object
@@ -111,7 +110,7 @@ export const SettingsProvider: ParentComponent = (props) => {
         console.log("[SettingsContext] Attempting to load settings from storage...");
         const storedValue = await userConfigurationStorage.getValue();
         console.log("[SettingsContext] Value loaded from storage:", storedValue);
-        return storedValue || initialSettings; 
+        return storedValue || initialConfig; 
     });
 
     // Effect to populate the store once the resource is ready

@@ -1,4 +1,4 @@
-import { Component, Show, type Accessor } from 'solid-js';
+import { Component, type Accessor } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { Spinner } from '../../components/ui/spinner';
 import { ArrowClockwise } from 'phosphor-solid';
@@ -8,7 +8,7 @@ export interface EmbeddingProcessingPanelProps {
   pendingEmbeddingCount: Accessor<number>;
   isEmbedding: Accessor<boolean>;
   // Status message prop might not be needed if all state is shown in the button
-  // embedStatusMessage: Accessor<string | null>; 
+  embedStatusMessage: Accessor<string | null>;
   onProcessClick: () => void; 
   processedCount?: Accessor<number>; // Optional: Items processed in current batch
   totalCount?: Accessor<number>;   // Optional: Total items in current batch

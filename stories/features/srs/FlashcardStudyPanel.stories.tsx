@@ -1,7 +1,5 @@
 import { FlashcardStudyPanel } from '../../../src/features/srs/FlashcardStudyPanel';
-import type { FlashcardStudyPanelProps } from '../../../src/features/srs/FlashcardStudyPanel';
-import { action } from '@storybook/addon-actions';
-import type { JSX } from 'solid-js';
+import { action } from '@storybook/addon-actions';;
 
 export default {
   title: 'Features/SRS/FlashcardStudyPanel',

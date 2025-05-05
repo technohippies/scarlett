@@ -17,7 +17,6 @@ const mockLlmProviderOptions: ProviderOption[] = [
     { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
 ];
 const mockEmbeddingProviderOptions: ProviderOption[] = [...mockLlmProviderOptions];
-const mockReaderProviderOptions: ProviderOption[] = mockLlmProviderOptions.filter(p => p.id === 'ollama');
 const mockTtsProviderOptions: ProviderOption[] = [];
 
 const mockRedirectSettings: RedirectSettings = {
@@ -41,7 +40,7 @@ const mockInitialConfig: UserConfiguration = {
     learningGoal: 'casual',
     llmConfig: null,
     embeddingConfig: null,
-    readerConfig: null,
+    ttsConfig: null,
     redirectSettings: mockRedirectSettings,
     onboardingComplete: true,
 };
@@ -94,7 +93,7 @@ export default {
   argTypes: {
      initialActiveSection: {
         control: { type: 'select' },
-        options: ['llm', 'embedding', 'reader', 'tts', 'redirects', null],
+        options: ['llm', 'embedding', 'tts', 'redirects', null],
         description: 'Initial active section to display',
         name: 'Initial Section'
      },
@@ -107,11 +106,9 @@ export default {
      config: { table: { disable: true } },
      llmTransientState: { table: { disable: true } },
      embeddingTransientState: { table: { disable: true } },
-     readerTransientState: { table: { disable: true } },
      ttsTransientState: { table: { disable: true } },
      llmProviderOptions: { table: { disable: true } },
      embeddingProviderOptions: { table: { disable: true } },
-     readerProviderOptions: { table: { disable: true } },
      ttsProviderOptions: { table: { disable: true } },
      onSectionChange: { action: 'onSectionChange' },
      onLlmSelectProvider: { action: 'onLlmSelectProvider' },
@@ -120,9 +117,6 @@ export default {
      onEmbeddingSelectProvider: { action: 'onEmbeddingSelectProvider' },
      onEmbeddingSelectModel: { action: 'onEmbeddingSelectModel' },
      onEmbeddingTestConnection: { action: 'onEmbeddingTestConnection' },
-     onReaderSelectProvider: { action: 'onReaderSelectProvider' },
-     onReaderSelectModel: { action: 'onReaderSelectModel' },
-     onReaderTestConnection: { action: 'onReaderTestConnection' },
      onRedirectSettingChange: { action: 'onRedirectSettingChange' },
      onBackClick: { action: 'onBackClick' },
   },
@@ -132,7 +126,6 @@ export default {
     config: mockInitialConfig,
     llmTransientState: createMockTransientState([], []),
     embeddingTransientState: createMockTransientState([], []),
-    readerTransientState: createMockTransientState([], []),
     ttsTransientState: createMockTransientState([], []),
   }
 };
@@ -153,11 +146,9 @@ const BaseRender = (args: any) => {
         activeSection: activeSection, // Use the signal accessor
         llmTransientState: args.llmTransientState,
         embeddingTransientState: args.embeddingTransientState,
-        readerTransientState: args.readerTransientState,
         ttsTransientState: args.ttsTransientState,
         llmProviderOptions: mockLlmProviderOptions, // Use fixed mock options
         embeddingProviderOptions: mockEmbeddingProviderOptions,
-        readerProviderOptions: mockReaderProviderOptions,
         ttsProviderOptions: mockTtsProviderOptions,
         onSectionChange: (section: string | null) => {
             action('onSectionChange')(section); // Log the action
@@ -172,9 +163,6 @@ const BaseRender = (args: any) => {
         onEmbeddingSelectProvider: action('onEmbeddingSelectProvider'),
         onEmbeddingSelectModel: action('onEmbeddingSelectModel'),
         onEmbeddingTestConnection: action('onEmbeddingTestConnection'),
-        onReaderSelectProvider: action('onReaderSelectProvider'),
-        onReaderSelectModel: action('onReaderSelectModel'),
-        onReaderTestConnection: action('onReaderTestConnection'),
         onRedirectSettingChange: async (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => {
             action('onRedirectSettingChange')(service, update);
         },

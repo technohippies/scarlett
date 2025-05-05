@@ -1,11 +1,24 @@
 import type { LLMConfig, LLMChatResponse, ChatMessage, StreamedChatResponsePart } from '../../types'; // Path relative to chat.ts
 import { parseSseChunk } from '../../../../lib/utils'; // Path to utils where parseSseChunk is
 
-// Combined implementation for Ollama
+// --- Overload Signatures --- 
+// Signature for non-streaming (stream: false or undefined)
 export function ollamaChat(
   messages: ChatMessage[],
-  config: LLMConfig
-): Promise<LLMChatResponse> | AsyncGenerator<StreamedChatResponsePart> { // Corrected stream type
+  config: Omit<LLMConfig, 'stream'> | (LLMConfig & { stream?: false })
+): Promise<LLMChatResponse>;
+
+// Signature for streaming (stream: true)
+export function ollamaChat(
+  messages: ChatMessage[],
+  config: LLMConfig & { stream: true }
+): AsyncGenerator<StreamedChatResponsePart>;
+
+// --- Implementation Signature (uses the union type) --- 
+export function ollamaChat(
+  messages: ChatMessage[],
+  config: LLMConfig // General config for implementation
+): Promise<LLMChatResponse> | AsyncGenerator<StreamedChatResponsePart> { 
   if (config.stream === true) {
     return _ollamaChatStream(messages, config);
   } else {
@@ -22,7 +35,7 @@ async function _ollamaChatNonStream(
     model: config.model, 
     messages: messages,
     stream: false,
-    ...(config.extraParams ? config.extraParams : {}),
+    ...(config.options ? config.options : {}),
   };
   const baseUrl = config.baseUrl || 'http://localhost:11434';
   console.log('[ollamaChat] Sending non-streaming request body:', JSON.stringify(body));
@@ -53,7 +66,7 @@ export async function* _ollamaChatStream(
     model: config.model, 
     messages: messages,
     stream: true,
-    ...(config.extraParams ? config.extraParams : {}),
+    ...(config.options ? config.options : {}),
   };
   const baseUrl = config.baseUrl || 'http://localhost:11434';
   console.log('[ollamaChat] Sending streaming request body:', JSON.stringify(body));

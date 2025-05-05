@@ -20,17 +20,14 @@ export interface FunctionConfig {
     // Add other common fields if necessary
 }
 
-// Define the main User Configuration interface
+// Define the shape of the user's overall configuration
 export interface UserConfiguration {
     nativeLanguage: string | null;
     targetLanguage: string | null;
     learningGoal: string | null;
-    llmConfig: FunctionConfig | null;
-    embeddingConfig: FunctionConfig | null;
-    // Represent reader config similarly or adjust as needed
-    readerConfig: FunctionConfig | null; // Use FunctionConfig like others
-    // Add the missing redirect settings field
-    redirectSettings: RedirectSettings | null; // Allow null, but not undefined
-    onboardingComplete: boolean; // Should likely be non-optional boolean
-    // Add any other top-level settings stored in userConfigurationStorage
+    onboardingComplete: boolean;
+    llmConfig: FunctionConfig | null; // Use FunctionConfig like others
+    embeddingConfig: FunctionConfig | null; // Use FunctionConfig like others
+    ttsConfig: FunctionConfig | null; // Ensure TTS is included
+    redirectSettings: RedirectSettings;
 }
