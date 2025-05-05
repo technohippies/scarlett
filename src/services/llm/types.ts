@@ -1,13 +1,21 @@
 // src/services/llm/types.ts
 
-// Basic configuration for any LLM provider
+// --- Remove duplicate --- 
+// export type LLMProvider = 'ollama' | 'jan' | 'lmstudio' | 'openai'; // Example providers
+
+// --- Re-introduce Provider ID type --- 
+export type LLMProviderId = 'ollama' | 'jan' | 'lmstudio'; // Add more as needed
+
+/**
+ * Configuration for connecting to an LLM service.
+ */
 export interface LLMConfig {
-  provider: string; // e.g., 'ollama', 'jan'
-  model: string; // Model ID
-  baseUrl: string; // Base URL of the LLM server
-  apiKey?: string; // Optional API key
-  stream?: boolean; // Optional flag for streaming responses
-  extraParams?: Record<string, any>; // Optional extra parameters for the API call
+    provider: LLMProviderId; // Use the ID type here
+    model: string;          // Model ID (e.g., 'llama3:latest')
+    baseUrl: string;        // Base URL of the LLM service
+    apiKey?: string;        // Optional API key
+    stream?: boolean;       // Whether to use streaming responses (defaults vary)
+    options?: Record<string, any>; // NEW: Allow arbitrary provider-specific options
 }
 
 // Information about a specific model provided by an LLM service

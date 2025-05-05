@@ -30,4 +30,23 @@ Respond ONLY with a single, valid JSON object adhering to this exact structure:
 Do not include any explanations, apologies, or text outside the JSON object. Ensure the word segmentation and mapping reflect the phrase's context.
 
 JSON Response:`;
+}
+
+// Add any other analysis-related prompts here
+
+/**
+ * Creates a prompt to summarize the provided text concisely.
+ * @param text The text to summarize.
+ * @returns The summarization prompt string.
+ */
+export function getSummarizationPrompt(text: string): string {
+  // Basic prompt, might need refinement based on LLM behavior
+  return `Please provide a concise summary of the following text. Focus on the main points and key information. Aim for a summary that is significantly shorter than the original text but captures its essence.
+
+Original Text:
+---
+${text}
+---
+
+Concise Summary:`;
 } 

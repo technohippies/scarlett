@@ -173,16 +173,18 @@ CREATE TABLE IF NOT EXISTS pages (
 CREATE TABLE IF NOT EXISTS page_versions (
     version_id SERIAL PRIMARY KEY,
     url TEXT NOT NULL REFERENCES pages(url) ON DELETE CASCADE, -- Link back to the main URL
-    markdown_content TEXT NULL,           -- The processed markdown for this version
-    markdown_hash TEXT NULL,              -- Hash of markdown_content for quick equality checks
+    markdown_content TEXT NULL,           -- The *original* processed markdown (can be set to NULL after summarization)
+    markdown_hash TEXT NULL,              -- Hash of *original* markdown_content
+    summary_content TEXT NULL,            -- NEW: The LLM-generated summary
+    summary_hash TEXT NULL,               -- NEW: Hash of summary_content
     captured_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- When this version was captured
     
-    -- Embedding columns
+    -- Embedding columns (store embedding of the summary)
     embedding_512 vector(512) NULL,
     embedding_768 vector(768) NULL,
     embedding_1024 vector(1024) NULL,
     active_embedding_dimension INTEGER NULL, -- Which dimension is currently populated?
-    last_embedded_at TIMESTAMPTZ NULL,     -- When this version was last successfully embedded
+    last_embedded_at TIMESTAMPTZ NULL,     -- When this version's *summary* was last successfully embedded
     
     -- Metadata
     visit_count INTEGER DEFAULT 1           -- How many times content similar to this version was encountered
@@ -193,10 +195,12 @@ CREATE INDEX IF NOT EXISTS idx_pages_last_visited ON pages (last_visited_at DESC
 
 -- Indices for `page_versions` table
 CREATE INDEX IF NOT EXISTS idx_page_versions_url_captured ON page_versions (url, captured_at DESC);
--- Index to quickly find versions needing embedding
+-- Index to quickly find versions needing embedding (summary embedding, specifically)
 CREATE INDEX IF NOT EXISTS idx_page_versions_needs_embedding ON page_versions (last_embedded_at) WHERE last_embedded_at IS NULL;
 -- Index to quickly find the latest embedded version for a URL
 CREATE INDEX IF NOT EXISTS idx_page_versions_latest_embedded ON page_versions (url, last_embedded_at DESC) WHERE last_embedded_at IS NOT NULL;
-
+-- Index for potentially faster hash lookups (optional)
+CREATE INDEX IF NOT EXISTS idx_page_versions_markdown_hash ON page_versions (markdown_hash);
+CREATE INDEX IF NOT EXISTS idx_page_versions_summary_hash ON page_versions (summary_hash);
 
 -- --- END RAG / Page History Tables ---

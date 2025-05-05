@@ -33,11 +33,11 @@ import { updateCachedDistractors } from '../../services/db/learning';
 import { getDbInstance } from '../../services/db/init';
 import { ollamaChat } from '../../services/llm/providers/ollama/chat';
 import { getMCQGenerationPrompt, getMCQGenerationPromptNativeToEn } from '../../services/llm/prompts/exercises';
-import type { LLMConfig } from '../../services/llm/types';
+import type { LLMConfig, LLMChatResponse, LLMProviderId } from '../../services/llm/types';
 import { handleSaveBookmark, handleLoadBookmarks } from './bookmark-handlers';
 import { handleTagList, handleTagSuggest } from './tag-handlers';
 import { handleGetPageInfo, handleGetSelectedText } from './pageInteractionHandlers';
-import { getOllamaEmbedding } from '../../services/llm/embedding';
+import { getOllamaEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
 import { 
     recordPageVisitVersion, // Use the new function name
     getPagesNeedingEmbedding, 
@@ -45,11 +45,15 @@ import {
     finalizePageVersionEmbedding, 
     deletePageVersion, 
     incrementPageVersionVisitCount,
-    countPagesNeedingEmbedding 
+    countPagesNeedingEmbedding, 
+    calculateHash, // Assuming calculateHash is exported or moved here
+    updatePageVersionSummaryAndCleanup, // NEW function needed
+    getSummaryEmbeddingForVersion // NEW function needed
 } from '../../services/db/visited_pages';
-import type { PageVersionToEmbed, LatestEmbeddedVersion } from '../../services/db/visited_pages'; // Import interfaces
+import type { PageVersionToEmbed, LatestEmbeddedVersion, PageVersionSummaryUpdate } from '../../services/db/visited_pages'; // Import interfaces
 import { pageInfoProcessingTimestamps } from '../../services/storage/storage';
 import type { PGlite } from '@electric-sql/pglite';
+import { getSummarizationPrompt } from '../../services/llm/prompts/analysis'; // Import the prompt
 
 // Define the protocol map for messages handled by the background script
 export interface BackgroundProtocolMap {
@@ -84,8 +88,8 @@ export interface BackgroundProtocolMap {
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
 
 // Define the threshold for reprocessing (e.g., 1 hour in milliseconds)
-// --- REVERT TEMPORARY CHANGE --- 
-const REPROCESS_INFO_THRESHOLD_MS = 1 * 60 * 60 * 1000; // Original: 1 * 60 * 60 * 1000; 
+// --- TEMPORARILY CHANGE FOR TESTING (AGAIN) --- 
+const REPROCESS_INFO_THRESHOLD_MS = 1000; // Original: 1 * 60 * 60 * 1000; 
 
 // Define a similarity threshold (Cosine Distance)
 // Lower value = more similar. E.g., 0.1 means very similar. Adjust as needed.
@@ -96,6 +100,37 @@ const EMBEDDING_SIMILARITY_THRESHOLD = 0.1;
  */
 export function registerMessageHandlers(): void {
     console.log('[Message Handlers] Registering background message listeners...');
+
+    // --- Define helper for LLM call --- 
+    async function getSummaryFromLLM(text: string): Promise<string | null> {
+        if (!text) return null;
+        console.log('[Message Handlers getSummaryFromLLM] Requesting summary from LLM...');
+        try {
+            const prompt = getSummarizationPrompt(text);
+            // TODO: Get actual config from storage
+            const llmConfig: LLMConfig = {
+                provider: 'ollama', // No assertion needed now
+                model: 'gemma3:12b', 
+                baseUrl: 'http://localhost:11434', 
+                stream: false,
+                options: { temperature: 0 } 
+            };
+            const response = await ollamaChat([{ role: 'user', content: prompt }], llmConfig);
+            
+            // Extract content (assuming non-streamed response format)
+            const summary = (response as LLMChatResponse)?.choices?.[0]?.message?.content?.trim();
+            if (!summary) {
+                console.warn('[Message Handlers getSummaryFromLLM] LLM returned empty summary.');
+                return null;
+            }
+            console.log(`[Message Handlers getSummaryFromLLM] Received summary (length: ${summary.length}): ${summary.substring(0, 100)}...`);
+            return summary;
+        } catch (error) {
+            console.error('[Message Handlers getSummaryFromLLM] Error getting summary from LLM:', error);
+            return null;
+        }
+    }
+    // --- End LLM helper ---
 
     // --- Listener for getDueItems --- 
     messaging.onMessage('getDueItems', async (message) => {
@@ -200,7 +235,7 @@ export function registerMessageHandlers(): void {
 
         // TODO: Retrieve actual LLM config from storage
         const mockLlmConfig: LLMConfig = {
-            provider: 'ollama',
+            provider: 'ollama', // No assertion needed now
             model: 'gemma3:12b',
             baseUrl: 'http://localhost:11434',
             stream: false,
@@ -410,19 +445,18 @@ export function registerMessageHandlers(): void {
         }
     });
 
-    // --- Listener for triggerBatchEmbedding (NEW VERSION) ---
+    // --- Listener for triggerBatchEmbedding (incorporating Summarization) ---
     messaging.onMessage('triggerBatchEmbedding', async () => {
-        console.log('[Message Handlers] Received triggerBatchEmbedding request.');
+        console.log('[Message Handlers] Received triggerBatchEmbedding request (with summarization logic).');
         let finalizedCount = 0;
         let duplicateCount = 0;
         let errorCount = 0;
         let db: PGlite | null = null;
-        // --- Initialize candidates array here --- 
         let candidates: PageVersionToEmbed[] = [];
 
         try {
             db = await getDbInstance(); // Get DB instance once
-            candidates = await getPagesNeedingEmbedding(50); // Fetch candidates (assign to outer scope variable)
+            candidates = await getPagesNeedingEmbedding(20); // Reduced limit due to LLM calls
 
             if (candidates.length === 0) {
                 console.log('[Message Handlers triggerBatchEmbedding] No page versions found needing embedding.');
@@ -434,87 +468,119 @@ export function registerMessageHandlers(): void {
             for (const candidate of candidates) {
                 console.log(`[Message Handlers triggerBatchEmbedding] Processing candidate version_id: ${candidate.version_id} for URL: ${candidate.url}`);
                 try {
-                    // --- Log the markdown content before embedding --- 
-                    console.log(`[Message Handlers triggerBatchEmbedding] Content for version_id ${candidate.version_id} (length: ${candidate.markdown_content?.length ?? 0}):\n${candidate.markdown_content?.substring(0, 500)}...`); // Log first 500 chars
-                    // --- End Log ---
+                    // 1. Find latest previously EMBEDDED version (based on summary embeddings)
+                    const latestEmbedded = await findLatestEmbeddedVersion(candidate.url);
 
-                    // 1. Generate embedding for the candidate
-                    const candidateEmbeddingResult = await getOllamaEmbedding(candidate.markdown_content);
-                    if (!candidateEmbeddingResult) {
-                        console.warn(`[Message Handlers triggerBatchEmbedding] Embedding generation failed for version_id: ${candidate.version_id}. Skipping.`);
+                    // 2. Compare Original Markdown Hashes (Quick check for exact content match)
+                    if (latestEmbedded && candidate.markdown_hash && latestEmbedded.markdown_hash && candidate.markdown_hash === latestEmbedded.markdown_hash) {
+                        console.log(`[Message Handlers triggerBatchEmbedding] Exact ORIGINAL markdown hash match found for version_id: ${candidate.version_id} with version_id: ${latestEmbedded.version_id}. Handling as duplicate.`);
+                        await incrementPageVersionVisitCount(latestEmbedded.version_id);
+                        await deletePageVersion(candidate.version_id); // Delete the row with the identical raw markdown
+                        duplicateCount++;
+                        continue; // Move to next candidate
+                    }
+
+                    // --- Markdown differs (or first time), proceed with summarization & semantic check --- 
+                    console.log(`[Message Handlers triggerBatchEmbedding] Original markdown hashes differ or no previous embedded version. Proceeding with summarization for version_id: ${candidate.version_id}.`);
+                    
+                    // 3. Summarize the candidate's markdown content
+                    const summary = await getSummaryFromLLM(candidate.markdown_content);
+                    if (!summary) {
+                        console.warn(`[Message Handlers triggerBatchEmbedding] Summarization failed for version_id: ${candidate.version_id}. Skipping.`);
+                        errorCount++;
+                        continue;
+                    }
+                    const summaryHash = await calculateHash(summary);
+
+                    // 4. Embed the generated SUMMARY
+                    const summaryEmbeddingResult = await getOllamaEmbedding(summary);
+                    if (!summaryEmbeddingResult) {
+                        console.warn(`[Message Handlers triggerBatchEmbedding] SUMMARY embedding generation failed for version_id: ${candidate.version_id}. Skipping.`);
                         errorCount++;
                         continue; 
                     }
+                    
+                    // --- Update DB with Summary Info BEFORE comparison --- 
+                    // We need the summary/hash stored even if it ends up being a duplicate semantically, 
+                    // so the *next* comparison has the correct previous summary hash. 
+                    // This function will also set raw markdown to NULL.
+                    await updatePageVersionSummaryAndCleanup({ 
+                        version_id: candidate.version_id, 
+                        summary_content: summary, 
+                        summary_hash: summaryHash 
+                    });
+                    // --- 
 
-                    // 2. Find the latest previously embedded version for this URL
-                    const latestEmbedded = await findLatestEmbeddedVersion(candidate.url);
-
-                    // 3. Comparison Logic
+                    // 5. Compare Summaries
                     if (latestEmbedded) {
-                        // 3a. Check for exact hash match (optimization)
-                        if (candidate.markdown_hash && latestEmbedded.markdown_hash && candidate.markdown_hash === latestEmbedded.markdown_hash) {
-                            console.log(`[Message Handlers triggerBatchEmbedding] Exact hash match found for version_id: ${candidate.version_id} with version_id: ${latestEmbedded.version_id}. Handling as duplicate.`);
+                        // 5a. Check Summary Hashes (Optimization for deterministic LLM)
+                        if (summaryHash && latestEmbedded.summary_hash && summaryHash === latestEmbedded.summary_hash) {
+                            console.log(`[Message Handlers triggerBatchEmbedding] Exact SUMMARY hash match found for version_id: ${candidate.version_id} with version_id: ${latestEmbedded.version_id}. Handling as duplicate.`);
                             await incrementPageVersionVisitCount(latestEmbedded.version_id);
-                            await deletePageVersion(candidate.version_id);
+                            await deletePageVersion(candidate.version_id); // Delete the candidate (summary was identical)
                             duplicateCount++;
-                            continue; // Move to next candidate
+                            continue;
                         }
 
-                        // 3b. Hashes differ, proceed with semantic comparison
-                        // Ensure dimensions match or handle mismatch (using latestEmbedded dimension for now)
-                        if (candidateEmbeddingResult.dimension !== latestEmbedded.active_embedding_dimension) {
-                            console.warn(`[Message Handlers triggerBatchEmbedding] Embedding dimension mismatch for version_id: ${candidate.version_id} (${candidateEmbeddingResult.dimension}) vs latest embedded (${latestEmbedded.active_embedding_dimension}). Skipping comparison, finalizing new version.`);
-                            // Decide how to handle: skip comparison and finalize, or try re-embedding with target dimension? Finalizing for now.
-                             await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: candidateEmbeddingResult });
+                        // 5b. Hashes differ (or missing), compare SUMMARY embeddings
+                        // Ensure dimensions match
+                        if (summaryEmbeddingResult.dimension !== latestEmbedded.active_embedding_dimension) {
+                            console.warn(`[Message Handlers triggerBatchEmbedding] SUMMARY Embedding dimension mismatch for version_id: ${candidate.version_id} (${summaryEmbeddingResult.dimension}) vs latest embedded (${latestEmbedded.active_embedding_dimension}). Skipping comparison, finalizing new version.`);
+                             await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
                              finalizedCount++;
                              continue;
                         }
+                        
+                        // Get the latest embedded SUMMARY vector
+                        const latestSummaryVector = await getSummaryEmbeddingForVersion(latestEmbedded.version_id);
+                        const candidateSummaryVector = summaryEmbeddingResult.embedding;
 
-                        // Get the actual vector string for comparison
-                        const latestVector = latestEmbedded[`embedding_${latestEmbedded.active_embedding_dimension}` as keyof LatestEmbeddedVersion] as number[];
-                        const candidateVector = candidateEmbeddingResult.embedding;
-
-                        if (!latestVector || !candidateVector) {
-                            console.error(`[Message Handlers triggerBatchEmbedding] Could not retrieve one or both vectors for comparison. Candidate: ${candidate.version_id}, Latest: ${latestEmbedded.version_id}. Skipping.`);
-                            errorCount++;
+                        if (!latestSummaryVector || !candidateSummaryVector) {
+                            console.error(`[Message Handlers triggerBatchEmbedding] Could not retrieve one or both SUMMARY vectors for comparison. Candidate: ${candidate.version_id}, Latest: ${latestEmbedded.version_id}. Finalizing candidate.`);
+                            // Finalize candidate if we can't compare
+                            await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
+                            finalizedCount++;
+                            errorCount++; // Log as error because comparison failed
                             continue;
                         }
 
                         // Perform vector comparison using SQL
                         const vectorCompareSql = `SELECT $1::vector <=> $2::vector as distance;`;
-                        // Convert vectors to string format PGlite expects: '[1,2,...]'
-                        const latestVectorString = `[${latestVector.join(',')}]`;
-                        const candidateVectorString = `[${candidateVector.join(',')}]`;
+                        const latestVectorString = `[${latestSummaryVector.join(',')}]`;
+                        const candidateVectorString = `[${candidateSummaryVector.join(',')}]`;
                         
                         const distanceResult = await db.query<{ distance: number }>(vectorCompareSql, [latestVectorString, candidateVectorString]);
                         const distance = distanceResult.rows[0]?.distance;
 
                         if (typeof distance !== 'number') {
-                             console.error(`[Message Handlers triggerBatchEmbedding] Failed to calculate vector distance between ${candidate.version_id} and ${latestEmbedded.version_id}. Skipping.`);
-                             errorCount++;
+                             console.error(`[Message Handlers triggerBatchEmbedding] Failed to calculate SUMMARY vector distance between ${candidate.version_id} and ${latestEmbedded.version_id}. Finalizing candidate.`);
+                             // Finalize candidate if distance calc fails
+                             await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
+                             finalizedCount++;
+                             errorCount++; // Log as error
                              continue;
                         }
 
-                        console.log(`[Message Handlers triggerBatchEmbedding] Cosine distance between ${candidate.version_id} and ${latestEmbedded.version_id}: ${distance.toFixed(4)}`);
+                        console.log(`[Message Handlers triggerBatchEmbedding] SUMMARY Cosine distance between ${candidate.version_id} and ${latestEmbedded.version_id}: ${distance.toFixed(4)}`);
 
                         // Check threshold
                         if (distance < EMBEDDING_SIMILARITY_THRESHOLD) {
-                            // Similar: Increment previous count, delete candidate
-                            console.log(`[Message Handlers triggerBatchEmbedding] Semantically similar. Handling version_id: ${candidate.version_id} as duplicate of ${latestEmbedded.version_id}.`);
+                            // Similar Summary: Increment previous count, delete candidate
+                            console.log(`[Message Handlers triggerBatchEmbedding] SUMMARY semantically similar. Handling version_id: ${candidate.version_id} as duplicate of ${latestEmbedded.version_id}.`);
                             await incrementPageVersionVisitCount(latestEmbedded.version_id);
-                            await deletePageVersion(candidate.version_id);
+                            await deletePageVersion(candidate.version_id); // Delete the candidate
                             duplicateCount++;
                         } else {
-                            // Different: Finalize the candidate embedding
-                            console.log(`[Message Handlers triggerBatchEmbedding] Semantically different. Finalizing embedding for version_id: ${candidate.version_id}.`);
-                            await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: candidateEmbeddingResult });
+                            // Different Summary: Finalize the candidate embedding
+                            console.log(`[Message Handlers triggerBatchEmbedding] SUMMARY semantically different. Finalizing embedding for version_id: ${candidate.version_id}.`);
+                            await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
                             finalizedCount++;
                         }
 
                     } else {
-                        // 3c. No previous embedded version found for this URL. Finalize this one.
-                        console.log(`[Message Handlers triggerBatchEmbedding] No previous embedded version found for URL ${candidate.url}. Finalizing embedding for version_id: ${candidate.version_id}.`);
-                        await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: candidateEmbeddingResult });
+                        // 5c. No previous embedded version found. Finalize this one.
+                        console.log(`[Message Handlers triggerBatchEmbedding] No previous embedded version found for URL ${candidate.url}. Finalizing SUMMARY embedding for version_id: ${candidate.version_id}.`);
+                        await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
                         finalizedCount++;
                     }
 
@@ -530,11 +596,10 @@ export function registerMessageHandlers(): void {
 
         } catch (error: any) {
             console.error('[Message Handlers triggerBatchEmbedding] Unexpected error during batch embedding:', error);
-            // --- Now candidates is accessible here --- 
             return { success: false, finalizedCount, duplicateCount, errorCount: candidates.length, error: error.message || 'Batch embedding failed.' };
         }
     });
-    // --- End Listener for triggerBatchEmbedding --- 
+    // --- End Listener for triggerBatchEmbedding ---
 
     // --- Listener for getPendingEmbeddingCount (Should be correct already) ---
     messaging.onMessage('getPendingEmbeddingCount', async () => {

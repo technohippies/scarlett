@@ -5,7 +5,8 @@ import type { EmbeddingResult } from '../llm/embedding'; // Import the result ty
 console.log('[DB VisitedPages Service] Loaded.');
 
 // --- Helper function to calculate SHA-256 hash --- 
-async function calculateHash(text: string): Promise<string> {
+// --- EXPORT this function --- 
+export async function calculateHash(text: string): Promise<string> {
     if (!text) return ''; // Handle empty string case
     try {
         const encoder = new TextEncoder();
@@ -23,6 +24,14 @@ async function calculateHash(text: string): Promise<string> {
     }
 }
 // --- End Helper --- 
+
+// --- NEW Interface for Summary Update --- 
+export interface PageVersionSummaryUpdate {
+    version_id: number;
+    summary_content: string;
+    summary_hash: string;
+}
+// --- End Interface --- 
 
 // Interface for initial page data
 interface PageVisitData {
@@ -213,6 +222,97 @@ export async function incrementPageVersionVisitCount(version_id: number): Promis
     }
 }
 
+/**
+ * Updates a page version with its summary and hash, and nullifies the original markdown.
+ * @param data Object containing version_id, summary_content, and summary_hash.
+ */
+export async function updatePageVersionSummaryAndCleanup(data: PageVersionSummaryUpdate): Promise<void> {
+    const { version_id, summary_content, summary_hash } = data;
+    console.log(`[DB VisitedPages] updateSummaryAndCleanup for version_id: ${version_id}`);
+    if (!version_id || !summary_content || !summary_hash) {
+        console.error('[DB VisitedPages] Missing required data for updateSummaryAndCleanup.');
+        throw new Error('Missing data for summary update.');
+    }
+    let db: PGlite | null = null;
+    try {
+        db = await getDbInstance();
+        const sql = `
+            UPDATE page_versions
+            SET 
+                summary_content = $1,
+                summary_hash = $2,
+                markdown_content = NULL -- Clean up original markdown
+            WHERE version_id = $3;
+        `;
+        await db.query(sql, [summary_content, summary_hash, version_id]);
+        console.log(`[DB VisitedPages] Successfully updated summary and cleaned markdown for version_id: ${version_id}`);
+    } catch (error: any) {
+        console.error('[DB VisitedPages] Error in updatePageVersionSummaryAndCleanup:', error);
+        throw error;
+    }
+}
+
+/**
+ * Retrieves the specific summary embedding vector for a given version ID.
+ * @param version_id The ID of the page version.
+ * @returns A promise resolving to the embedding vector array, or null if not found/error.
+ */
+export async function getSummaryEmbeddingForVersion(version_id: number): Promise<number[] | null> {
+    console.log(`[DB VisitedPages] getSummaryEmbeddingForVersion for version_id: ${version_id}`);
+    if (!version_id) return null;
+    let db: PGlite | null = null;
+    try {
+        db = await getDbInstance();
+        // First, get the active dimension for this version
+        const dimResult = await db.query<{ active_embedding_dimension: number | null }>
+            ('SELECT active_embedding_dimension FROM page_versions WHERE version_id = $1', [version_id]);
+        
+        const dimension = dimResult.rows[0]?.active_embedding_dimension;
+        if (!dimension) {
+            console.warn(`[DB VisitedPages] No active embedding dimension found for version_id: ${version_id}`);
+            return null;
+        }
+
+        // Determine the correct embedding column
+        let embeddingCol: string;
+        switch(dimension) {
+            case 512: embeddingCol = 'embedding_512'; break;
+            case 768: embeddingCol = 'embedding_768'; break;
+            case 1024: embeddingCol = 'embedding_1024'; break;
+            default: 
+                console.error(`[DB VisitedPages] Invalid active_embedding_dimension ${dimension} for version ${version_id}`);
+                return null;
+        }
+
+        // Fetch the actual embedding vector
+        const fetchEmbeddingSql = `SELECT ${embeddingCol} FROM page_versions WHERE version_id = $1;`;
+        const embeddingResult = await db.query<{ [key: string]: string | null }>(fetchEmbeddingSql, [version_id]);
+        const vectorString = embeddingResult.rows[0]?.[embeddingCol];
+
+        if (!vectorString) {
+            console.error(`[DB VisitedPages] Could not fetch embedding vector for version ${version_id} from column ${embeddingCol}`);
+            return null;
+        }
+        
+        // Parse the string representation '[1,2,3]' into number[]
+        try {
+            const embeddingVector = JSON.parse(vectorString);
+            if (!Array.isArray(embeddingVector) || !embeddingVector.every(n => typeof n === 'number')){
+                throw new Error('Parsed result is not a number array');
+            }
+            return embeddingVector;
+        } catch (parseError) {
+             console.error(`[DB VisitedPages] Error parsing embedding vector string for version ${version_id}:`, parseError);
+             console.error(`[DB VisitedPages] Raw vector string: ${vectorString}`);
+             return null; // Failed to parse
+        }
+
+    } catch (error: any) {
+        console.error('[DB VisitedPages] Error in getSummaryEmbeddingForVersion:', error);
+        throw error;
+    }
+}
+
 // --- Query Functions (Steps 5, 6, 7 below) ---
 
 /** Represents a row from page_versions needing embedding */
@@ -227,7 +327,8 @@ export interface PageVersionToEmbed {
 export interface LatestEmbeddedVersion {
     version_id: number;
     url: string;
-    markdown_hash: string | null;
+    markdown_hash: string | null; // Hash of original markdown
+    summary_hash: string | null; // Hash of the summary
     active_embedding_dimension: number;
     // Embedding value needs to be fetched based on dimension
     embedding_512?: number[];
@@ -249,7 +350,7 @@ export async function findLatestEmbeddedVersion(url: string): Promise<LatestEmbe
         db = await getDbInstance();
         // Find the latest embedded version_id and its dimension
         const findLatestSql = `
-            SELECT version_id, markdown_hash, active_embedding_dimension
+            SELECT version_id, markdown_hash, summary_hash, active_embedding_dimension
             FROM page_versions
             WHERE url = $1 AND last_embedded_at IS NOT NULL
             ORDER BY last_embedded_at DESC
@@ -258,6 +359,7 @@ export async function findLatestEmbeddedVersion(url: string): Promise<LatestEmbe
         const latestResult = await db.query<{ 
             version_id: number; 
             markdown_hash: string | null; 
+            summary_hash: string | null; // Fetch summary_hash
             active_embedding_dimension: number 
         }>(findLatestSql, [url]);
 
@@ -267,7 +369,8 @@ export async function findLatestEmbeddedVersion(url: string): Promise<LatestEmbe
         }
 
         const latestInfo = latestResult.rows[0];
-        const { version_id, markdown_hash, active_embedding_dimension } = latestInfo;
+        // --- Destructure summary_hash --- 
+        const { version_id, markdown_hash, summary_hash, active_embedding_dimension } = latestInfo;
         console.log(`[DB VisitedPages] Found latest embedded version_id: ${version_id}, dimension: ${active_embedding_dimension}`);
 
         // Determine the correct embedding column to select
@@ -310,6 +413,7 @@ export async function findLatestEmbeddedVersion(url: string): Promise<LatestEmbe
             version_id,
             url,
             markdown_hash,
+            summary_hash, // Include summary_hash
             active_embedding_dimension
         };
 
