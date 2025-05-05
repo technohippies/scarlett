@@ -30,13 +30,20 @@ const providerImplementations = {
 interface ISettingsContext {
   config: typeof settingsStore; // Read-only access to store state
   loadStatus: () => SettingsLoadStatus;
-  // Actions for direct settings updates (which also handle saving)
+  
+  // --- Direct Config Update Actions (Use with care) ---
   updateLlmConfig: (config: FunctionConfig | null) => Promise<void>;
   updateEmbeddingConfig: (config: FunctionConfig | null) => Promise<void>;
   updateReaderConfig: (config: FunctionConfig | null) => Promise<void>;
   updateRedirectSetting: (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => Promise<void>;
   updateFullRedirectSettings: (settings: RedirectSettings) => Promise<void>; // Action to replace all redirect settings
-  // Actions for dynamic operations + their transient state
+
+  // --- UI Interaction Handlers --- 
+  handleSelectProvider: (funcType: string, provider: ProviderOption) => Promise<void>;
+  handleSelectModel: (funcType: string, modelId: string | undefined) => Promise<void>;
+  // handleUpdateBaseUrl: (funcType: string, baseUrl: string) => Promise<void>; // Optional future addition
+
+  // --- Dynamic Operations + Transient State --- 
   fetchModels: (funcType: string, provider: ProviderOption) => Promise<ModelOption[]>; // Make async, return models
   getTransientState: (funcType: string) => { // Get transient state scoped by function type
       models: () => ModelOption[];
@@ -136,22 +143,20 @@ export const SettingsProvider: ParentComponent = (props) => {
 
     // --- Define Actions ---
 
-    // Example: Update LLM Config
+    // Example: Update LLM Config (Keep these as direct setters)
     const updateLlmConfig = async (config: FunctionConfig | null) => {
         setSettingsStore('llmConfig', config);
         await saveCurrentSettings(); // Save after updating store
     };
-    // ... other update actions (updateEmbeddingConfig, updateReaderConfig) ...
     const updateEmbeddingConfig = async (config: FunctionConfig | null) => {
       setSettingsStore('embeddingConfig', config);
       await saveCurrentSettings();
     };
     const updateReaderConfig = async (config: FunctionConfig | null) => {
-      // Directly update the readerConfig object
       setSettingsStore('readerConfig', config);
       await saveCurrentSettings();
     };
-
+    // ... other direct update actions ...
 
     const updateRedirectSetting = async (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => {
         // Use produce for potentially easier nested updates
@@ -170,6 +175,47 @@ export const SettingsProvider: ParentComponent = (props) => {
     const updateFullRedirectSettings = async (settings: RedirectSettings) => {
         setSettingsStore('redirectSettings', settings);
         await saveCurrentSettings();
+    };
+
+    // --- UI Interaction Handler Implementations ---
+    const handleSelectProvider = async (funcType: string, provider: ProviderOption) => {
+        console.log(`[SettingsContext] handleSelectProvider called for ${funcType} with provider:`, provider);
+        const configKey = `${funcType.toLowerCase()}Config` as keyof UserConfiguration;
+        const newConfig: FunctionConfig = {
+            providerId: provider.id,
+            modelId: '', // Use empty string instead of undefined
+            baseUrl: provider.defaultBaseUrl || '' // Use provider default, ensure string
+        };
+
+        switch (configKey) {
+            case 'llmConfig': await updateLlmConfig(newConfig); break;
+            case 'embeddingConfig': await updateEmbeddingConfig(newConfig); break;
+            case 'readerConfig': await updateReaderConfig(newConfig); break;
+            // Add case for TTS when implemented
+            default: console.warn(`[SettingsContext] Unknown funcType in handleSelectProvider: ${funcType}`);
+        }
+    };
+
+    const handleSelectModel = async (funcType: string, modelId: string | undefined) => {
+        console.log(`[SettingsContext] handleSelectModel called for ${funcType} with modelId:`, modelId);
+        const configKey = `${funcType.toLowerCase()}Config` as keyof UserConfiguration;
+        const currentConfig = settingsStore[configKey] as FunctionConfig | null;
+
+        if (currentConfig) {
+            const newConfig: FunctionConfig = {
+                ...currentConfig,
+                modelId: modelId || '', // Use empty string if input is undefined
+            };
+            switch (configKey) {
+                case 'llmConfig': await updateLlmConfig(newConfig); break;
+                case 'embeddingConfig': await updateEmbeddingConfig(newConfig); break;
+                case 'readerConfig': await updateReaderConfig(newConfig); break;
+                // Add case for TTS
+                default: console.warn(`[SettingsContext] Unknown funcType in handleSelectModel: ${funcType}`);
+            }
+        } else {
+            console.warn(`[SettingsContext] Cannot select model for ${funcType} because current config is null.`);
+        }
     };
 
     // --- Dynamic Operations ---
@@ -301,13 +347,15 @@ export const SettingsProvider: ParentComponent = (props) => {
         // Ensure the type matches the resource state directly
         loadStatus: () => loadedSettings.state,
         updateLlmConfig,
-        updateEmbeddingConfig, // Add other update actions
+        updateEmbeddingConfig,
         updateReaderConfig,
         updateRedirectSetting,
         updateFullRedirectSettings,
         fetchModels,
-        getTransientState, // Provide the getter function
+        getTransientState,
         testConnection,
+        handleSelectProvider,
+        handleSelectModel,
     };
 
     // --- Render Provider ---
