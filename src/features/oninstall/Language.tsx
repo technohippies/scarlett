@@ -9,7 +9,6 @@ import {
 import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
 import type { Messages } from '../../types/i18n';
-import { Label } from '../../components/ui/label';
 
 // LanguageOption now might only need value and emoji if name comes from messages
 export interface LanguageOptionStub {

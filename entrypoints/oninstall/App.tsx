@@ -1,4 +1,4 @@
-import { Component, createSignal, createResource, createEffect, Show } from 'solid-js';
+import { Component, createSignal, createResource, createEffect, Show, Accessor, Setter } from 'solid-js';
 import { Language, LanguageOptionStub } from '../../src/features/oninstall/Language';
 import { LearningGoal } from '../../src/features/oninstall/LearningGoal';
 import { userConfigurationStorage } from '../../src/services/storage/storage';
@@ -18,7 +18,6 @@ import { SettingsProvider, useSettings } from '../../src/context/SettingsContext
 import ProviderSelectionPanel, { type ProviderOption } from '../../src/features/models/ProviderSelectionPanel';
 import ModelSelectionPanel from '../../src/features/models/ModelSelectionPanel';
 import ConnectionTestPanel from '../../src/features/models/ConnectionTestPanel';
-import type { FetchStatus, TestStatus } from '../../src/context/SettingsContext'; // Import status types
 
 // Define language lists here (could also be moved)
 const nativeLanguagesList: LanguageOptionStub[] = [
@@ -151,11 +150,6 @@ const fetchMessages = async (langCode: string): Promise<Messages> => {
 const onboardingSteps: Step[] = ['language', 'learningGoal', 'setupLLM', 'setupEmbedding', 'setupReader', 'redirects'];
 
 const App: Component = () => {
-  const [currentStep, setCurrentStep] = createSignal<Step>('language');
-  const [targetLangLabel, setTargetLangLabel] = createSignal<string>('');
-  const [uiLangCode, setUiLangCode] = createSignal<string>(getBestInitialLangCode());
-  
-  const [messagesData] = createResource(uiLangCode, fetchMessages);
 
   // --- Redirects State Management START ---
   // Resource to load initial redirect settings
@@ -163,8 +157,8 @@ const App: Component = () => {
     console.log("[App] Fetching initial redirect settings from storage...");
     // Revert to assuming UserConfiguration type is correct and includes redirectSettings
     // Use type assertion on the awaited value
-    const config = (await userConfigurationStorage.getValue()) as UserConfiguration; 
-    return config?.redirectSettings || {}; 
+    const config = (await userConfigurationStorage.getValue()) as UserConfiguration;
+    return config?.redirectSettings || {};
   }, { initialValue: {} });
 
   // Signal to hold the current redirect settings state being modified
@@ -180,144 +174,29 @@ const App: Component = () => {
   });
   // --- Redirects State Management END ---
 
-  // Calculate progress values
-  const progressValue = () => onboardingSteps.indexOf(currentStep()) + 1; // 1-based index
-  const progressMax = () => onboardingSteps.length;
-
-  const i18n = () => {
-    const messages = messagesData();
-    // console.log(
-    //   `[App] Recalculating i18n object. Loading: ${messagesData.loading}, Error: ${!!messagesData.error}, Has Data: ${!!messages}, Lang: ${uiLangCode()}`
-    // );
-    return {
-      get: (key: string, fallback: string) => messages?.[key]?.message || fallback,
-    };
-  };
-
-  // Handler for immediate native language change
-  const handleNativeLanguageSelect = (newLangCode: string) => {
-    if (newLangCode !== uiLangCode()) {
-        console.log(`[App] handleNativeLanguageSelect: UI language changing from ${uiLangCode()} to ${newLangCode}`);
-        setUiLangCode(newLangCode); // Trigger resource reload immediately
-    } else {
-        console.log(`[App] handleNativeLanguageSelect: Selected language ${newLangCode} already active.`);
-    }
-  };
-
-  // Handler for LLM setup step completion
-  const handleLLMComplete = async (config: FunctionConfig) => {
-    console.log('[App] LLM Setup Complete:', config);
-    if (!config.providerId || !config.modelId) {
-        console.warn('[App] LLM setup skipped or incomplete. Proceeding without saving LLM config.');
-    } else {
-        const currentConfig = await userConfigurationStorage.getValue();
-        const updatedConfig = {
-          ...currentConfig,
-          llmConfig: config, // Save LLM configuration
-        };
-        await userConfigurationStorage.setValue(updatedConfig);
-        console.log('[App] Config after saving LLM setup:', updatedConfig);
-    }
-    console.log('[App] Proceeding to Embedding setup step.');
-    setCurrentStep('setupEmbedding'); // Go to Embedding setup next
-  };
-
-  // Handler for Embedding setup step completion
-  const handleEmbeddingComplete = async (config: FunctionConfig) => {
-    console.log('[App] Embedding Setup Complete:', config);
-
-    if (!config.providerId || !config.modelId) {
-        console.warn('[App] Embedding setup skipped or incomplete. Proceeding without saving Embedding config.');
-    } else {
-        const currentConfig = await userConfigurationStorage.getValue();
-        const updatedConfig = {
-          ...currentConfig,
-          embeddingConfig: config, // Save Embedding configuration
-        };
-        await userConfigurationStorage.setValue(updatedConfig);
-        console.log('[App] Config after saving Embedding setup:', updatedConfig);
-    }
-
-    console.log('[App] Proceeding to Reader setup step.');
-    setCurrentStep('setupReader'); // Go to Reader setup
-  };
-
-   // Handler for Reader setup step
-   const handleReaderComplete = async (config: FunctionConfig) => {
-    console.log('[App] Reader Setup Complete. Saving config.', config);
-     if (!config.providerId || !config.modelId) {
-        console.warn('[App] Reader setup skipped or incomplete.');
-        // Even if skipped, proceed to next step
-    } else {
-        const currentConfig = (await userConfigurationStorage.getValue() || {}) as UserConfiguration;
-        // Correctly assign the config object to readerConfig
-        const updatedConfig = { 
-          ...currentConfig, 
-          readerConfig: config 
-        };
-        await userConfigurationStorage.setValue(updatedConfig);
-        console.log('[App] Config after saving Reader:', updatedConfig);
-    }
-    setCurrentStep('redirects');
-  };
-
-  // Handler for Redirects setup step (FINAL STEP)
-  const handleRedirectsComplete = async () => {
-      console.log('[App] Redirects Setup Complete (Final Step). Saving final settings.');
-      const finalRedirectSettings = redirectSettings();
-      
-      const currentConfig = (await userConfigurationStorage.getValue() || {}) as UserConfiguration;
-      // Construct final config, preserving existing configs correctly
-      const updatedConfig: UserConfiguration = {
-          nativeLanguage: currentConfig.nativeLanguage || null,
-          targetLanguage: currentConfig.targetLanguage || null,
-          learningGoal: currentConfig.learningGoal || null,
-          llmConfig: currentConfig.llmConfig || null,
-          embeddingConfig: currentConfig.embeddingConfig || null,
-          readerConfig: currentConfig.readerConfig || null, // Preserve existing readerConfig OBJECT
-          redirectSettings: finalRedirectSettings, 
-          onboardingComplete: true, 
-      };
-      await userConfigurationStorage.setValue(updatedConfig);
-      console.log('[App] Final config after saving Redirects:', updatedConfig);
-
-      // Close tab logic
-      console.log('[App] Onboarding complete, attempting to close tab.');
-      try {
-          const tab = await browser.tabs.getCurrent();
-          if (tab?.id) {
-              console.log(`[App] Closing tab with ID: ${tab.id}`);
-              browser.tabs.remove(tab.id);
-          }
-      } catch (error) {
-          console.error('[App] Error closing current tab:', error);
-      }
-  };
-
-  // Handler for changes within the Redirects component
-  const handleRedirectSettingChange = (serviceName: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => {
-    setRedirectSettings(prev => {
-      const currentServiceSetting = prev[serviceName] || { isEnabled: true, chosenInstance: '' }; // Default to enabled based on component logic
-      return {
-        ...prev,
-        [serviceName]: {
-          ...currentServiceSetting,
-          isEnabled: update.isEnabled,
-        },
-      };
-    });
-  };
-
   // Wrap the main return in SettingsProvider
   return (
     <SettingsProvider>
-      <OnboardingContent />
+      {/* Pass redirect state and setter down */}
+      <OnboardingContent
+        redirectSettings={redirectSettings}
+        setRedirectSettings={setRedirectSettings}
+        initialRedirectLoading={() => initialRedirectSettingsData.loading}
+      />
     </SettingsProvider>
   );
 };
 
+// --- Props for OnboardingContent ---
+interface OnboardingContentProps {
+  redirectSettings: Accessor<RedirectSettings>;
+  setRedirectSettings: Setter<RedirectSettings>;
+  initialRedirectLoading: Accessor<boolean>;
+}
+
 // Create a new component to contain the original App logic, now inside the provider
-const OnboardingContent: Component = () => {
+// Accept props for redirect state
+const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   const [currentStep, setCurrentStep] = createSignal<Step>('language');
   // Keep targetLangLabel for goal step display
   const [targetLangLabel, setTargetLangLabel] = createSignal<string>('');
@@ -327,22 +206,6 @@ const OnboardingContent: Component = () => {
   const [uiLangCode, setUiLangCode] = createSignal<string>(getBestInitialLangCode());
 
   const [messagesData] = createResource(uiLangCode, fetchMessages);
-
-  // --- Redirects State Management (Keep as is) ---
-  const [initialRedirectSettingsData] = createResource(async () => {
-    console.log("[App] Fetching initial redirect settings from storage...");
-    // Revert to assuming UserConfiguration type is correct and includes redirectSettings
-    // Use type assertion on the awaited value
-    const config = (await userConfigurationStorage.getValue()) as UserConfiguration; 
-    return config?.redirectSettings || {}; 
-  }, { initialValue: {} });
-  const [redirectSettings, setRedirectSettings] = createSignal<RedirectSettings>({});
-  createEffect(() => {
-    const loadedSettings = initialRedirectSettingsData();
-    if (!initialRedirectSettingsData.loading && loadedSettings) {
-        setRedirectSettings(loadedSettings);
-    }
-  });
 
   // --- Use Settings Context --- 
   const settingsContext = useSettings(); // Now we can use the context!
@@ -468,16 +331,30 @@ const OnboardingContent: Component = () => {
 
   // --- Redirects Handlers (Keep as is) ---
   const handleRedirectsComplete = async () => {
-    // ... (existing logic using userConfigurationStorage and redirectSettings signal) ...
     // Mark onboarding complete definitively here
-    const finalConfig = await userConfigurationStorage.getValue() || {};
-    finalConfig.onboardingComplete = true;
+    // Use the passed redirectSettings accessor
+    const currentRedirects = props.redirectSettings();
+    const currentConfig = await userConfigurationStorage.getValue() || {};
+    const finalConfig = {
+      ...currentConfig,
+      redirectSettings: currentRedirects, // Save the latest state
+      onboardingComplete: true,
+    };
     await userConfigurationStorage.setValue(finalConfig);
+    console.log('[App] Saving final config:', finalConfig);
     window.close(); // Close the onboarding tab
   };
 
   const handleRedirectSettingChange = (serviceName: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => {
-     // ... (existing logic using setRedirectSettings signal) ...
+     // Use the setRedirectSettings from props
+     props.setRedirectSettings(prev => ({
+      ...prev,
+      [serviceName]: {
+        ...prev[serviceName], // Keep existing settings for the service
+        ...update, // Apply the update (isEnabled)
+      }
+     }));
+     console.log(`[App] Redirect setting changed for ${serviceName}:`, update);
   };
 
   // Back Handler (Keep as is)
@@ -576,8 +453,9 @@ const OnboardingContent: Component = () => {
         if (state?.testStatus() === 'testing') return true; // Currently testing
         return false;
       case 'redirects':
-        // Disable if loading initial settings?
-        return initialRedirectSettingsData.loading;
+        // Disable if loading initial settings
+        // Use the passed loading accessor
+        return props.initialRedirectLoading();
       default:
         return true; // Disable by default for unknown steps
     }
@@ -791,16 +669,18 @@ const OnboardingContent: Component = () => {
 
       case 'redirects':
         return (
-          <Redirects
-            allRedirectSettings={redirectSettings} // Pass signal accessor
-            isLoading={() => initialRedirectSettingsData.loading} 
-            onSettingChange={handleRedirectSettingChange}
-            onComplete={handleRedirectsComplete}
-            onBack={handleBack}
-            title={i18n().get('onboardingRedirectsTitle', 'Bypass Censorship & Paywalls')}
-            description={i18n().get('onboardingRedirectsDescription', 'Use privacy-preserving frontends with many mirrors.')}
-            continueLabel={i18n().get('onboardingFinishSetup', 'Finish Setup')}
-          />
+          <div class="w-full max-w-lg">
+            <Redirects
+              allRedirectSettings={props.redirectSettings} // Pass signal accessor from props
+              isLoading={props.initialRedirectLoading} // Pass loading state from props
+              onSettingChange={handleRedirectSettingChange}
+              // onComplete prop is not valid for Redirects component
+              onBack={handleBack}
+              title={i18n().get('onboardingRedirectsTitle', 'Bypass Censorship & Paywalls')}
+              description={i18n().get('onboardingRedirectsDescription', 'Use privacy-preserving frontends with many mirrors.')}
+              // continueLabel prop is not valid
+            />
+          </div>
         );
       default:
         return <div>Unknown step</div>;
