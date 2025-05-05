@@ -37,7 +37,7 @@ import type { LLMConfig, LLMChatResponse, LLMProviderId } from '../../services/l
 import { handleSaveBookmark, handleLoadBookmarks } from './bookmark-handlers';
 import { handleTagList, handleTagSuggest } from './tag-handlers';
 import { handleGetPageInfo, handleGetSelectedText } from './pageInteractionHandlers';
-import { getOllamaEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
+import { getOllamaEmbedding } from '../../services/llm/embedding';
 import { 
     recordPageVisitVersion, // Use the new function name
     getPagesNeedingEmbedding, 
@@ -50,10 +50,14 @@ import {
     updatePageVersionSummaryAndCleanup, // NEW function needed
     getSummaryEmbeddingForVersion // NEW function needed
 } from '../../services/db/visited_pages';
-import type { PageVersionToEmbed, LatestEmbeddedVersion, PageVersionSummaryUpdate } from '../../services/db/visited_pages'; // Import interfaces
+import type { PageVersionToEmbed } from '../../services/db/visited_pages'; // Import interfaces
 import { pageInfoProcessingTimestamps } from '../../services/storage/storage';
 import type { PGlite } from '@electric-sql/pglite';
 import { getSummarizationPrompt } from '../../services/llm/prompts/analysis'; // Import the prompt
+// --- Import user configuration storage --- 
+import { userConfigurationStorage } from '../../services/storage/storage'; // Correct name
+// --- Import FunctionConfig --- 
+import type { FunctionConfig } from '../../services/storage/types';
 
 // Define the protocol map for messages handled by the background script
 export interface BackgroundProtocolMap {
@@ -101,23 +105,47 @@ const EMBEDDING_SIMILARITY_THRESHOLD = 0.1;
 export function registerMessageHandlers(): void {
     console.log('[Message Handlers] Registering background message listeners...');
 
-    // --- Define helper for LLM call --- 
+    // --- Define helper for LLM call (Uses User Config) --- 
     async function getSummaryFromLLM(text: string): Promise<string | null> {
         if (!text) return null;
         console.log('[Message Handlers getSummaryFromLLM] Requesting summary from LLM...');
+        
+        let userLlmSettings: FunctionConfig | null = null; 
         try {
-            const prompt = getSummarizationPrompt(text);
-            // TODO: Get actual config from storage
-            const llmConfig: LLMConfig = {
-                provider: 'ollama', // No assertion needed now
-                model: 'gemma3:12b', 
-                baseUrl: 'http://localhost:11434', 
-                stream: false,
+            const settings = await userConfigurationStorage.getValue(); 
+            // --- Check and Assign userLlmSettings --- 
+            if (!settings || !settings.llmConfig || !settings.llmConfig.providerId || !settings.llmConfig.modelId || !settings.llmConfig.baseUrl) {
+                console.error('[Message Handlers getSummaryFromLLM] LLM configuration not found or incomplete in user settings. Cannot generate summary.');
+                return null; 
+            }
+            userLlmSettings = settings.llmConfig;
+            // --- End Check and Assign ---
+
+            // --- Build the config for the chat function --- 
+            const chatConfig: LLMConfig = {
+                provider: userLlmSettings.providerId as LLMProviderId, 
+                model: userLlmSettings.modelId,
+                baseUrl: userLlmSettings.baseUrl!, 
+                apiKey: userLlmSettings.apiKey ?? undefined, 
+                stream: false, 
                 options: { temperature: 0 } 
             };
-            const response = await ollamaChat([{ role: 'user', content: prompt }], llmConfig);
+
+            const prompt = getSummarizationPrompt(text);
+            console.log(`[Message Handlers getSummaryFromLLM] Using LLM config: Provider=${chatConfig.provider}, Model=${chatConfig.model}, BaseUrl=${chatConfig.baseUrl}`);
             
-            // Extract content (assuming non-streamed response format)
+            // --- Select provider dynamically --- 
+            let response;
+            // --- No longer possibly null here --- 
+            if (chatConfig.provider === 'ollama') {
+                 // --- Pass the correctly typed config --- 
+                 response = await ollamaChat([{ role: 'user', content: prompt }], chatConfig);
+            } else {
+                 console.error(`[Message Handlers getSummaryFromLLM] Unsupported LLM provider configured for summarization: ${chatConfig.provider}. Only 'ollama' is currently handled directly.`);
+                 return null;
+            }
+            // --- End Provider Selection --- 
+            
             const summary = (response as LLMChatResponse)?.choices?.[0]?.message?.content?.trim();
             if (!summary) {
                 console.warn('[Message Handlers getSummaryFromLLM] LLM returned empty summary.');
@@ -127,6 +155,10 @@ export function registerMessageHandlers(): void {
             return summary;
         } catch (error) {
             console.error('[Message Handlers getSummaryFromLLM] Error getting summary from LLM:', error);
+            // --- Log failed config details if available --- 
+            if (userLlmSettings) {
+                 console.error(`[Message Handlers getSummaryFromLLM] Failed using config: Provider=${userLlmSettings.providerId}, Model=${userLlmSettings.modelId}, BaseUrl=${userLlmSettings.baseUrl}`);
+            }
             return null;
         }
     }

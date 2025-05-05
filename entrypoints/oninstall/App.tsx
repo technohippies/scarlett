@@ -74,14 +74,8 @@ const availableEmbeddingProviders: ProviderOption[] = [
     { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
 ];
 
-// Define available Reader Providers (likely subset of LLM providers)
-const availableReaderProviders: ProviderOption[] = [
-    { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
-    // Add others capable of running the reader model
-];
-
 // Simplified Step type for the new flow
-type Step = 'language' | 'learningGoal' | 'setupLLM' | 'setupEmbedding' | 'setupReader' | 'redirects';
+type Step = 'language' | 'learningGoal' | 'setupLLM' | 'setupEmbedding' | 'redirects';
 
 // Helper function modified to return the best determined language code
 function getBestInitialLangCode(): string {
@@ -147,7 +141,7 @@ const fetchMessages = async (langCode: string): Promise<Messages> => {
 };
 
 // Keep steps definition for progress calculation
-const onboardingSteps: Step[] = ['language', 'learningGoal', 'setupLLM', 'setupEmbedding', 'setupReader', 'redirects'];
+const onboardingSteps: Step[] = ['language', 'learningGoal', 'setupLLM', 'setupEmbedding', 'redirects'];
 
 const App: Component = () => {
 
@@ -308,24 +302,6 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         await userConfigurationStorage.setValue(updatedConfig);
         console.log('[App] Config after saving Embedding setup:', updatedConfig);
     }
-    setCurrentStep('setupReader');
-  };
-
-   const handleReaderComplete = async (config: FunctionConfig) => {
-    console.log('[App] Reader Setup Complete. Saving config.', config);
-     if (!config.providerId || !config.modelId) {
-        console.warn('[App] Reader setup skipped or incomplete.');
-        // Even if skipped, proceed to next step
-    } else {
-        const currentConfig = (await userConfigurationStorage.getValue() || {}) as UserConfiguration;
-        // Correctly assign the config object to readerConfig
-        const updatedConfig = { 
-          ...currentConfig, 
-          readerConfig: config 
-        };
-        await userConfigurationStorage.setValue(updatedConfig);
-        console.log('[App] Config after saving Reader:', updatedConfig);
-    }
     setCurrentStep('redirects');
   };
 
@@ -360,7 +336,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   // Back Handler (Keep as is)
   const handleBack = () => {
     const step = currentStep();
-    console.log(`[App] Back requested from step: ${step}`); // Good logging
+    console.log(`[App] Back requested from step: ${step}`); 
     switch (step) {
       case 'learningGoal':
         setCurrentStep('language');
@@ -369,31 +345,24 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         setCurrentStep('learningGoal');
         break;
       case 'setupEmbedding':
-        setCurrentStep('setupLLM'); // Go back to LLM setup
+        setCurrentStep('setupLLM'); 
         break;
-      case 'setupReader':
+      case 'redirects': 
         setCurrentStep('setupEmbedding');
         break;
-      case 'redirects': // Added case for redirects
-        setCurrentStep('setupReader');
-        break;
-      // Add cases for other steps if needed
       default:
         console.warn('[App] Back requested from unhandled step:', step);
-        // Optionally go back to a default previous step like language
-        // setCurrentStep('language');
         break;
     }
   };
 
-  // --- Footer Button Logic --- 
+  // --- Footer Button Logic (Remove Reader references) --- 
   const getCurrentTransientState = () => {
     const step = currentStep();
     switch (step) {
       case 'setupLLM': return settingsContext.getTransientState('LLM');
       case 'setupEmbedding': return settingsContext.getTransientState('Embedding');
-      case 'setupReader': return settingsContext.getTransientState('Reader');
-      default: return null; // No relevant state for other steps
+      default: return null; 
     }
   };
 
@@ -402,7 +371,6 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       switch (step) {
           case 'setupLLM': return settingsContext.config.llmConfig;
           case 'setupEmbedding': return settingsContext.config.embeddingConfig;
-          case 'setupReader': return settingsContext.config.readerConfig;
           default: return undefined;
       }
   };
@@ -416,8 +384,8 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     if (step === 'language' || step === 'learningGoal') {
       return i18n().get('onboardingContinue', 'Continue');
     }
-    if (step === 'setupLLM' || step === 'setupEmbedding' || step === 'setupReader') {
-      if (!config?.providerId) return i18n().get('onboardingContinue', 'Continue'); // Should be disabled anyway
+    if (step === 'setupLLM' || step === 'setupEmbedding') { 
+      if (!config?.providerId) return i18n().get('onboardingContinue', 'Continue'); 
       if (state?.fetchStatus() === 'success' && config?.modelId) {
         if (state?.testStatus() === 'idle' || state?.testStatus() === 'error') {
           return i18n().get('onboardingTest', 'Test');
@@ -428,7 +396,6 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         }
       }
     }
-    // Default label for non-model steps or initial states
     if (step === 'redirects') return i18n().get('onboardingFinishSetup', 'Finish Setup');
     return i18n().get('onboardingContinue', 'Continue');
   };
@@ -441,23 +408,20 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
 
     switch (step) {
       case 'language':
-        return !selectedTargetLangValue(); // Disable if no target language selected
+        return !selectedTargetLangValue(); 
       case 'learningGoal':
-        return !selectedGoalId(); // Disable if no goal selected
+        return !selectedGoalId(); 
       case 'setupLLM':
       case 'setupEmbedding':
-      case 'setupReader':
-        if (!config?.providerId) return true; // No provider selected
-        if (state?.fetchStatus() === 'loading') return true; // Loading models
-        if (state?.fetchStatus() === 'success' && !config?.modelId) return true; // No model selected
-        if (state?.testStatus() === 'testing') return true; // Currently testing
+        if (!config?.providerId) return true; 
+        if (state?.fetchStatus() === 'loading') return true; 
+        if (state?.fetchStatus() === 'success' && !config?.modelId) return true; 
+        if (state?.testStatus() === 'testing') return true; 
         return false;
       case 'redirects':
-        // Disable if loading initial settings
-        // Use the passed loading accessor
         return props.initialRedirectLoading();
       default:
-        return true; // Disable by default for unknown steps
+        return true; 
     }
   };
 
@@ -469,21 +433,18 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
 
     switch (step) {
       case 'language':
-        handleLanguageComplete(); // Call updated handler
+        handleLanguageComplete(); 
         break;
       case 'learningGoal':
-        handleLearningGoalComplete(); // Call updated handler
+        handleLearningGoalComplete(); 
         break;
       case 'setupLLM':
       case 'setupEmbedding':
-      case 'setupReader':
         if (config && state && (state.testStatus() === 'idle' || state.testStatus() === 'error')) {
-          settingsContext.testConnection(step.substring(5) as 'LLM' | 'Embedding' | 'Reader', config);
+          settingsContext.testConnection(step.substring(5) as 'LLM' | 'Embedding', config);
         } else if (config && state && state.testStatus() === 'success') {
-          // Call the appropriate step completion handler
           if (step === 'setupLLM') handleLLMComplete(config);
           else if (step === 'setupEmbedding') handleEmbeddingComplete(config);
-          else if (step === 'setupReader') handleReaderComplete(config);
         }
         break;
       case 'redirects':
@@ -493,7 +454,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   };
   // --- End Footer Button Logic ---
 
-  // --- Render Step Logic (Needs Major Update) ---
+  // --- Render Step Logic (Remove Reader Case) --- 
   const renderStep = () => {
     const step = currentStep();
     switch (step) {
@@ -621,52 +582,6 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         );
       }
 
-      case 'setupReader': {
-        const funcType = 'Reader';
-        const transientState = settingsContext.getTransientState(funcType);
-        const config = settingsContext.config.readerConfig;
-        return (
-          <div class="w-full max-w-lg">
-            <p class="text-xl md:text-2xl mb-2">
-              {"Go Faster with ReaderLM"} {/* Using default title from old component */}
-            </p>
-             <p class="text-lg text-muted-foreground mb-6">
-               {"ReaderLM 1.5B converts webpages to Markdown text."} {/* Using default desc */} 
-             </p>
-             <div class="mb-6">
-              <ProviderSelectionPanel
-                providerOptions={availableReaderProviders}
-                selectedProviderId={() => config?.providerId}
-                onSelectProvider={(provider) => settingsContext.handleSelectProvider(funcType, provider)}
-              />
-            </div>
-            <Show when={config?.providerId !== undefined}>
-              <div class="space-y-6">
-                <ModelSelectionPanel
-                  functionName={funcType}
-                  selectedProvider={() => availableReaderProviders.find(p => p.id === config?.providerId)}
-                  fetchStatus={transientState.fetchStatus}
-                  showSpinner={transientState.showSpinner}
-                  fetchError={transientState.fetchError}
-                  fetchedModels={transientState.localModels}
-                  remoteModels={transientState.remoteModels}
-                  selectedModelId={() => config?.modelId}
-                  onSelectModel={(modelId) => settingsContext.handleSelectModel(funcType, modelId)}
-                />
-                <Show when={transientState.fetchStatus() === 'success' && config?.modelId}>
-                  <ConnectionTestPanel
-                    testStatus={transientState.testStatus}
-                    testError={transientState.testError}
-                    functionName={funcType}
-                    selectedProvider={() => availableReaderProviders.find(p => p.id === config?.providerId)}
-                  />
-                </Show>
-              </div>
-            </Show>
-          </div>
-        );
-      }
-
       case 'redirects':
         return (
           <div class="w-full max-w-lg">
@@ -674,11 +589,9 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
               allRedirectSettings={props.redirectSettings} // Pass signal accessor from props
               isLoading={props.initialRedirectLoading} // Pass loading state from props
               onSettingChange={handleRedirectSettingChange}
-              // onComplete prop is not valid for Redirects component
               onBack={handleBack}
               title={i18n().get('onboardingRedirectsTitle', 'Bypass Censorship & Paywalls')}
               description={i18n().get('onboardingRedirectsDescription', 'Use privacy-preserving frontends with many mirrors.')}
-              // continueLabel prop is not valid
             />
           </div>
         );
