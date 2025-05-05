@@ -8,6 +8,7 @@ import type { ProviderOption } from '../../../src/features/models/ProviderSelect
 import type { ModelOption } from '../../../src/features/models/ModelSelectionPanel';
 // Import the exported status types
 import type { SettingsLoadStatus, FetchStatus, TestStatus } from '../../../src/context/SettingsContext'; 
+import type { Tag as DbTag } from '../../../src/services/db/types'; // Import Tag type
 
 // --- Mock Data ---
 
@@ -51,6 +52,15 @@ const mockLlmConfigSelected: FunctionConfig = {
     modelId: 'llama3:latest',
     baseUrl: 'http://localhost:11434'
 };
+
+// Add mock tags
+const now = new Date().toISOString();
+const mockTags: DbTag[] = [
+  { tag_id: 1, tag_name: '#solidjs', created_at: now, updated_at: now },
+  { tag_id: 2, tag_name: '#storybook', created_at: now, updated_at: now },
+  { tag_id: 3, tag_name: '#typescript', created_at: now, updated_at: now },
+  { tag_id: 4, tag_name: '#testing', created_at: now, updated_at: now },
+];
 
 // Helper type for the transient state accessors expected by the ViewProps
 interface TransientStateAccessors {
@@ -124,6 +134,8 @@ export default {
      onReaderSelectModel: { action: 'onReaderSelectModel' },
      onReaderTestConnection: { action: 'onReaderTestConnection' },
      onRedirectSettingChange: { action: 'onRedirectSettingChange' },
+     allTags: { table: { disable: true } },
+     onAddTag: { action: 'onAddTag' },
   },
   args: {
     initialActiveSection: 'llm',
@@ -133,6 +145,8 @@ export default {
     embeddingTransientState: createMockTransientState([], []),
     readerTransientState: createMockTransientState([], []),
     ttsTransientState: createMockTransientState([], []),
+    allTags: () => mockTags,
+    onAddTag: action('onAddTag')
   }
 };
 
@@ -158,6 +172,8 @@ const BaseRender = (args: any) => {
         embeddingProviderOptions: mockEmbeddingProviderOptions,
         readerProviderOptions: mockReaderProviderOptions,
         ttsProviderOptions: mockTtsProviderOptions,
+        allTags: () => args.allTags || mockTags,
+        onAddTag: args.onAddTag || action('onAddTag'),
         onSectionChange: (section: string | null) => {
             action('onSectionChange')(section); // Log the action
             setActiveSection(section); // Update the signal for UI feedback
@@ -182,7 +198,7 @@ const BaseRender = (args: any) => {
     };
 
     // Validate required props are present (basic check)
-    if (!viewProps.loadStatus || !viewProps.config || !viewProps.activeSection || !viewProps.llmTransientState) {
+    if (!viewProps.loadStatus || !viewProps.config || !viewProps.activeSection || !viewProps.llmTransientState || !viewProps.allTags) {
         console.error("[Storybook Render Error] Missing required props for SettingsPageView");
         return <div>Error: Missing required props</div>;
     }

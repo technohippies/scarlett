@@ -52,8 +52,12 @@ export default defineConfig({
       },
     },
     spacing: {
-      // Add other spacing values as needed
-      '4': "1rem", // Standard value for 4 is often 1rem (16px)
+      // Add standard spacing values needed
+      '4': "1rem",    // 16px
+      '6': "1.5rem",  // 24px
+      '8': "2rem",    // 32px
+      '12': "3rem",   // 48px
+      // Add other values as needed
     },
     // Removed borderRadius to resolve linter error
     // borderRadius: {
@@ -70,8 +74,9 @@ export default defineConfig({
         body,
         #root {
           height: 100%;
-          background-color: ${theme.colors.background};
-          color: ${theme.colors.foreground};
+          /* Add nullish coalescing or default values to fix linter */
+          background-color: ${theme?.colors?.background ?? '#000'};
+          color: ${theme?.colors?.foreground ?? '#fff'};
         }
         /* Original preflights */
         input[role="combobox"] {

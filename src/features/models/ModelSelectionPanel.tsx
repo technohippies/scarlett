@@ -208,7 +208,7 @@ export const ModelSelectionPanel: Component<ModelSelectionPanelProps> = (props) 
                   
                   {/* --- Local Model Selection --- */}
                   <Show when={props.fetchedModels().length > 0}>
-                    <Label for="local-model-select">Local {getModelTypeLabel(props.functionName)}</Label>
+                    <Label for="local-model-select" class="mb-2">Local {getModelTypeLabel(props.functionName)}</Label>
                     <Select<ModelOption>
                       id="local-model-select"
                       value={props.fetchedModels().find(m => m.id === props.selectedModelId())}
@@ -234,7 +234,7 @@ export const ModelSelectionPanel: Component<ModelSelectionPanelProps> = (props) 
 
                   {/* --- Remote Model Selection (Jan specific) --- */}
                   <Show when={props.remoteModels().length > 0}>
-                      <Label for="remote-model-combobox">Remote LLM</Label>
+                      <Label for="remote-model-combobox" class="mb-2">Remote LLM</Label>
                       <Combobox<ModelOption>
                           id="remote-model-combobox"
                           options={props.remoteModels()}

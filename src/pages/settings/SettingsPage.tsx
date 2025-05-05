@@ -27,16 +27,16 @@ const SettingsPageContent: Component = () => {
   const readerTransientState = settingsContext.getTransientState('Reader');
   const ttsTransientState = settingsContext.getTransientState('TTS');
 
-  // 4. Keep provider options
-  const llmProviderOptions: ProviderOption[] = [
-      { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
-      { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/llm-providers/jan.png' },
-      { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
-  ];
-  const embeddingProviderOptions: ProviderOption[] = [...llmProviderOptions];
-  const readerProviderOptions: ProviderOption[] = llmProviderOptions.filter(p => p.id === 'ollama');
-  const ttsProviderOptions: ProviderOption[] = []; // Placeholder
-  console.log('[SettingsPageContent] Log 2: After provider options defined.');
+  // 4. Get provider options from context
+  const { 
+      llmProviderOptions, 
+      embeddingProviderOptions, 
+      readerProviderOptions, 
+      ttsProviderOptions, 
+      allTags 
+  } = settingsContext;
+
+  console.log('[SettingsPageContent] Log 2: After provider options defined/retrieved.');
 
   // 5. Keep Handlers Commented Out (Placeholders for some)
   // ...
@@ -56,6 +56,7 @@ const SettingsPageContent: Component = () => {
       embeddingTransientState={embeddingTransientState}
       readerTransientState={readerTransientState}
       ttsTransientState={ttsTransientState}
+      allTags={allTags}
       // --- Handlers --- 
       onLlmSelectProvider={(provider) => settingsContext.handleSelectProvider('LLM', provider)} 
       onLlmSelectModel={(modelId) => settingsContext.handleSelectModel('LLM', modelId)}
@@ -68,7 +69,6 @@ const SettingsPageContent: Component = () => {
       onReaderTestConnection={() => settingsContext.config.readerConfig && settingsContext.testConnection('Reader', settingsContext.config.readerConfig)}
       // TODO: Add TTS handlers if/when implemented in context
       onRedirectSettingChange={settingsContext.updateRedirectSetting} 
-      // TODO: Add other handlers (API Key, DB Location, Reset, Import/Export) if needed
       onSectionChange={(section) => setActiveSection(section)}
     />
   );

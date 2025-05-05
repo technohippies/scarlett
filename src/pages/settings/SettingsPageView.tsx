@@ -3,7 +3,7 @@ import { For, Show } from "solid-js";
 import { Button } from "../../components/ui/button";
 import { 
   Brain, ChartLine, BookOpen, SpeakerHigh,
-  TrendUp
+  TrendUp, Tag
 } from "phosphor-solid";
 import {
   Sidebar,
@@ -24,6 +24,8 @@ import type { SettingsLoadStatus, FetchStatus, TestStatus } from "../../context/
 import ProviderSelectionPanel from "../../features/models/ProviderSelectionPanel";
 import ModelSelectionPanel from "../../features/models/ModelSelectionPanel";
 import ConnectionTestPanel from "../../features/models/ConnectionTestPanel";
+import TagsPanel from "../../features/tags/TagsPanel";
+import type { Tag as DbTag } from "../../services/db/types";
 
 // Menu Items (Keep)
 const settingsMenuItems = [
@@ -59,6 +61,7 @@ interface SettingsPageViewProps {
   embeddingProviderOptions: ProviderOption[];
   readerProviderOptions: ProviderOption[];
   ttsProviderOptions: ProviderOption[];
+  allTags: Accessor<DbTag[]>;
   onSectionChange: (section: string | null) => void;
   onLlmSelectProvider: (provider: ProviderOption) => void;
   onLlmSelectModel: (modelId: string | undefined) => void;
@@ -109,6 +112,27 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
             </SidebarGroupContent>
           </SidebarGroup>
           
+            {/* Data Management Group */}
+          <SidebarGroup>
+             <SidebarGroupLabel>DATA</SidebarGroupLabel>
+             <SidebarGroupContent>
+               <SidebarMenu>
+                 {/* Tags Item */}
+                 <SidebarMenuItem>
+                   <SidebarMenuButton 
+                     as="button" 
+                     onClick={() => props.onSectionChange('tags')} 
+                     tooltip="Tags"
+                     class={props.activeSection() === 'tags' ? 'bg-muted' : ''}
+                   >
+                     <Tag /> 
+                     <span>Tags</span>
+                   </SidebarMenuButton>
+                 </SidebarMenuItem>
+               </SidebarMenu>
+             </SidebarGroupContent>
+          </SidebarGroup>
+
             {/* Censorship Group */}
           <SidebarGroup>
             <SidebarGroupLabel>CENSORSHIP</SidebarGroupLabel>
@@ -136,7 +160,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
       </Sidebar>
 
         {/* Main Content Area uses Props */}
-        <main class="flex-1 p-4 overflow-y-auto bg-background text-foreground">
+        <main class="flex-1 p-6 overflow-y-auto bg-background text-foreground">
           <Show when={props.loadStatus() === 'pending'}>
               <div class="flex items-center justify-center h-full">
                   <p class="text-muted-foreground">Loading settings...</p>
@@ -153,7 +177,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
             {/* --- LLM Section --- */} 
             <Show when={props.activeSection() === 'llm'}>
               <h1 class="text-2xl font-semibold mb-4">LLM Settings</h1>
-              <div class="space-y-6">
+              <div class="space-y-4">
                 <ProviderSelectionPanel
                   providerOptions={props.llmProviderOptions} 
                   selectedProviderId={() => props.config.llmConfig?.providerId}
@@ -178,7 +202,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                       functionName="LLM"
                       selectedProvider={() => props.llmProviderOptions.find(p => p.id === props.config.llmConfig?.providerId)}
                     />
-                    <div class="flex space-x-4 mt-4">
+                    <div class="flex space-x-4 mt-6">
                       <Button 
                           onClick={props.onLlmTestConnection} 
                           disabled={props.llmTransientState.testStatus() === 'testing'}
@@ -194,7 +218,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
             {/* --- Embedding Section --- */} 
             <Show when={props.activeSection() === 'embedding'}>
               <h1 class="text-2xl font-semibold mb-4">Embedding Settings</h1>
-              <div class="space-y-6">
+              <div class="space-y-4">
                 <ProviderSelectionPanel
                   providerOptions={props.embeddingProviderOptions} 
                   selectedProviderId={() => props.config.embeddingConfig?.providerId}
@@ -219,7 +243,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                       functionName="Embedding"
                       selectedProvider={() => props.embeddingProviderOptions.find(p => p.id === props.config.embeddingConfig?.providerId)}
                     />
-                    <div class="flex space-x-4 mt-4">
+                    <div class="flex space-x-4 mt-6">
                       <Button 
                           onClick={props.onEmbeddingTestConnection} 
                           disabled={props.embeddingTransientState.testStatus() === 'testing'}
@@ -235,7 +259,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
             {/* --- Reader Section --- */} 
             <Show when={props.activeSection() === 'reader'}>
               <h1 class="text-2xl font-semibold mb-4">Reader Settings</h1>
-              <div class="space-y-6">
+              <div class="space-y-4">
                 <ProviderSelectionPanel
                   providerOptions={props.readerProviderOptions} 
                   selectedProviderId={() => props.config.readerConfig?.providerId}
@@ -260,7 +284,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                       functionName="Reader"
                       selectedProvider={() => props.readerProviderOptions.find(p => p.id === props.config.readerConfig?.providerId)}
                     />
-                    <div class="flex space-x-4 mt-4">
+                    <div class="flex space-x-4 mt-6">
                       <Button 
                           onClick={props.onReaderTestConnection} 
                           disabled={props.readerTransientState.testStatus() === 'testing'}
@@ -279,15 +303,28 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
               <p class="text-muted-foreground">TODO: Implement TTS settings using panels/context. Configuration might differ from other models.</p>
             </Show>
 
+            {/* --- Tags Section --- */}
+            <Show when={props.activeSection() === 'tags'}>
+              <h1 class="text-2xl font-semibold mb-4">Tags</h1>
+               <div class="mt-4 ml-4">
+                  <TagsPanel 
+                    tags={props.allTags} 
+                    // Add loading/error states if needed later from context
+                  />
+              </div>
+            </Show>
+
             {/* --- Redirects Section --- */} 
             <Show when={props.activeSection() === 'redirects'}>
               <h1 class="text-2xl font-semibold mb-4">Redirect Settings</h1>
               <p class="text-muted-foreground mb-6">Enable or disable privacy-preserving frontends for specific services.</p>
-              <RedirectsPanel
-                allRedirectSettings={() => props.config.redirectSettings || {}}
-                isLoading={() => props.loadStatus() === 'pending'}
-                onSettingChange={props.onRedirectSettingChange}
-              />
+              <div class="mt-4 ml-4">
+                  <RedirectsPanel
+                    allRedirectSettings={() => props.config.redirectSettings || {}}
+                    isLoading={() => props.loadStatus() === 'pending'}
+                    onSettingChange={props.onRedirectSettingChange}
+                  />
+              </div>
             </Show>
 
             {/* --- Default / No Selection --- */} 

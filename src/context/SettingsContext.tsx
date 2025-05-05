@@ -5,6 +5,8 @@ import type { UserConfiguration, FunctionConfig, RedirectSettings, RedirectServi
 import type { ProviderOption } from '../features/models/ProviderSelectionPanel'; // Use types from panels where appropriate
 import type { ModelOption } from '../features/models/ModelSelectionPanel'; // Need ModelOption too
 import type { LLMConfig } from '../services/llm/types'; 
+import { getAllTags } from '../services/db/tags'; // Import getAllTags
+import type { Tag as DbTag } from '../services/db/types'; // Import Tag type
 
 // Import provider implementations (adjust as needed, consider a registry)
 // These imports need to be fixed based on the previous correction
@@ -31,6 +33,16 @@ const EMBEDDING_KEYWORDS = [
     // Add other relevant keywords or model name fragments here if needed
 ];
 
+// --- Define Provider Options Here ---
+const llmProviderOptions: ProviderOption[] = [
+    { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
+    { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/llm-providers/jan.png' },
+    { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
+];
+const embeddingProviderOptions: ProviderOption[] = [...llmProviderOptions]; // Reuse for now
+const readerProviderOptions: ProviderOption[] = llmProviderOptions.filter(p => p.id === 'ollama'); // Only Ollama supports reader
+const ttsProviderOptions: ProviderOption[] = []; // Placeholder
+
 // --- Provider Implementations Map (Keep close to usage or in a service) ---
 const providerImplementations = {
   ollama: OllamaProvider,
@@ -43,6 +55,12 @@ const providerImplementations = {
 interface ISettingsContext {
   config: typeof settingsStore; // Read-only access to store state
   loadStatus: () => SettingsLoadStatus;
+  allTags: () => DbTag[]; // Add accessor for all tags
+  // Add provider options to context value
+  llmProviderOptions: ProviderOption[];
+  embeddingProviderOptions: ProviderOption[];
+  readerProviderOptions: ProviderOption[];
+  ttsProviderOptions: ProviderOption[];
   
   // --- Direct Config Update Actions (Use with care) ---
   updateLlmConfig: (config: FunctionConfig | null) => Promise<void>;
@@ -88,6 +106,9 @@ const initialSettings: UserConfiguration = {
 // Use createStore for potentially complex/nested state
 const [settingsStore, setSettingsStore] = createStore<UserConfiguration>(initialSettings);
 
+// --- Signal for Tags ---
+const [allTags, setAllTags] = createSignal<DbTag[]>([]); // Initialize empty
+
 // --- Context Definition ---
 // Create the actual context object
 const SettingsContext = createContext<ISettingsContext | undefined>(undefined); // Initialize with undefined
@@ -99,7 +120,16 @@ export const SettingsProvider: ParentComponent = (props) => {
         console.log("[SettingsContext] Attempting to load settings from storage...");
         const storedValue = await userConfigurationStorage.getValue();
         console.log("[SettingsContext] Value loaded from storage:", storedValue);
-        // Return the stored value or the initial state if nothing is stored
+        // Fetch tags after getting config (or in parallel if desired)
+        try {
+            console.log("[SettingsContext] Fetching all tags...");
+            const fetchedTags = await getAllTags();
+            console.log(`[SettingsContext] Fetched ${fetchedTags.length} tags.`);
+            setAllTags(fetchedTags); // Populate the tags signal
+        } catch (error) {
+            console.error("[SettingsContext] Failed to fetch tags:", error);
+            setAllTags([]); // Set empty on error
+        }
         return storedValue || initialSettings; 
     });
 
@@ -107,10 +137,98 @@ export const SettingsProvider: ParentComponent = (props) => {
     createEffect(() => {
         if (!loadedSettings.loading && loadedSettings.state === 'ready' && loadedSettings()) {
             console.log("[SettingsContext] Settings resource is ready. Updating store state.");
+            // Explicitly type the loaded config
+            const currentConfig = loadedSettings() as UserConfiguration;
             // Use produce for potentially safer nested updates if needed, or direct set
             setSettingsStore(produce(state => {
-                Object.assign(state, loadedSettings());
+                Object.assign(state, currentConfig); // Update store with loaded config
             }));
+
+            // --- Fetch models for pre-configured providers (Optimized) --- 
+            console.log("[SettingsContext] Checking for pre-configured providers to fetch models (optimized)...", currentConfig);
+
+            const providersToFetch = new Map<string, ProviderOption>();
+            const funcTypesPerProvider = new Map<string, string[]>();
+
+            // Helper to add provider and associated funcType
+            const addProviderTask = (funcType: string, config: FunctionConfig | null, options: ProviderOption[]) => {
+                if (config?.providerId) {
+                    const provider = options.find(p => p.id === config.providerId);
+                    if (provider) {
+                        if (!providersToFetch.has(provider.id)) {
+                            providersToFetch.set(provider.id, provider);
+                            funcTypesPerProvider.set(provider.id, []);
+                        }
+                        funcTypesPerProvider.get(provider.id)!.push(funcType);
+                    } else {
+                        console.warn(`[SettingsContext] Pre-configured ${funcType} provider (${config.providerId}) not found in options.`);
+                    }
+                }
+            };
+
+            addProviderTask('LLM', currentConfig.llmConfig, llmProviderOptions);
+            addProviderTask('Embedding', currentConfig.embeddingConfig, embeddingProviderOptions);
+            addProviderTask('Reader', currentConfig.readerConfig, readerProviderOptions);
+            // TODO: Add check for TTS
+
+            if (providersToFetch.size > 0) {
+                console.log(`[SettingsContext] Found ${providersToFetch.size} unique providers to fetch models for initial load:`, Array.from(providersToFetch.keys()));
+
+                // Set loading state synchronously first for all relevant funcTypes
+                providersToFetch.forEach((provider, providerId) => {
+                    const funcTypes = funcTypesPerProvider.get(providerId) || [];
+                    funcTypes.forEach(funcType => {
+                        ensureTransientState(funcType);
+                        console.log(`[SettingsContext] Setting initial fetchStatus to 'loading' for ${funcType} (${providerId})`);
+                        setTransientState(funcType, 'fetchStatus', 'loading');
+                        setTransientState(funcType, 'fetchError', null);
+                        setTransientState(funcType, 'testStatus', 'idle');
+                        setTransientState(funcType, 'testError', null);
+                        setTransientState(funcType, 'localModels', []);
+                        setTransientState(funcType, 'remoteModels', []);
+                        setTransientState(funcType, 'showSpinner', false); // Reset spinner too
+                    });
+                });
+
+                // Now fetch models asynchronously, once per unique provider
+                providersToFetch.forEach(async (provider, providerId) => {
+                    const funcTypes = funcTypesPerProvider.get(providerId) || [];
+                    console.log(`[SettingsContext] Fetching models ONCE for provider: ${providerId} (used by: ${funcTypes.join(', ')})`);
+                    try {
+                        // Reuse the core logic from fetchModels but without state setting yet
+                        const fetchedModelInfoWithOptions = await fetchRawModelsForProvider(provider, currentConfig);
+
+                        // Process results for each funcType using this provider
+                        funcTypes.forEach(funcType => {
+                             console.log(`[SettingsContext] Processing fetched models for ${funcType} (provider: ${providerId})`);
+                             const { localModels, remoteModels } = filterModels(funcType, provider, fetchedModelInfoWithOptions);
+                             
+                             setTransientState(funcType, 'localModels', localModels);
+                             setTransientState(funcType, 'remoteModels', remoteModels);
+                             setTransientState(funcType, 'fetchStatus', 'success');
+                             setTransientState(funcType, 'fetchError', null); // Clear any previous error
+                             console.log(`[SettingsContext] Models processed for ${funcType}. Local: ${localModels.length}, Remote: ${remoteModels.length}`);
+                         });
+
+                    } catch (err: any) {
+                        console.error(`[SettingsContext] Error fetching models for provider ${providerId}:`, err);
+                        // Set error state for all funcTypes using this failed provider
+                        funcTypes.forEach(funcType => {
+                            setTransientState(funcType, 'fetchError', err);
+                            setTransientState(funcType, 'fetchStatus', 'error');
+                        });
+                    } finally {
+                        // Always clear spinner state for all funcTypes using this provider
+                        funcTypes.forEach(funcType => {
+                           const finalTimeoutId = transientState[funcType]?.spinnerTimeoutId;
+                           if (finalTimeoutId) clearTimeout(finalTimeoutId);
+                            setTransientState(funcType, 'showSpinner', false);
+                            setTransientState(funcType, 'spinnerTimeoutId', undefined);
+                        });
+                    }
+                });
+            }
+
         } else if (loadedSettings.error) {
              console.error("[SettingsContext] Error loading settings:", loadedSettings.error);
         }
@@ -258,14 +376,119 @@ export const SettingsProvider: ParentComponent = (props) => {
 
     // --- Dynamic Operations ---
 
+    // Helper function to fetch raw models (extracted logic)
+    const fetchRawModelsForProvider = async (provider: ProviderOption, currentConfig: UserConfiguration): Promise<ModelOption[]> => {
+        let fetchedModelInfoWithOptions: ({ id: string; name: string; status?: string })[] = [];
+        // --- Special handling for Jan to replicate SetupFunction logic ---
+        if (provider.id === 'jan') {
+            // Use llmConfig baseUrl primarily for Jan, fallback needed?
+            const httpBaseUrl = (currentConfig.llmConfig?.baseUrl || provider.defaultBaseUrl || '').replace(/^ws:/, 'http:');
+            const apiUrl = `${httpBaseUrl}/v1/models`;
+            console.log(`[SettingsContext] Fetching RAW Jan models from ${apiUrl}`);
+            const response = await fetch(apiUrl, { signal: AbortSignal.timeout(15000) });
+            if (!response.ok) {
+                const error = new Error(`HTTP error! status: ${response.status}`);
+                (error as any).status = response.status;
+                throw error;
+            }
+            const data = await response.json();
+            console.log('[SettingsContext] RAW Jan JSON Response Data:', JSON.stringify(data, null, 2));
+            if (data.data) {
+                fetchedModelInfoWithOptions = data.data.map((m: any) => ({
+                    id: m.id,
+                    name: m.name || m.id,
+                    status: m.status
+                }));
+            } else {
+                 console.warn('[SettingsContext] Unexpected Jan API response format:', data);
+            }
+        } else {
+            // --- Standard handling for other providers ---
+            // Determine appropriate base URL (logic might need refinement)
+            let baseUrl = provider.defaultBaseUrl || '';
+            if (currentConfig.llmConfig?.providerId === provider.id) baseUrl = currentConfig.llmConfig.baseUrl || baseUrl;
+            else if (currentConfig.embeddingConfig?.providerId === provider.id) baseUrl = currentConfig.embeddingConfig.baseUrl || baseUrl;
+            else if (currentConfig.readerConfig?.providerId === provider.id) baseUrl = currentConfig.readerConfig.baseUrl || baseUrl;
+            
+            if (!baseUrl) {
+                 throw new Error(`Cannot fetch models for provider ${provider.id}: Base URL is missing.`);
+            }
+
+            console.log(`[SettingsContext] Fetching models via ${provider.id} provider listModels`);
+            const providerImpl = providerImplementations[provider.id as keyof typeof providerImplementations];
+             if (!providerImpl) {
+                 throw new Error(`Implementation not found for provider: ${provider.id}`);
+             }
+            const fetchedModelInfo = await providerImpl.listModels({ baseUrl });
+            // Map to include potential (but untyped) status for consistency, though it might be null
+            fetchedModelInfoWithOptions = fetchedModelInfo.map((info: any) => ({
+                id: info.id,
+                name: info.name || info.id,
+                status: info.status 
+            }));
+        }
+        fetchedModelInfoWithOptions.sort((a, b) => a.name.localeCompare(b.name));
+        return fetchedModelInfoWithOptions;
+    };
+
+     // Helper function to filter models based on funcType (extracted logic)
+    const filterModels = (funcType: string, provider: ProviderOption, rawModels: ModelOption[]) => {
+        let localModels: ModelOption[] = [];
+        let remoteModels: ModelOption[] = [];
+
+        // Initial Filtering based on Provider Structure (e.g., Jan status)
+        if (provider.id === 'jan') {
+            localModels = rawModels
+                .filter(m => m.status === 'downloaded')
+                .map(({ id, name }) => ({ id, name }));
+            remoteModels = rawModels
+                .filter(m => m.status !== 'downloaded')
+                .map(({ id, name }) => ({ id, name }));
+        } else {
+            localModels = rawModels.map(({ id, name }) => ({ id, name }));
+        }
+
+        // Function-Specific Filtering
+        if (funcType === 'Embedding') {
+            localModels = localModels.filter(model => {
+                const lowerCaseId = model.id.toLowerCase();
+                return EMBEDDING_KEYWORDS.some(keyword => lowerCaseId.includes(keyword));
+            });
+            remoteModels = remoteModels.filter(model => {
+                const lowerCaseId = model.id.toLowerCase();
+                return EMBEDDING_KEYWORDS.some(keyword => lowerCaseId.includes(keyword));
+            });
+            if (provider.id === 'jan') remoteModels = []; // Jan doesn't have remote embeddings usually
+        } else if (funcType === 'LLM') {
+             localModels = localModels.filter(model => {
+                 const lowerCaseId = model.id.toLowerCase();
+                 const isEmbeddingModel = EMBEDDING_KEYWORDS.some(keyword => lowerCaseId.includes(keyword));
+                 return !isEmbeddingModel;
+             });
+             if (provider.id === 'jan') {
+                 remoteModels = remoteModels.filter(model => {
+                    const lowerCaseId = model.id.toLowerCase();
+                    const isEmbeddingModel = EMBEDDING_KEYWORDS.some(keyword => lowerCaseId.includes(keyword));
+                    return !isEmbeddingModel;
+                 });
+             }
+         } else if (funcType === 'Reader') {
+             const readerModelId = 'milkey/reader-lm-v2';
+             localModels = localModels.filter(model => model.id.includes(readerModelId));
+             remoteModels = []; // No remote Reader models
+         }
+         return { localModels, remoteModels };
+    };
+
     const fetchModels = async (funcType: string, provider: ProviderOption): Promise<ModelOption[]> => {
         ensureTransientState(funcType);
         const currentTimeoutId = transientState[funcType]?.spinnerTimeoutId;
         if (currentTimeoutId) clearTimeout(currentTimeoutId);
 
+        // Set loading state
         setTransientState(funcType, 'fetchStatus', 'loading');
         setTransientState(funcType, 'fetchError', null);
-        setTransientState(funcType, 'localModels', []);
+        setTransientState(funcType, 'localModels', []); // Clear models immediately
         setTransientState(funcType, 'remoteModels', []);
         setTransientState(funcType, 'showSpinner', false);
 
@@ -276,141 +499,26 @@ export const SettingsProvider: ParentComponent = (props) => {
         }, 200);
         setTransientState(funcType, 'spinnerTimeoutId', timeoutId);
 
-        let fetchedModelInfoWithOptions: ({ id: string; name: string; status?: string })[] = [];
-
         try {
-             // --- Special handling for Jan to replicate SetupFunction logic ---
-            if (provider.id === 'jan') {
-                const httpBaseUrl = (settingsStore.llmConfig?.baseUrl || provider.defaultBaseUrl || '').replace(/^ws:/, 'http:');
-                const apiUrl = `${httpBaseUrl}/v1/models`;
-                console.log(`[SettingsContext] Fetching RAW Jan models from ${apiUrl}`);
-                const response = await fetch(apiUrl, { signal: AbortSignal.timeout(15000) });
-                if (!response.ok) {
-                    const error = new Error(`HTTP error! status: ${response.status}`);
-                    (error as any).status = response.status;
-                    throw error;
-                }
-                const data = await response.json();
-                console.log('[SettingsContext] RAW Jan JSON Response Data:', JSON.stringify(data, null, 2));
-                if (data.data) {
-                    fetchedModelInfoWithOptions = data.data.map((m: any) => ({
-                        id: m.id,
-                        name: m.name || m.id,
-                        status: m.status
-                    }));
-                } else {
-                     console.warn('[SettingsContext] Unexpected Jan API response format:', data);
-                }
-            } else {
-                // --- Standard handling for other providers ---
-                let baseUrl = provider.defaultBaseUrl || '';
-                if (funcType === 'LLM' && settingsStore.llmConfig) baseUrl = settingsStore.llmConfig.baseUrl || baseUrl;
-                else if (funcType === 'Embedding' && settingsStore.embeddingConfig) baseUrl = settingsStore.embeddingConfig.baseUrl || baseUrl;
-                else if (funcType === 'Reader' && settingsStore.readerConfig) baseUrl = settingsStore.readerConfig.baseUrl || baseUrl;
-                
-                if (!baseUrl) {
-                     throw new Error(`Cannot fetch models for ${funcType}: Base URL is missing.`);
-                }
+            // Fetch raw models using helper
+            const rawModels = await fetchRawModelsForProvider(provider, settingsStore);
+            // Filter models using helper
+            const { localModels, remoteModels } = filterModels(funcType, provider, rawModels);
 
-                console.log(`[SettingsContext] Fetching models via ${provider.id} provider listModels`);
-                const fetchedModelInfo = await providerImplementations[provider.id as keyof typeof providerImplementations].listModels({ baseUrl });
-                // Map to include potential (but untyped) status for consistency, though it might be null
-                fetchedModelInfoWithOptions = fetchedModelInfo.map((info: any) => ({
-                    id: info.id,
-                    name: info.name || info.id,
-                    status: info.status 
-                }));
-            }
-
-            // --- SORTING & FILTERING (Common Logic) ---
-            fetchedModelInfoWithOptions.sort((a, b) => a.name.localeCompare(b.name));
-            
-            let localModels: ModelOption[] = [];
-            let remoteModels: ModelOption[] = [];
-
-            // --- Initial Filtering based on Provider Structure (e.g., Jan status) ---
-            if (provider.id === 'jan') {
-                localModels = fetchedModelInfoWithOptions
-                    .filter(m => m.status === 'downloaded')
-                    .map(({ id, name }) => ({ id, name }));
-                remoteModels = fetchedModelInfoWithOptions
-                    .filter(m => m.status !== 'downloaded')
-                    .map(({ id, name }) => ({ id, name }));
-            } else {
-                localModels = fetchedModelInfoWithOptions.map(({ id, name }) => ({ id, name }));
-                // remoteModels remains [] for non-Jan providers
-            }
-
-            // --- Function-Specific Filtering (e.g., for Embeddings) ---
-            if (funcType === 'Embedding') {
-                console.log(`[SettingsContext] Applying Embedding filter for provider: ${provider.id}`);
-                
-                // Filter both local and remote lists based on keywords
-                localModels = localModels.filter(model => {
-                    const lowerCaseId = model.id.toLowerCase();
-                    return EMBEDDING_KEYWORDS.some(keyword => lowerCaseId.includes(keyword));
-                });
-
-                // Also filter remote models for embeddings (especially for Jan)
-                remoteModels = remoteModels.filter(model => {
-                    const lowerCaseId = model.id.toLowerCase();
-                    return EMBEDDING_KEYWORDS.some(keyword => lowerCaseId.includes(keyword));
-                });
-
-                // Special case: If Jan is the provider, we generally don't expect remote embedding models
-                // even if the API lists them without 'downloaded' status. Clear remoteModels for Jan.
-                if (provider.id === 'jan') {
-                    console.log('[SettingsContext] Clearing remote models for Jan Embedding based on provider type.');
-                    remoteModels = []; 
-                }
-
-                 console.log(`[SettingsContext] Embedding models after filtering: Local ${localModels.length}, Remote ${remoteModels.length}`);
-            }
-             // TODO: Add filtering for LLM/Reader if needed (e.g., exclude embedding models from LLM list)
-            else if (funcType === 'LLM') {
-                 console.log(`[SettingsContext] Applying LLM filter for provider: ${provider.id}`);
-                 localModels = localModels.filter(model => {
-                     const lowerCaseId = model.id.toLowerCase();
-                     // Exclude models containing embedding keywords
-                     const isEmbeddingModel = EMBEDDING_KEYWORDS.some(keyword => lowerCaseId.includes(keyword));
-                     // TODO: Exclude Reader model if applicable? 
-                     // const isReaderModel = lowerCaseId.includes('reader-lm');
-                     return !isEmbeddingModel; // && !isReaderModel;
-                 });
-                 // Keep remote models for Jan LLM
-                 if (provider.id === 'jan') {
-                     remoteModels = remoteModels.filter(model => {
-                        const lowerCaseId = model.id.toLowerCase();
-                        const isEmbeddingModel = EMBEDDING_KEYWORDS.some(keyword => lowerCaseId.includes(keyword));
-                        return !isEmbeddingModel;
-                     });
-                 }
-                  console.log(`[SettingsContext] LLM models after filtering: Local ${localModels.length}, Remote ${remoteModels.length}`);
-             }
-             else if (funcType === 'Reader') {
-                 // Add specific filter for Reader if needed
-                 const readerModelId = 'milkey/reader-lm-v2'; // Assuming this is the target ID structure
-                 console.log(`[SettingsContext] Applying Reader filter for provider: ${provider.id}. Target: ${readerModelId}`);
-                 localModels = localModels.filter(model => model.id.includes(readerModelId));
-                 // No remote models expected for Reader
-                 remoteModels = [];
-                 console.log(`[SettingsContext] Reader models after filtering: ${localModels.length}`);
-             }
-
-            // --- Update state --- 
+            // Update state
             setTransientState(funcType, 'localModels', localModels);
             setTransientState(funcType, 'remoteModels', remoteModels);
             setTransientState(funcType, 'fetchStatus', 'success');
-            console.log(`[SettingsContext] Models processed for ${funcType} / ${provider.id}. Local: ${localModels.length}, Remote: ${remoteModels.length}`);
-            
-            return localModels.concat(remoteModels); 
+            console.log(`[SettingsContext] fetchModels completed for ${funcType} / ${provider.id}. Local: ${localModels.length}, Remote: ${remoteModels.length}`);
+            return localModels.concat(remoteModels); // Return combined list
+
         } catch (err: any) {
-            console.error(`[SettingsContext] Error fetching models for ${funcType} / ${provider.id}:`, err);
+            console.error(`[SettingsContext] Error in fetchModels for ${funcType} / ${provider.id}:`, err);
             setTransientState(funcType, 'fetchError', err);
             setTransientState(funcType, 'fetchStatus', 'error');
             return []; // Return empty array on error
         } finally {
-             // Always clear spinner and timeout on completion (success or error)
+             // Always clear spinner and timeout on completion
             const finalTimeoutId = transientState[funcType]?.spinnerTimeoutId;
             if (finalTimeoutId) clearTimeout(finalTimeoutId);
              setTransientState(funcType, 'showSpinner', false);
@@ -475,6 +583,12 @@ export const SettingsProvider: ParentComponent = (props) => {
         config: settingsStore,
         // Ensure the type matches the resource state directly
         loadStatus: () => loadedSettings.state,
+        // Expose provider options
+        llmProviderOptions,
+        embeddingProviderOptions,
+        readerProviderOptions,
+        ttsProviderOptions,
+        allTags: allTags, // Expose the tags signal accessor
         updateLlmConfig,
         updateEmbeddingConfig,
         updateReaderConfig,

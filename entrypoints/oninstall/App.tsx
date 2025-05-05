@@ -729,3 +729,5 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     </div>
   );
 };
+
+export default App;
