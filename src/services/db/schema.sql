@@ -154,17 +154,49 @@ CREATE TABLE IF NOT EXISTS tags (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
--- Table to store processed and embedded visited pages
-CREATE TABLE IF NOT EXISTS visited_pages (
-    page_id SERIAL PRIMARY KEY,
-    url TEXT NOT NULL UNIQUE,
-    title TEXT NULL,
-    markdown_content TEXT NULL,          -- Still store the processed markdown for re-embedding
-    embedding_512 vector(512) NULL,      -- Native vector column for 512d
-    embedding_768 vector(768) NULL,      -- Native vector column for 768d
-    embedding_1024 vector(1024) NULL,     -- Native vector column for 1024d
-    active_embedding_dimension INTEGER NULL, -- Which dimension/column is currently populated? (512, 768, 1024)
-    visit_count INTEGER DEFAULT 1, 
+-- --- RAG / Page History Tables --- 
+
+-- Drop OLD visited_pages table if it exists to ensure clean migration
+DROP TABLE IF EXISTS visited_pages;
+
+-- NEW: Main table for unique URLs visited
+CREATE TABLE IF NOT EXISTS pages (
+    url TEXT PRIMARY KEY,
+    title TEXT NULL,                       -- Store the latest known title?
+    first_visited_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     last_visited_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    last_processed_at TIMESTAMPTZ NULL
+    latest_version_id INTEGER NULL      -- Reference to the most recent version in page_versions (optional)
+    -- NOTE: Foreign Key constraint not added yet for simplicity
 );
+
+-- NEW: Table storing specific versions/snapshots of page content
+CREATE TABLE IF NOT EXISTS page_versions (
+    version_id SERIAL PRIMARY KEY,
+    url TEXT NOT NULL REFERENCES pages(url) ON DELETE CASCADE, -- Link back to the main URL
+    markdown_content TEXT NULL,           -- The processed markdown for this version
+    markdown_hash TEXT NULL,              -- Hash of markdown_content for quick equality checks
+    captured_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- When this version was captured
+    
+    -- Embedding columns
+    embedding_512 vector(512) NULL,
+    embedding_768 vector(768) NULL,
+    embedding_1024 vector(1024) NULL,
+    active_embedding_dimension INTEGER NULL, -- Which dimension is currently populated?
+    last_embedded_at TIMESTAMPTZ NULL,     -- When this version was last successfully embedded
+    
+    -- Metadata
+    visit_count INTEGER DEFAULT 1           -- How many times content similar to this version was encountered
+);
+
+-- Indices for `pages` table
+CREATE INDEX IF NOT EXISTS idx_pages_last_visited ON pages (last_visited_at DESC);
+
+-- Indices for `page_versions` table
+CREATE INDEX IF NOT EXISTS idx_page_versions_url_captured ON page_versions (url, captured_at DESC);
+-- Index to quickly find versions needing embedding
+CREATE INDEX IF NOT EXISTS idx_page_versions_needs_embedding ON page_versions (last_embedded_at) WHERE last_embedded_at IS NULL;
+-- Index to quickly find the latest embedded version for a URL
+CREATE INDEX IF NOT EXISTS idx_page_versions_latest_embedded ON page_versions (url, last_embedded_at DESC) WHERE last_embedded_at IS NOT NULL;
+
+
+-- --- END RAG / Page History Tables ---

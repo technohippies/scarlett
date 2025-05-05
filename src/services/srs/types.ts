@@ -20,4 +20,13 @@ export interface DueLearningItem {
   // currentDifficulty: number;
 }
 
+/**
+ * Represents a summary of the user's current study queue.
+ */
+export interface StudySummary {
+  dueCount: number;    // Count of items currently due for review
+  reviewCount: number; // Count of items scheduled for review (may include due)
+  newCount: number;    // Count of new items not yet learned
+}
+
 // Add other SRS-related types here later (e.g., ReviewGrade, FSRSParameters) 

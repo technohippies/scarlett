@@ -175,3 +175,18 @@ export interface GetPageContentResponse {
   htmlContent?: string; // The innerHTML of the body
   error?: string;
 }
+
+// --- NEW Message Type for Content Script Markdown Extraction ---
+export interface ExtractMarkdownRequest {
+  htmlContent: string;
+  baseUrl?: string; // Optional: Base URL for resolving relative links
+}
+
+export interface ExtractMarkdownResponse {
+  success: boolean;
+  markdown?: string | null;
+  title?: string | null;
+  error?: string;
+}
+
+// --- END NEW Message Type ---

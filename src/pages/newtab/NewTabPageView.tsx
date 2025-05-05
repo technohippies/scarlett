@@ -1,86 +1,135 @@
-import { Component, Show } from 'solid-js';
+import { Component, Show, Accessor } from 'solid-js';
 import { Button } from '../../components/ui/button';
-import { Spinner } from '../../components/ui/spinner';
-import { FlashcardStudyPanel } from '../../features/srs/FlashcardStudyPanel';
-import { BookmarkSimple, Gear } from 'phosphor-solid';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card';
+import { 
+  BookmarksSimple, Brain, Gear,
+  SpinnerGap, // Use SpinnerGap instead of CircleNotch
+} from 'phosphor-solid'; 
+import type { StudySummary } from '../../services/srs/types'; // Import StudySummary type
 
-// Define the shape of the summary data expected
-export interface StudySummaryData {
-    dueCount: number;
-    reviewCount: number;
-    newCount: number;
-}
-
-// Props for the View component
+// Define props for the View component
 export interface NewTabPageViewProps {
-    isLoading: boolean;
-    summaryData: StudySummaryData | null;
-    error: string | null;
-    onBookmarksClick: () => void; // Callback for Bookmarks button
-    onStudyClick: () => void; // Callback for Study button
-    onSettingsClick: () => void; // <-- Add callback for Settings button
+  summary: Accessor<StudySummary | null>;
+  summaryLoading: Accessor<boolean>;
+  // Props for embedding trigger
+  pendingEmbeddingCount: Accessor<number>;
+  isEmbedding: Accessor<boolean>;
+  embedStatusMessage: Accessor<string | null>;
+  onEmbedClick: () => void;
+  // Navigation callbacks
+  onNavigateToBookmarks: () => void;
+  onNavigateToStudy: () => void;
+  onNavigateToSettings: () => void;
 }
 
+// Presentational Component
 export const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
 
+  // Helper function to format large numbers (optional)
+  const formatCount = (count: number | undefined): string => {
+    return count !== undefined ? count.toLocaleString() : '-';
+  };
+
   return (
-    // Use flex-col, justify-between to push items to top and bottom
-    <div class="newtab-page-container p-6 md:p-8 font-sans bg-background min-h-screen flex flex-col justify-between items-center">
+    <div class="flex flex-col items-center justify-center min-h-screen bg-background text-foreground p-4">
+      <h1 class="text-4xl font-bold mb-8 text-primary">Scarlett</h1>
       
-      {/* Header Area (Centered) */}
-      <header class="w-full flex justify-center items-center pt-8 md:pt-12">
-        {/* Removed Welcome Back! text */}
-      </header>
-
-      {/* Spacer to push content down - or use justify-between */}
-      {/* <div class="flex-grow"></div> */}
-
-      {/* Bottom Area - Reverse order and add Settings button */}
-      <footer class="w-full flex justify-between flex-row-reverse items-end px-2 md:px-4 pb-4"> {/* <-- Added flex-row-reverse */}
-        {/* Study Panel (Now Bottom Right due to reverse) */}
-        <div class="study-panel-area max-w-xs"> {/* Constrain width */}
-            <Show 
-                when={!props.isLoading} 
-                fallback={ <div class="p-4"><Spinner class="h-8 w-8 text-muted-foreground" /></div> }
-            >
-                <Show 
-                    when={!props.error} 
-                    fallback={ <p class="text-destructive p-4">Error: {props.error}</p> }
-                >
-                    <Show 
-                        when={props.summaryData} 
-                        fallback={ <p class="text-muted-foreground p-4 text-sm">No study data available.</p> }
-                    >
-                        {(data) => (
-                            // Render the FlashcardStudyPanel directly
-                            <FlashcardStudyPanel
-                                dueCount={data().dueCount}
-                                reviewCount={data().reviewCount}
-                                newCount={data().newCount}
-                                onStudyClick={props.onStudyClick} 
-                                // Add some padding/margin if needed via class
-                                class="bg-card p-4 rounded-lg shadow-md" // Example styling
-                            />
-                        )}
-                    </Show>
-                </Show>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-4xl mb-8">
+        {/* Study Card */}
+        <Card class="hover:shadow-lg transition-shadow duration-200">
+          <CardHeader>
+            <CardTitle class="flex items-center">
+              <Brain class="mr-2 h-5 w-5" /> Study
+            </CardTitle>
+            <CardDescription>Review your flashcards</CardDescription>
+          </CardHeader>
+          <CardContent class="flex flex-col items-center space-y-2">
+            <Show when={props.summaryLoading()} fallback={
+              <div class="text-center space-y-1">
+                  <p><span class="font-semibold">{formatCount(props.summary()?.dueCount)}</span> Due</p>
+                  <p><span class="font-semibold">{formatCount(props.summary()?.reviewCount)}</span> Review</p>
+                  <p><span class="font-semibold">{formatCount(props.summary()?.newCount)}</span> New</p>
+              </div>
+            }>
+              <SpinnerGap class="h-6 w-6 animate-spin text-muted-foreground" />
+              <p class="text-sm text-muted-foreground">Loading summary...</p>
             </Show>
-        </div>
+            <Button onClick={props.onNavigateToStudy} class="mt-4 w-full">
+              Start Studying
+            </Button>
+          </CardContent>
+        </Card>
 
-        {/* Action Buttons (Now Bottom Left due to reverse) */}
-        <div class="quick-actions flex flex-col gap-2"> {/* <-- Added flex-col and gap-2 */}
-            <Button onClick={props.onBookmarksClick} class="flex items-center justify-start gap-2"> {/* <-- Adjusted justify-start */}
-                <BookmarkSimple weight="fill" size={18} />
-                Bookmarks
+        {/* Bookmarks Card */}
+        <Card class="hover:shadow-lg transition-shadow duration-200">
+          <CardHeader>
+            <CardTitle class="flex items-center">
+              <BookmarksSimple class="mr-2 h-5 w-5" /> Bookmarks
+            </CardTitle>
+            <CardDescription>Manage saved pages</CardDescription>
+          </CardHeader>
+          <CardContent class="flex flex-col items-center">
+            {/* Placeholder for bookmark count if available */}
+            <p class="text-muted-foreground mb-4 text-center">Access and organize your saved web pages.</p>
+            <Button onClick={props.onNavigateToBookmarks} class="w-full">
+              View Bookmarks
             </Button>
-            {/* <-- Add Settings button --> */}
-            <Button onClick={props.onSettingsClick} class="flex items-center justify-start gap-2"> {/* <-- Adjusted justify-start */}
-                <Gear weight="fill" size={18} />
-                Settings
+          </CardContent>
+        </Card>
+
+        {/* Settings Card */}
+        <Card class="hover:shadow-lg transition-shadow duration-200">
+          <CardHeader>
+            <CardTitle class="flex items-center">
+              <Gear class="mr-2 h-5 w-5" /> Settings
+            </CardTitle>
+            <CardDescription>Configure the extension</CardDescription>
+          </CardHeader>
+          <CardContent class="flex flex-col items-center">
+            <p class="text-muted-foreground mb-4 text-center">Adjust models, language preferences, and other options.</p>
+            <Button onClick={props.onNavigateToSettings} class="w-full">
+              Go to Settings
             </Button>
-        </div>
-      </footer>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* --- Manual Embedding Section --- */}
+      <div class="mt-8 p-4 border border-border rounded-md w-full max-w-md flex flex-col items-center space-y-3">
+        <h2 class="text-lg font-semibold">Page Embedding</h2>
+        <Show 
+          when={props.pendingEmbeddingCount() > 0}
+          fallback={<p class="text-sm text-muted-foreground">No pages waiting to be embedded.</p>}
+        >
+          <p class="text-sm text-center">
+             <span class="font-semibold">{props.pendingEmbeddingCount()}</span> pages ready for embedding.
+          </p>
+          <Button 
+            onClick={props.onEmbedClick} 
+            disabled={props.isEmbedding()}
+            size="sm"
+            class="mt-2"
+          >
+            <Show when={!props.isEmbedding()} fallback={
+              <div class="flex items-center">
+                <SpinnerGap class="mr-2 h-4 w-4 animate-spin" />
+                Embedding...
+              </div>
+            }>
+             Embed Pending Pages
+            </Show>
+          </Button>
+        </Show>
+        <Show when={props.embedStatusMessage()}> 
+           <p class={`text-xs mt-2 ${props.embedStatusMessage()?.startsWith('Error') ? 'text-destructive' : 'text-muted-foreground'}`}>
+              {props.embedStatusMessage()}
+           </p>
+        </Show>
+      </div>
+      {/* --- End Manual Embedding Section --- */}
 
     </div>
   );
-}; 
+};
+
+export default NewTabPageView; 

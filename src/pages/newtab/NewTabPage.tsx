@@ -1,115 +1,95 @@
-import { Component, createMemo, createResource, onMount } from 'solid-js';
-import { defineExtensionMessaging } from "@webext-core/messaging";
-import type {
-    // --- Import the actual types --- 
-    GetStudySummaryRequest,
-    GetStudySummaryResponse
-} from '../../shared/messaging-types';
-// Removed unused type imports
-// import type { DueLearningItem } from '../../services/srs/types';
-// import { Rating } from 'ts-fsrs';
-// import { MCQ } from '../../features/exercises/MCQ';
-// import type { MCQProps, Option } from '../../features/exercises/MCQ';
+import { Component, createResource, createSignal } from 'solid-js';
+// import { messaging } from '#imports'; // Remove incorrect import
+import { defineExtensionMessaging } from '@webext-core/messaging'; // Import the core function
+import NewTabPageView from './NewTabPageView';
+import type { StudySummary } from '../../services/srs/types'; // Use StudySummary type
+import type { BackgroundProtocolMap } from '../../background/handlers/message-handlers'; // Import the protocol map
 
-// --- NEW: Import the View component ---
-import { NewTabPageView, type NewTabPageViewProps } from './NewTabPageView';
+// Initialize messaging specifically for this page, typed with the background protocol
+const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
 
-// Define the protocol map for messages SENT TO the background
-interface BackgroundProtocol {
-    getStudySummary(data: GetStudySummaryRequest): Promise<GetStudySummaryResponse>;
+// Props definition
+interface NewTabPageProps {
+  onNavigateToBookmarks: () => void;
+  onNavigateToStudy: () => void;
+  onNavigateToSettings: () => void;
 }
 
-// Interface for the props NewTabPage will now accept
-export interface NewTabPageProps {
-    onNavigateToBookmarks: () => void;
-    onNavigateToStudy: () => void;
-    onNavigateToSettings: () => void;
-}
-
-// Initialize messaging client
-const messaging = defineExtensionMessaging<BackgroundProtocol>();
-
-// Define a type for the error response structure from the resource fetch
-type FetchErrorResponse = { success: false; error: string };
-// Assume the success response *also* has a success property (even if implicitly true)
-type FetchSuccessResponse = GetStudySummaryResponse & { success?: true }; 
-
-// --- Container Component ---
 const NewTabPage: Component<NewTabPageProps> = (props) => {
-  // Removed signals related to individual items
-  // const [currentItem, setCurrentItem] = createSignal<DueLearningItem | null>(null);
-  // const [itemError, setItemError] = createSignal<string | null>(null);
-  // const [exerciseDirection, setExerciseDirection] = createSignal<'EN_TO_NATIVE' | 'NATIVE_TO_EN'>('EN_TO_NATIVE');
+  console.log('[NewTabPage] Component rendering');
 
-  // Resource fetches study summary, returns GetStudySummaryResponse on success, 
-  // or FetchErrorResponse on caught error.
-  const [summaryResource, { refetch }] = createResource<
-      FetchSuccessResponse | FetchErrorResponse
-  >(async () => {
-      console.log('[NewTabPage] Fetching study summary...');
-      try {
-          const response = await messaging.sendMessage('getStudySummary', {});
-          console.log('[NewTabPage] Received study summary:', response);
-          // Return the successful response (potentially add success: true if needed)
-          // If the background response doesn't explicitly include `success: true`, 
-          // we might need to add it here or adjust the type definition.
-          // For now, assuming it *might* be missing and FetchSuccessResponse handles it.
-          return response as FetchSuccessResponse; 
-      } catch (err) {
-          console.error('[NewTabPage] Error fetching study summary:', err);
-          return { success: false, error: (err as Error).message || 'Unknown error' };
-      }
-  });
-
-  // Refetch data when the component mounts
-  onMount(() => {
-    refetch();
-  });
-
-  // Memo extracts summary data if the resource fetch was successful
-  const summaryDataForView = createMemo<NewTabPageViewProps['summaryData']>(() => {
-    const data = summaryResource();
-    // Type guard: Check if data exists and success is not false (implies true or undefined)
-    if (data && data.success !== false) {
+  // Resource for fetching study summary
+  const [summaryData] = createResource<StudySummary | null>(async () => {
+    console.log('[NewTabPage] Fetching study summary...');
+    try {
+      const summary = await messaging.sendMessage('getStudySummary', {});
+      console.log('[NewTabPage] Received study summary:', summary);
+      // Ensure counts are numbers before returning
       return {
-        dueCount: data.dueCount ?? 0,
-        reviewCount: data.reviewCount ?? 0,
-        newCount: data.newCount ?? 0,
+          dueCount: Number(summary?.dueCount || 0),
+          reviewCount: Number(summary?.reviewCount || 0),
+          newCount: Number(summary?.newCount || 0)
       };
+    } catch (error) {
+      console.error('[NewTabPage] Error fetching study summary:', error);
+      return null;
     }
-    return null;
-  });
+  }, { initialValue: { dueCount: 0, reviewCount: 0, newCount: 0 } }); // Provide initial structure
 
-  // Memo extracts error message if the resource fetch failed
-  const errorForView = createMemo<NewTabPageViewProps['error']>(() => {
-    const data = summaryResource();
-    // Type guard: Check if data exists and success is explicitly false
-    if (data && data.success === false) {
-      return data.error; 
+  // --- State for Manual Embedding ---
+  const [embeddingCountData, { refetch: refetchEmbeddingCount }] = createResource<{ count: number }>(async () => {
+    console.log('[NewTabPage] Fetching pending embedding count...');
+    try {
+      const result = await messaging.sendMessage('getPendingEmbeddingCount', undefined);
+      console.log('[NewTabPage] Received pending count:', result);
+      return result || { count: 0 };
+    } catch (error) {
+      console.error('[NewTabPage] Error fetching pending embedding count:', error);
+      return { count: 0 };
     }
-    // Check for resource-level loading errors
-    if (summaryResource.error) {
-      return summaryResource.error.message || 'Failed to load summary data.'; 
-    }
-    // Check if data loaded but wasn't the success structure (shouldn't happen with guards)
-    // if (summaryResource.state === 'ready' && !summaryDataForView()){
-    //     return 'Unexpected data format received.';
-    // }
-    return null;
-  });
+  }, { initialValue: { count: 0 } });
 
-  // --- Render the View component ---
+  const [isEmbedding, setIsEmbedding] = createSignal(false);
+  const [embedStatusMessage, setEmbedStatusMessage] = createSignal<string | null>(null);
+
+  const handleEmbedClick = async () => {
+    console.log('[NewTabPage] handleEmbedClick triggered.');
+    setIsEmbedding(true);
+    setEmbedStatusMessage('Starting embedding process...');
+    try {
+      const result = await messaging.sendMessage('triggerBatchEmbedding', undefined);
+      if (result.success) {
+        console.log('[NewTabPage] Batch embedding successful:', result);
+        setEmbedStatusMessage(`Successfully embedded ${result.processedCount || 0} pages.`);
+        refetchEmbeddingCount(); // Refresh the count after processing
+      } else {
+        console.error('[NewTabPage] Batch embedding failed:', result.error);
+        setEmbedStatusMessage(`Error: ${result.error || 'Embedding failed.'}`);
+      }
+    } catch (error: any) {
+      console.error('[NewTabPage] Error sending triggerBatchEmbedding message:', error);
+      setEmbedStatusMessage(`Error: ${error.message || 'Could not trigger embedding.'}`);
+    } finally {
+      setIsEmbedding(false);
+      // Optionally clear the status message after a delay
+      setTimeout(() => setEmbedStatusMessage(null), 5000); 
+    }
+  };
+  // --- End State for Manual Embedding ---
+
   return (
-    <NewTabPageView
-      isLoading={summaryResource.loading}
-      summaryData={summaryDataForView()}
-      error={errorForView()}
-      // Pass navigation handlers down to the View component
-      onBookmarksClick={props.onNavigateToBookmarks}
-      onStudyClick={props.onNavigateToStudy}
-      onSettingsClick={props.onNavigateToSettings}
+    <NewTabPageView 
+      summary={summaryData} // Pass the resource accessor
+      summaryLoading={() => summaryData.loading} // Wrap loading state in an accessor
+      pendingEmbeddingCount={() => embeddingCountData()?.count ?? 0} // Accessor for count
+      isEmbedding={isEmbedding} // Pass embedding status signal accessor
+      embedStatusMessage={embedStatusMessage} // Pass status message signal accessor
+      onEmbedClick={handleEmbedClick} // Pass the handler
+      onNavigateToBookmarks={props.onNavigateToBookmarks}
+      onNavigateToStudy={props.onNavigateToStudy}
+      onNavigateToSettings={props.onNavigateToSettings}
     />
   );
 };
 
-export default NewTabPage; 
+export default NewTabPage;

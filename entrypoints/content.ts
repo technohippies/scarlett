@@ -11,15 +11,35 @@ import {
 // --- Import Component and Types --- Use relative paths
 import TranslatorWidget from '../src/features/translator/TranslatorWidget';
 import type { TranslatorWidgetProps, AlignmentData } from '../src/features/translator/TranslatorWidget';
+import { extractReadableMarkdown } from '../src/lib/html-processor'; // Import the extraction function
 import type {
     DisplayTranslationPayload, // Expect payload from background for displaying
     GenerateTTSPayload,      // Payload sent TO background for TTS
     UpdateAlignmentPayload, // Payload from background with alignment
-    GetPageContentResponse 
+    GetPageContentResponse, 
+    ExtractMarkdownRequest, // Import new message type
+    ExtractMarkdownResponse // Import new message type
 } from '../src/shared/messaging-types.ts';
+// --- Import Background Protocol --- 
+import type { BackgroundProtocolMap } from '../src/background/handlers/message-handlers';
 
-// Define messaging for the content script context
-const messaging = defineExtensionMessaging();
+// --- Messaging Setup --- 
+
+// Define messaging protocol for Content Script Handlers
+// (Messages the content script LISTENS FOR from the background)
+interface ContentScriptProtocolMap {
+    displayTranslationWidget(data: DisplayTranslationPayload): void;
+    updateWidgetAlignment(data: UpdateAlignmentPayload): void;
+    hideTranslationWidget(): void;
+    requestSelectedText(): { success: boolean; text?: string | null }; // Response sent back
+    extractMarkdownFromHtml(data: ExtractMarkdownRequest): Promise<ExtractMarkdownResponse>; // Add new handler
+}
+
+// Instance for LISTENING to messages FROM background (typed with CS protocol)
+const messageListener = defineExtensionMessaging<ContentScriptProtocolMap>();
+
+// Instance for SENDING messages TO background (typed with Background protocol)
+const messageSender = defineExtensionMessaging<BackgroundProtocolMap>();
 
 // --- Content Script Definition ---
 export default defineContentScript({
@@ -47,7 +67,8 @@ export default defineContentScript({
                     const htmlContent = await extractMainContent(); // Use helper function
                     if (htmlContent) {
                         console.log(`[Scarlett CS] Sending processPageVisit for URL: ${url}`);
-                        messaging.sendMessage('processPageVisit', { url, title, htmlContent });
+                        // Use messageSender to send to background
+                        messageSender.sendMessage('processPageVisit', { url, title, htmlContent });
                     } else {
                          console.warn('[Scarlett CS] No content extracted, skipping processPageVisit.');
                     }
@@ -160,10 +181,10 @@ export default defineContentScript({
         const handleTTSRequest = (text: string, lang: string, speed: number) => {
             console.log(`[Scarlett CS] TTS Request: Text='${text}', Lang='${lang}', Speed=${speed}`);
             const payload: GenerateTTSPayload = { text, lang, speed };
-            messaging.sendMessage('generateTTS', payload)
+            // Use messageSender to send to background
+            messageSender.sendMessage('generateTTS', payload)
                 .then(response => {
                     console.log('[Scarlett CS] TTS generation requested. Response:', response);
-                    // Background script should send 'updateWidgetAlignment' later
                 })
                 .catch(error => {
                     console.error('[Scarlett CS] Error sending TTS request:', error);
@@ -171,7 +192,7 @@ export default defineContentScript({
         };
 
         // --- Message Listener: Display Translation Widget ---
-        messaging.onMessage('displayTranslationWidget', async (message: { data: DisplayTranslationPayload }) => {
+        messageListener.onMessage('displayTranslationWidget', async (message: { data: DisplayTranslationPayload }) => {
             console.log('[Scarlett CS] Received displayTranslationWidget:', message.data.translatedText);
             await hideWidget(); // Ensure any previous widget is removed
 
@@ -274,7 +295,7 @@ export default defineContentScript({
         });
 
         // --- Message Listener: Update Alignment Data ---
-        messaging.onMessage('updateWidgetAlignment', (message: { data: UpdateAlignmentPayload }) => {
+        messageListener.onMessage('updateWidgetAlignment', (message: { data: UpdateAlignmentPayload }) => {
             console.log('[Scarlett CS] Received updateWidgetAlignment');
             if (isVisible() && currentWidgetUi) {
                 setAlignmentData(message.data.alignment);
@@ -285,26 +306,25 @@ export default defineContentScript({
         });
 
         // --- Message Listener: Hide request from background ---
-        messaging.onMessage('hideTranslationWidget', async () => {
+        messageListener.onMessage('hideTranslationWidget', async () => {
              console.log('[Scarlett CS] Received hideTranslationWidget request.');
              await hideWidget();
         });
 
         // --- Message Listener: Get Page Content --- (Now simpler, uses helper)
-        messaging.onMessage('getPageContent', async (_): Promise<GetPageContentResponse> => {
-            console.log('[Scarlett CS] Received getPageContent request.');
-            const htmlContent = await extractMainContent();
-            if (htmlContent) {
-                return { success: true, htmlContent };
-            } else {
-                return { success: false, error: 'Failed to extract page content.' };
-            }
-        });
+        // This is likely deprecated now as processPageVisit sends content
+        // messageListener.onMessage('getPageContent', async (_): Promise<GetPageContentResponse> => {
+        //     console.log('[Scarlett CS] Received getPageContent request.');
+        //     const htmlContent = await extractMainContent();
+        //     if (htmlContent) {
+        //         return { success: true, htmlContent };
+        //     } else {
+        //         return { success: false, error: 'Failed to extract page content.' };
+        //     }
+        // });
         
         // --- Message Listener: Get Selected Text (for background handler) ---
-        // This listener responds to requests specifically from the background script's 
-        // handleGetSelectedText function.
-        messaging.onMessage('requestSelectedText', (_): { success: boolean; text?: string | null } => {
+        messageListener.onMessage('requestSelectedText', (_): { success: boolean; text?: string | null } => {
             console.log('[Scarlett CS] Received requestSelectedText request.');
             try {
                 const selection = window.getSelection();
@@ -314,6 +334,28 @@ export default defineContentScript({
             } catch (error: any) {
                 console.error('[Scarlett CS] Error getting selected text:', error);
                 return { success: false, text: null };
+            }
+        });
+
+        // --- Message Listener: Extract Markdown From HTML --- 
+        messageListener.onMessage('extractMarkdownFromHtml', async (message): Promise<ExtractMarkdownResponse> => {
+            const { htmlContent, baseUrl } = message.data;
+            console.log('[Scarlett CS] Received extractMarkdownFromHtml request.');
+            try {
+                // Pass empty string if baseUrl is undefined
+                const result = await extractReadableMarkdown(htmlContent, baseUrl || ''); 
+                console.log(`[Scarlett CS] Markdown extraction complete. Title: ${result.title}, Length: ${result.markdown?.length}`);
+                return { 
+                    success: true, 
+                    markdown: result.markdown, 
+                    title: result.title 
+                };
+            } catch (error: any) {
+                console.error('[Scarlett CS] Error during extractReadableMarkdown:', error);
+                return { 
+                    success: false, 
+                    error: error.message || 'Markdown extraction failed in content script.'
+                };
             }
         });
 

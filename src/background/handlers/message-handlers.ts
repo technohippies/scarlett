@@ -17,7 +17,13 @@ import type {
     TagListResponse, 
     TagSuggestResponse,
     GetPageInfoResponse,
-    GetSelectedTextResponse
+    GetSelectedTextResponse,
+    DisplayTranslationPayload,
+    GenerateTTSPayload,
+    UpdateAlignmentPayload,
+    GetPageContentResponse,
+    ExtractMarkdownRequest,
+    ExtractMarkdownResponse
 } from '../../shared/messaging-types';
 import {
     getDueLearningItems,
@@ -34,13 +40,23 @@ import type { LLMConfig } from '../../services/llm/types';
 import { handleSaveBookmark, handleLoadBookmarks } from './bookmark-handlers';
 import { handleTagList, handleTagSuggest } from './tag-handlers';
 import { handleGetPageInfo, handleGetSelectedText } from './pageInteractionHandlers';
-import { getMarkdownFromHtml } from '../../services/llm/reader';
-import { getOllamaEmbedding } from '../../services/llm/embedding';
-import { addOrUpdateVisitedPage } from '../../services/db/visited_pages';
+import { getOllamaEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
+import { 
+    recordPageVisitVersion, // Use the new function name
+    getPagesNeedingEmbedding, 
+    findLatestEmbeddedVersion, 
+    finalizePageVersionEmbedding, 
+    deletePageVersion, 
+    incrementPageVersionVisitCount,
+    countPagesNeedingEmbedding 
+} from '../../services/db/visited_pages';
+import type { PageVersionToEmbed, LatestEmbeddedVersion } from '../../services/db/visited_pages'; // Import interfaces
 import type { Bookmark, Tag } from '../../services/db/types';
+import { pageInfoProcessingTimestamps } from '../../services/storage/storage';
+import type { PGlite } from '@electric-sql/pglite';
 
 // Define the protocol map for messages handled by the background script
-interface BackgroundProtocolMap {
+export interface BackgroundProtocolMap {
     getDueItems(data: GetDueItemsRequest): Promise<GetDueItemsResponse>;
     getDistractorsForItem(data: GetDistractorsRequest): Promise<GetDistractorsResponse>;
     submitReviewResult(data: SubmitReviewRequest): Promise<SubmitReviewResponse>;
@@ -56,10 +72,22 @@ interface BackgroundProtocolMap {
     getPageInfo: () => Promise<GetPageInfoResponse>;
     getSelectedText: () => Promise<GetSelectedTextResponse>;
     processPageVisit: (data: { url: string; title: string; htmlContent: string }) => Promise<void>;
+    triggerBatchEmbedding(): Promise<{ success: boolean; finalizedCount?: number; duplicateCount?: number; errorCount?: number }>;
+    getPendingEmbeddingCount(): Promise<{ count: number }>;
+    generateTTS(data: GenerateTTSPayload): Promise<void>;
+    extractMarkdownFromHtml(data: ExtractMarkdownRequest): Promise<ExtractMarkdownResponse>;
 }
 
 // Initialize messaging for the background context
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
+
+// Define the threshold for reprocessing (e.g., 1 hour in milliseconds)
+// --- REVERT TEMPORARY CHANGE --- 
+const REPROCESS_INFO_THRESHOLD_MS = 1 * 60 * 60 * 1000; // Original: 1 * 60 * 60 * 1000; 
+
+// Define a similarity threshold (Cosine Distance)
+// Lower value = more similar. E.g., 0.1 means very similar. Adjust as needed.
+const EMBEDDING_SIMILARITY_THRESHOLD = 0.1;
 
 /**
  * Registers message listeners for background script operations (SRS, etc.).
@@ -303,44 +331,217 @@ export function registerMessageHandlers(): void {
     });
 
     // --- Listener for processPageVisit ---
-    messaging.onMessage('processPageVisit', async ({ data }) => {
-        const { url, title, htmlContent } = data;
+    messaging.onMessage('processPageVisit', async ({ data, sender }) => {
+        const { url, title: originalTitle, htmlContent } = data;
         console.log(`[Message Handlers] Received processPageVisit for URL: ${url}`);
+        
+        // --- Ensure sender and tabId exist --- 
+        if (!sender || !sender.tab || !sender.tab.id) {
+             console.error(`[Message Handlers processPageVisit] Missing sender information for URL: ${url}. Cannot request markdown.`);
+             return;
+        }
+        const senderTabId = sender.tab.id;
+        // FrameId might be useful if multiple content scripts run in one tab (e.g., iframes)
+        // const senderFrameId = sender.frameId; 
+        // --- End Sender Check --- 
+
         try {
-            // 1. Get Markdown
-            console.log('[Message Handlers processPageVisit] Getting Markdown...');
-            const markdown = await getMarkdownFromHtml(htmlContent);
-            if (!markdown) {
-                console.warn('[Message Handlers processPageVisit] Markdown extraction failed or returned null. Aborting.');
+            // --- Check timestamp before processing --- 
+            const timestamps = await pageInfoProcessingTimestamps.getValue();
+            const lastProcessed = timestamps[url];
+            if (lastProcessed && (Date.now() - lastProcessed < REPROCESS_INFO_THRESHOLD_MS)) {
+                console.log(`[Message Handlers processPageVisit] URL ${url} info processed recently (${new Date(lastProcessed).toISOString()}). Skipping info re-processing.`);
+                return; // Exit the handler early
+            }
+            console.log(`[Message Handlers processPageVisit] URL ${url} info not processed recently or not found. Proceeding.`);
+            // --- End Timestamp Check ---
+
+            // 1. --- NEW: Request Markdown Extraction from Content Script --- 
+            console.log(`[Message Handlers processPageVisit] Requesting markdown extraction from content script (Tab ID: ${senderTabId}) for URL: ${url}...`);
+            const markdownResponse = await messaging.sendMessage(
+                'extractMarkdownFromHtml', 
+                { htmlContent, baseUrl: url }, // Pass HTML and URL as base
+                // --- Target the specific content script --- 
+                { tabId: senderTabId, frameId: sender.frameId } // Use sender.frameId too if available
+            );
+
+            if (!markdownResponse || !markdownResponse.success || !markdownResponse.markdown) {
+                console.warn(`[Message Handlers processPageVisit] Markdown extraction failed in content script for URL ${url}. Error: ${markdownResponse?.error}. Aborting save.`);
+                // Optionally, still update the timestamp to avoid retrying a failing page?
+                // await pageInfoProcessingTimestamps.setValue({ ...timestamps, [url]: Date.now() });
                 return; // Don't proceed without markdown
             }
-            console.log(`[Message Handlers processPageVisit] Markdown extracted (length: ${markdown.length}).`);
+            const { markdown, title: extractedTitle } = markdownResponse;
+            // --- End NEW Markdown Extraction ---
+            
+            const finalTitle = extractedTitle || originalTitle;
+            console.log(`[Message Handlers processPageVisit] Markdown received from CS (length: ${markdown.length}), Title: ${finalTitle}`);
 
-            // 2. Get Embedding
-            console.log('[Message Handlers processPageVisit] Getting embedding...');
-            const embeddingResult = await getOllamaEmbedding(markdown); // Embed the markdown
-            if (!embeddingResult) { // Check the result object
-                console.warn('[Message Handlers processPageVisit] Embedding generation failed or returned null. Aborting.');
-                return; // Don't proceed without embedding
-            }
-            // Log dimension from the result
-            console.log(`[Message Handlers processPageVisit] Embedding generated (model: ${embeddingResult.modelName}, dimension: ${embeddingResult.dimension}).`);
+            // 2. --- REMOVED Embedding step --- 
+            // ... (embedding logic remains removed) ...
 
-            // 3. Add/Update Database
-            console.log('[Message Handlers processPageVisit] Adding/updating visited page in DB...');
-            await addOrUpdateVisitedPage({ 
-                url, 
-                title, 
+            // 3. Add/Update Database (Info Only)
+            console.log('[Message Handlers processPageVisit] Adding/updating visited page info in DB...');
+            // --- Use the new function --- 
+            await recordPageVisitVersion({ 
+                url,
+                title: finalTitle, 
                 markdown_content: markdown, 
-                embeddingInfo: embeddingResult // Pass the whole result object
             });
-            console.log(`[Message Handlers processPageVisit] DB operation complete for URL: ${url}`);
+            console.log(`[Message Handlers processPageVisit] DB info operation complete for URL: ${url}`);
+
+            // --- Update timestamp AFTER successful DB write --- 
+            try {
+                 const currentTimestamps = await pageInfoProcessingTimestamps.getValue();
+                 await pageInfoProcessingTimestamps.setValue({ 
+                     ...currentTimestamps, 
+                     [url]: Date.now() 
+                 });
+                 console.log(`[Message Handlers processPageVisit] Updated processing timestamp for URL: ${url}`);
+            } catch (tsError) {
+                 console.error(`[Message Handlers processPageVisit] Failed to update processing timestamp for URL ${url}:`, tsError);
+            }
+            // --- End Timestamp Update ---
 
         } catch (error) {
             console.error(`[Message Handlers] Error handling processPageVisit for URL ${url}:`, error);
-            // Decide if we should notify user or just log
         }
     });
+
+    // --- Listener for triggerBatchEmbedding (NEW VERSION) ---
+    messaging.onMessage('triggerBatchEmbedding', async () => {
+        console.log('[Message Handlers] Received triggerBatchEmbedding request.');
+        let finalizedCount = 0;
+        let duplicateCount = 0;
+        let errorCount = 0;
+        let db: PGlite | null = null;
+        // --- Initialize candidates array here --- 
+        let candidates: PageVersionToEmbed[] = [];
+
+        try {
+            db = await getDbInstance(); // Get DB instance once
+            candidates = await getPagesNeedingEmbedding(50); // Fetch candidates (assign to outer scope variable)
+
+            if (candidates.length === 0) {
+                console.log('[Message Handlers triggerBatchEmbedding] No page versions found needing embedding.');
+                return { success: true, finalizedCount: 0, duplicateCount: 0, errorCount: 0 };
+            }
+
+            console.log(`[Message Handlers triggerBatchEmbedding] Found ${candidates.length} candidate versions to process.`);
+
+            for (const candidate of candidates) {
+                console.log(`[Message Handlers triggerBatchEmbedding] Processing candidate version_id: ${candidate.version_id} for URL: ${candidate.url}`);
+                try {
+                    // 1. Generate embedding for the candidate
+                    const candidateEmbeddingResult = await getOllamaEmbedding(candidate.markdown_content);
+                    if (!candidateEmbeddingResult) {
+                        console.warn(`[Message Handlers triggerBatchEmbedding] Embedding generation failed for version_id: ${candidate.version_id}. Skipping.`);
+                        errorCount++;
+                        continue; 
+                    }
+
+                    // 2. Find the latest previously embedded version for this URL
+                    const latestEmbedded = await findLatestEmbeddedVersion(candidate.url);
+
+                    // 3. Comparison Logic
+                    if (latestEmbedded) {
+                        // 3a. Check for exact hash match (optimization)
+                        if (candidate.markdown_hash && latestEmbedded.markdown_hash && candidate.markdown_hash === latestEmbedded.markdown_hash) {
+                            console.log(`[Message Handlers triggerBatchEmbedding] Exact hash match found for version_id: ${candidate.version_id} with version_id: ${latestEmbedded.version_id}. Handling as duplicate.`);
+                            await incrementPageVersionVisitCount(latestEmbedded.version_id);
+                            await deletePageVersion(candidate.version_id);
+                            duplicateCount++;
+                            continue; // Move to next candidate
+                        }
+
+                        // 3b. Hashes differ, proceed with semantic comparison
+                        // Ensure dimensions match or handle mismatch (using latestEmbedded dimension for now)
+                        if (candidateEmbeddingResult.dimension !== latestEmbedded.active_embedding_dimension) {
+                            console.warn(`[Message Handlers triggerBatchEmbedding] Embedding dimension mismatch for version_id: ${candidate.version_id} (${candidateEmbeddingResult.dimension}) vs latest embedded (${latestEmbedded.active_embedding_dimension}). Skipping comparison, finalizing new version.`);
+                            // Decide how to handle: skip comparison and finalize, or try re-embedding with target dimension? Finalizing for now.
+                             await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: candidateEmbeddingResult });
+                             finalizedCount++;
+                             continue;
+                        }
+
+                        // Get the actual vector string for comparison
+                        const latestVector = latestEmbedded[`embedding_${latestEmbedded.active_embedding_dimension}` as keyof LatestEmbeddedVersion] as number[];
+                        const candidateVector = candidateEmbeddingResult.embedding;
+
+                        if (!latestVector || !candidateVector) {
+                            console.error(`[Message Handlers triggerBatchEmbedding] Could not retrieve one or both vectors for comparison. Candidate: ${candidate.version_id}, Latest: ${latestEmbedded.version_id}. Skipping.`);
+                            errorCount++;
+                            continue;
+                        }
+
+                        // Perform vector comparison using SQL
+                        const vectorCompareSql = `SELECT $1::vector <=> $2::vector as distance;`;
+                        // Convert vectors to string format PGlite expects: '[1,2,...]'
+                        const latestVectorString = `[${latestVector.join(',')}]`;
+                        const candidateVectorString = `[${candidateVector.join(',')}]`;
+                        
+                        const distanceResult = await db.query<{ distance: number }>(vectorCompareSql, [latestVectorString, candidateVectorString]);
+                        const distance = distanceResult.rows[0]?.distance;
+
+                        if (typeof distance !== 'number') {
+                             console.error(`[Message Handlers triggerBatchEmbedding] Failed to calculate vector distance between ${candidate.version_id} and ${latestEmbedded.version_id}. Skipping.`);
+                             errorCount++;
+                             continue;
+                        }
+
+                        console.log(`[Message Handlers triggerBatchEmbedding] Cosine distance between ${candidate.version_id} and ${latestEmbedded.version_id}: ${distance.toFixed(4)}`);
+
+                        // Check threshold
+                        if (distance < EMBEDDING_SIMILARITY_THRESHOLD) {
+                            // Similar: Increment previous count, delete candidate
+                            console.log(`[Message Handlers triggerBatchEmbedding] Semantically similar. Handling version_id: ${candidate.version_id} as duplicate of ${latestEmbedded.version_id}.`);
+                            await incrementPageVersionVisitCount(latestEmbedded.version_id);
+                            await deletePageVersion(candidate.version_id);
+                            duplicateCount++;
+                        } else {
+                            // Different: Finalize the candidate embedding
+                            console.log(`[Message Handlers triggerBatchEmbedding] Semantically different. Finalizing embedding for version_id: ${candidate.version_id}.`);
+                            await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: candidateEmbeddingResult });
+                            finalizedCount++;
+                        }
+
+                    } else {
+                        // 3c. No previous embedded version found for this URL. Finalize this one.
+                        console.log(`[Message Handlers triggerBatchEmbedding] No previous embedded version found for URL ${candidate.url}. Finalizing embedding for version_id: ${candidate.version_id}.`);
+                        await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: candidateEmbeddingResult });
+                        finalizedCount++;
+                    }
+
+                } catch (processingError) {
+                    console.error(`[Message Handlers triggerBatchEmbedding] Error processing candidate version_id ${candidate.version_id}:`, processingError);
+                    errorCount++;
+                    // Continue to the next candidate even if one fails
+                }
+            } // End for loop
+
+            console.log(`[Message Handlers triggerBatchEmbedding] Batch embedding complete. Finalized: ${finalizedCount}, Duplicates (Deleted): ${duplicateCount}, Errors: ${errorCount}.`);
+            return { success: true, finalizedCount, duplicateCount, errorCount };
+
+        } catch (error: any) {
+            console.error('[Message Handlers triggerBatchEmbedding] Unexpected error during batch embedding:', error);
+            // --- Now candidates is accessible here --- 
+            return { success: false, finalizedCount, duplicateCount, errorCount: candidates.length, error: error.message || 'Batch embedding failed.' };
+        }
+    });
+    // --- End Listener for triggerBatchEmbedding --- 
+
+    // --- Listener for getPendingEmbeddingCount (Should be correct already) ---
+    messaging.onMessage('getPendingEmbeddingCount', async () => {
+        console.log('[Message Handlers] Received getPendingEmbeddingCount request.');
+        try {
+            const count = await countPagesNeedingEmbedding(); // Uses updated function
+            return { count };
+        } catch (error: any) {
+            console.error('[Message Handlers getPendingEmbeddingCount] Error:', error);
+            return { count: 0 }; // Return 0 on error
+        }
+    });
+    // --- End Listener for getPendingEmbeddingCount ---
 
     console.log('[Message Handlers] Background message listeners registered.');
 } 

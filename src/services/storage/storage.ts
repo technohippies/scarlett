@@ -33,4 +33,16 @@ export const userConfigurationStorage = storage.defineItem<UserConfiguration>(
     // Use a default object that matches the type
     fallback: defaultUserConfiguration,
   }
+);
+
+/**
+ * Stores timestamps (epoch ms) of the last time page info (markdown, title)
+ * was successfully processed and saved to PGlite.
+ * Key: URL, Value: Timestamp
+ */
+export const pageInfoProcessingTimestamps = storage.defineItem<Record<string, number>>(
+    'local:pageInfoProcessingTimestamps',
+    {
+        fallback: {},
+    }
 ); 
