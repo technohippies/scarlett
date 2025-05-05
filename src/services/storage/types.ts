@@ -12,7 +12,7 @@ export interface RedirectSettings {
 
 // Define a basic structure for function config used in UserConfiguration
 // (Expand this based on actual requirements if needed)
-interface FunctionConfig {
+export interface FunctionConfig {
     providerId: string;
     modelId: string;
     baseUrl?: string | null; // Base URL might be needed
