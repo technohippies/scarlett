@@ -54,7 +54,8 @@ const mockLlmConfigSelected: FunctionConfig = {
 
 // Helper type for the transient state accessors expected by the ViewProps
 interface TransientStateAccessors {
-  models: Accessor<ModelOption[]>;
+  localModels: Accessor<ModelOption[]>;
+  remoteModels: Accessor<ModelOption[]>;
   fetchStatus: Accessor<FetchStatus>;
   fetchError: Accessor<Error | null>;
   testStatus: Accessor<TestStatus>;
@@ -65,14 +66,16 @@ interface TransientStateAccessors {
 
 // Helper to create mock transient state accessors
 const createMockTransientState = (
-    models: ModelOption[] = [],
+    localModels: ModelOption[] = [],
+    remoteModels: ModelOption[] = [],
     fetchStatus: FetchStatus = 'idle',
     fetchError: Error | null = null,
     testStatus: TestStatus = 'idle',
     testError: Error | null = null,
     showSpinner: boolean = false
 ): TransientStateAccessors => ({ // Ensure return type matches interface
-    models: () => models,
+    localModels: () => localModels,
+    remoteModels: () => remoteModels,
     fetchStatus: () => fetchStatus,
     fetchError: () => fetchError,
     testStatus: () => testStatus,
@@ -125,12 +128,11 @@ export default {
   args: {
     initialActiveSection: 'llm',
     initialLoadStatus: 'ready',
-    // Provide default values for non-controlled complex props
     config: mockInitialConfig,
-    llmTransientState: createMockTransientState(),
-    embeddingTransientState: createMockTransientState(),
-    readerTransientState: createMockTransientState(),
-    ttsTransientState: createMockTransientState(),
+    llmTransientState: createMockTransientState([], []),
+    embeddingTransientState: createMockTransientState([], []),
+    readerTransientState: createMockTransientState([], []),
+    ttsTransientState: createMockTransientState([], []),
   }
 };
 
@@ -172,7 +174,11 @@ const BaseRender = (args: any) => {
         onReaderSelectProvider: action('onReaderSelectProvider'),
         onReaderSelectModel: action('onReaderSelectModel'),
         onReaderTestConnection: action('onReaderTestConnection'),
-        onRedirectSettingChange: action('onRedirectSettingChange'),
+        // onRedirectSettingChange: action('onRedirectSettingChange'), // Old
+        // Wrap action in async function to match expected Promise<void> return type
+        onRedirectSettingChange: async (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => {
+            action('onRedirectSettingChange')(service, update);
+        },
     };
 
     // Validate required props are present (basic check)
@@ -193,7 +199,7 @@ export const Default = {
     initialActiveSection: 'llm',
     initialLoadStatus: 'ready',
     config: mockInitialConfig,
-    llmTransientState: createMockTransientState(),
+    llmTransientState: createMockTransientState([], []),
   },
 };
 
@@ -221,6 +227,7 @@ export const LLM_ModelsReady = {
     config: { ...mockInitialConfig, llmConfig: { providerId: 'ollama', modelId: '', baseUrl: 'http://localhost:11434' } },
     llmTransientState: createMockTransientState(
         [ { id: 'llama3:latest', name: 'llama3:latest' }, { id: 'mistral:latest', name: 'mistral:latest' } ],
+        [],
         'success'
     ),
   },
@@ -234,6 +241,7 @@ export const LLM_TestReady = {
     config: { ...mockInitialConfig, llmConfig: mockLlmConfigSelected },
     llmTransientState: createMockTransientState(
         [ { id: 'llama3:latest', name: 'llama3:latest' }, { id: 'mistral:latest', name: 'mistral:latest' } ],
+        [],
         'success',
         null,
         'idle'
@@ -247,8 +255,11 @@ export const LLM_TestSuccess = {
     ...LLM_TestReady.args, // Inherit base args
     // Override only the necessary part of the transient state
     llmTransientState: createMockTransientState(
-        LLM_TestReady.args.llmTransientState.models(), // Keep existing models
-        'success', null, 'success' // Set test status
+        LLM_TestReady.args.llmTransientState.localModels(),
+        LLM_TestReady.args.llmTransientState.remoteModels(),
+        'success',
+        null,
+        'success'
     ),
   },
 };
@@ -259,8 +270,12 @@ export const LLM_TestError = {
      ...LLM_TestReady.args, // Inherit base args
      // Override only the necessary part of the transient state
      llmTransientState: createMockTransientState(
-        LLM_TestReady.args.llmTransientState.models(), // Keep existing models
-        'success', null, 'error', new Error('Connection failed: Timeout') // Set test status and error
+        LLM_TestReady.args.llmTransientState.localModels(),
+        LLM_TestReady.args.llmTransientState.remoteModels(),
+        'success',
+        null,
+        'error',
+        new Error('Connection failed: Timeout')
     ),
   },
 };
