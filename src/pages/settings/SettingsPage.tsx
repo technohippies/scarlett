@@ -1,9 +1,8 @@
 import { Component, createSignal, createEffect } from 'solid-js';
 import SettingsPageView from './SettingsPageView';
 import { useSettings } from '../../context/SettingsContext';
-import type { SettingsLoadStatus, FetchStatus, TestStatus } from '../../context/SettingsContext'; // Import status types
 import type { ProviderOption } from '../../features/models/ProviderSelectionPanel';
-import type { FunctionConfig, RedirectServiceSetting } from '../../services/storage/types'; // Import RedirectServiceSetting
+import type { FunctionConfig } from '../../services/storage/types'; // Import RedirectServiceSetting
 
 // Assume mock provider options are fetched or defined elsewhere if needed for the container
 // For now, we rely on the context providing the actual config and the View receiving static options
