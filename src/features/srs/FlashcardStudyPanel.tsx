@@ -41,7 +41,7 @@ export const FlashcardStudyPanel: Component<FlashcardStudyPanelProps> = (props) 
 
       {/* Study Button */}
       <Button 
-        variant="default" 
+        variant="outline" 
         size="lg"
         class={`w-full`}
         onClick={props.onStudyClick}
