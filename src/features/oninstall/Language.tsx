@@ -26,12 +26,11 @@ export const allTargetLanguages: LanguageOption[] = [...];
 
 // Define props for the component
 interface LanguageProps {
-  onComplete: (selectedLangs: { targetValue: string; targetLabel: string }) => void;
+  onTargetLangChange: (value: string, label: string) => void;
   onNativeLangChange: (newLangCode: string) => void;
   iSpeakLabel: string;
   selectLanguagePlaceholder: string;
   wantToLearnLabel: string;
-  continueLabel: string;
   initialNativeLangValue: string | undefined;
   availableNativeLanguages: LanguageOptionStub[];
   availableTargetLanguages: LanguageOptionStub[];
@@ -103,16 +102,9 @@ export const Language: Component<LanguageProps> = (props) => {
   const handleTargetLanguageSelect = (option: LanguageOptionStub | null) => {
     if (option) {
       setSelectedTargetLang(option);
-    }
-  };
-
-  // Handler for form submission
-  const handleSubmit = () => {
-    const native = selectedNativeLangStub();
-    const target = selectedTargetLang();
-    if (native && target) {
-      const targetLabel = `${target.emoji} ${target.name || target.value}`;
-      props.onComplete({ targetValue: target.value, targetLabel: targetLabel });
+      // Call the new prop when a target is selected
+      const targetLabel = `${option.emoji} ${getLangName(option.value, props.messages) || option.name || option.value}`;
+      props.onTargetLangChange(option.value, targetLabel);
     }
   };
 
@@ -187,7 +179,7 @@ export const Language: Component<LanguageProps> = (props) => {
                     return (
                       <Button
                         variant="outline"
-                        onClick={() => setSelectedTargetLang(langStub)}
+                        onClick={() => handleTargetLanguageSelect(langStub)}
                         class={cn(
                           'h-auto p-4 flex flex-col items-center justify-center space-y-2 text-base border',
                           'cursor-pointer hover:bg-neutral-700 hover:border-neutral-600 focus:outline-none focus:ring-0',
@@ -198,7 +190,9 @@ export const Language: Component<LanguageProps> = (props) => {
                       >
                         <span class="text-4xl">{langStub.emoji}</span>
                         {/* Display the localized nameToShow */}
-                        <span>{nameToShow}</span> 
+                        <span class="mt-2 text-center block font-medium">
+                          {nameToShow}
+                        </span>
                       </Button>
                     );
                   }}
@@ -206,19 +200,6 @@ export const Language: Component<LanguageProps> = (props) => {
             </div>
           </Show>
       </div> 
-      {/* Footer Area: Fixed at bottom */}
-      <div class="flex-shrink-0 p-4 md:p-6 border-t border-neutral-800 bg-background flex justify-center">
-          <div class="w-full max-w-xs"> {/* Maintain max-width for button */}
-             <Button
-               size="lg"
-               class="w-full"
-               onClick={handleSubmit}
-               disabled={!selectedTargetLang()}
-             >
-               {props.continueLabel}
-             </Button>
-          </div>
-       </div>
     </div>
   );
 };

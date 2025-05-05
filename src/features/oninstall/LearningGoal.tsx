@@ -6,15 +6,13 @@ import { ArrowLeft } from 'phosphor-solid'; // Import icon
 
 // Define props for the component
 interface LearningGoalProps {
-  onComplete: (goalId: string) => void;
-  onBack: () => void; // Add onBack prop
+  onGoalChange: (id: string) => void;
+  onBack: () => void;
   targetLanguageLabel: string;
   questionPrefix: string;
   questionSuffix: string;
   fallbackLabel: string;
-  continueLabel: string;
-  // Add messages prop
-  messages: Messages | undefined; 
+  messages: Messages | undefined;
 }
 
 // Define stub type for goals (just id and emoji)
@@ -42,12 +40,6 @@ const getGoalName = (id: string | undefined, messages: Messages | undefined): st
 
 export const LearningGoal: Component<LearningGoalProps> = (props) => {
   const [selectedGoalId, setSelectedGoalId] = createSignal<string | undefined>();
-
-  const handleSubmit = () => { 
-    const goal = selectedGoalId();
-    if (!goal) return;
-    props.onComplete(goal);
-  };
 
   // Helper to split target language label (remains the same)
   const getLanguageParts = (label: string | undefined) => {
@@ -94,7 +86,10 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
               return (
                 <Button
                   variant="outline"
-                  onClick={() => setSelectedGoalId(goalStub.id)}
+                  onClick={() => { 
+                    setSelectedGoalId(goalStub.id);
+                    props.onGoalChange(goalStub.id);
+                  }}
                   class={cn(
                     'h-auto p-4 flex flex-col items-center justify-center space-y-2 text-base border',
                     'cursor-pointer hover:bg-neutral-700 hover:border-neutral-600 focus:outline-none focus:ring-0',
@@ -111,19 +106,6 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
           </For>
         </div>
       </div>
-      {/* Footer Area: Add the fixed footer structure */}
-      <div class="flex-shrink-0 p-4 md:p-6 border-t border-neutral-800 bg-background flex justify-center">
-          <div class="w-full max-w-xs"> {/* Maintain max-width for button */}
-             <Button
-               size="lg"
-               class="w-full"
-               onClick={handleSubmit}
-               disabled={!selectedGoalId()}
-             >
-               {props.continueLabel}
-             </Button>
-          </div>
-       </div>
     </div>
   );
 }; 

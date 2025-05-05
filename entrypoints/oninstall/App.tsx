@@ -204,39 +204,6 @@ const App: Component = () => {
     }
   };
 
-  // Updated handler: Save languages and move to learning goal
-  const handleLanguageComplete = async (selectedLangs: { targetValue: string; targetLabel: string }) => {
-    console.log('[App] Language Complete:', selectedLangs);
-    setTargetLangLabel(selectedLangs.targetLabel);
-    
-    const currentConfig = await userConfigurationStorage.getValue();
-    const updatedConfig = {
-      ...currentConfig,
-      nativeLanguage: uiLangCode(), 
-      targetLanguage: selectedLangs.targetValue,
-    };
-    await userConfigurationStorage.setValue(updatedConfig);
-    console.log('[App] Config after saving languages:', updatedConfig);
-    
-    console.log('[App] Proceeding to learning goal step.');
-    setCurrentStep('learningGoal'); // Go to learning goal next
-  };
-
-  // Updated handler: Save goal and move to LLM Function setup
-  const handleLearningGoalComplete = async (goalId: string) => {
-    console.log('[App] Learning Goal Complete:', goalId);
-    const currentConfig = await userConfigurationStorage.getValue();
-    const updatedConfig = {
-      ...currentConfig,
-      learningGoal: goalId,
-    };
-    await userConfigurationStorage.setValue(updatedConfig);
-    console.log('[App] Config after saving goal:', updatedConfig);
-    
-    console.log('[App] Proceeding to LLM setup step.');
-    setCurrentStep('setupLLM'); // Go to the new LLM setup step
-  };
-
   // Handler for LLM setup step completion
   const handleLLMComplete = async (config: FunctionConfig) => {
     console.log('[App] LLM Setup Complete:', config);
@@ -352,9 +319,13 @@ const App: Component = () => {
 // Create a new component to contain the original App logic, now inside the provider
 const OnboardingContent: Component = () => {
   const [currentStep, setCurrentStep] = createSignal<Step>('language');
+  // Keep targetLangLabel for goal step display
   const [targetLangLabel, setTargetLangLabel] = createSignal<string>('');
+  // Add signals for selections made in child components
+  const [selectedTargetLangValue, setSelectedTargetLangValue] = createSignal<string>('');
+  const [selectedGoalId, setSelectedGoalId] = createSignal<string>('');
   const [uiLangCode, setUiLangCode] = createSignal<string>(getBestInitialLangCode());
-  
+
   const [messagesData] = createResource(uiLangCode, fetchMessages);
 
   // --- Redirects State Management (Keep as is) ---
@@ -397,27 +368,45 @@ const OnboardingContent: Component = () => {
     }
   };
 
-  // Language Complete Handler (Keep as is, uses storage directly)
-  const handleLanguageComplete = async (selectedLangs: { targetValue: string; targetLabel: string }) => {
-    console.log('[App] Language Complete:', selectedLangs);
-    setTargetLangLabel(selectedLangs.targetLabel);
-    
+  // --- ADD BACK handlers inside OnboardingContent ---
+  // Language Complete Handler (Update to use signals)
+  const handleLanguageComplete = async () => {
+    const nativeLang = uiLangCode();
+    const targetValue = selectedTargetLangValue();
+    const targetLabel = targetLangLabel(); // This is already set by the change handler
+
+    console.log('[App] Language Complete:', { targetValue, targetLabel, nativeLang });
+    // Set targetLangLabel signal needed by the LearningGoal component
+    // setTargetLangLabel(targetLabel); // Already set by onTargetLangChange
+
+    if (!targetValue) {
+      console.error('[App] Cannot complete language step: target language value is missing.');
+      return; // Prevent moving forward without selection
+    }
+
     const currentConfig = await userConfigurationStorage.getValue();
     const updatedConfig = {
       ...currentConfig,
-      nativeLanguage: uiLangCode(), 
-      targetLanguage: selectedLangs.targetValue,
+      nativeLanguage: nativeLang,
+      targetLanguage: targetValue,
     };
     await userConfigurationStorage.setValue(updatedConfig);
     console.log('[App] Config after saving languages:', updatedConfig);
-    
+
     console.log('[App] Proceeding to learning goal step.');
     setCurrentStep('learningGoal');
   };
 
-  // Learning Goal Handler (Keep as is, uses storage directly)
-  const handleLearningGoalComplete = async (goalId: string) => {
+  // Learning Goal Handler (Update to use signal)
+  const handleLearningGoalComplete = async () => {
+    const goalId = selectedGoalId();
     console.log('[App] Learning Goal Complete:', goalId);
+
+    if (!goalId) {
+        console.error('[App] Cannot complete learning goal step: goal ID is missing.');
+        return; // Prevent moving forward without selection
+    }
+
     const currentConfig = await userConfigurationStorage.getValue();
     const updatedConfig = {
       ...currentConfig,
@@ -425,12 +414,13 @@ const OnboardingContent: Component = () => {
     };
     await userConfigurationStorage.setValue(updatedConfig);
     console.log('[App] Config after saving goal:', updatedConfig);
-    
+
     console.log('[App] Proceeding to LLM setup step.');
     setCurrentStep('setupLLM');
   };
+  // --- END ADD BACK ---
 
-  // --- Model Setup Completion Handlers (Update to use context if desired, or keep storage logic) ---
+  // --- Model Setup Completion Handlers (Keep as is) ---
   // Option A: Keep direct storage manipulation (simpler for now, might diverge from settings page)
   const handleLLMComplete = async (config: FunctionConfig) => {
     console.log('[App] LLM Setup Complete:', config);
@@ -546,6 +536,9 @@ const OnboardingContent: Component = () => {
     const state = getCurrentTransientState();
     const config = getCurrentConfig();
 
+    if (step === 'language' || step === 'learningGoal') {
+      return i18n().get('onboardingContinue', 'Continue');
+    }
     if (step === 'setupLLM' || step === 'setupEmbedding' || step === 'setupReader') {
       if (!config?.providerId) return i18n().get('onboardingContinue', 'Continue'); // Should be disabled anyway
       if (state?.fetchStatus() === 'success' && config?.modelId) {
@@ -556,7 +549,7 @@ const OnboardingContent: Component = () => {
         } else { // testStatus === 'success'
           return i18n().get('onboardingContinue', 'Continue');
         }
-      } 
+      }
     }
     // Default label for non-model steps or initial states
     if (step === 'redirects') return i18n().get('onboardingFinishSetup', 'Finish Setup');
@@ -568,14 +561,12 @@ const OnboardingContent: Component = () => {
     const step = currentStep();
     const state = getCurrentTransientState();
     const config = getCurrentConfig();
-    
+
     switch (step) {
-      case 'language': 
-        // Add logic if language step needs disabling (e.g., no target selected)
-        return false; // Assuming enabled for now
-      case 'learningGoal': 
-         // Add logic if goal step needs disabling
-        return false; // Assuming enabled for now
+      case 'language':
+        return !selectedTargetLangValue(); // Disable if no target language selected
+      case 'learningGoal':
+        return !selectedGoalId(); // Disable if no goal selected
       case 'setupLLM':
       case 'setupEmbedding':
       case 'setupReader':
@@ -587,7 +578,7 @@ const OnboardingContent: Component = () => {
       case 'redirects':
         // Disable if loading initial settings?
         return initialRedirectSettingsData.loading;
-      default: 
+      default:
         return true; // Disable by default for unknown steps
     }
   };
@@ -600,13 +591,10 @@ const OnboardingContent: Component = () => {
 
     switch (step) {
       case 'language':
-        // Trigger language completion logic if needed (currently handled internally by Language component)
-        // Maybe manually trigger if the Language component doesn't call onComplete itself?
-        console.warn("[App] Footer button clicked on language step - action needed?");
+        handleLanguageComplete(); // Call updated handler
         break;
       case 'learningGoal':
-        // Trigger goal completion logic if needed (currently handled internally by LearningGoal component)
-        console.warn("[App] Footer button clicked on goal step - action needed?");
+        handleLearningGoalComplete(); // Call updated handler
         break;
       case 'setupLLM':
       case 'setupEmbedding':
@@ -634,30 +622,28 @@ const OnboardingContent: Component = () => {
       case 'language':
         return (
           <Language
-            onComplete={handleLanguageComplete} 
-            onNativeLangChange={handleNativeLanguageSelect} 
+            onTargetLangChange={(value: string, label: string) => { setSelectedTargetLangValue(value); setTargetLangLabel(label); }}
+            onNativeLangChange={handleNativeLanguageSelect}
             iSpeakLabel={i18n().get('onboardingISpeak', 'I speak')}
             selectLanguagePlaceholder={i18n().get('onboardingSelectLanguage', 'Select language')}
             wantToLearnLabel={i18n().get('onboardingIWantToLearn', 'and I want to learn...')}
-            continueLabel={i18n().get('onboardingContinue', 'Continue')}
-            initialNativeLangValue={uiLangCode()} 
+            initialNativeLangValue={uiLangCode()}
             availableNativeLanguages={nativeLanguagesList}
             availableTargetLanguages={allTargetLanguagesList}
-            messages={messagesData() || {}} 
-            messagesLoading={messagesData.loading} 
+            messages={messagesData() || {}}
+            messagesLoading={messagesData.loading}
           />
         );
       case 'learningGoal':
         return (
           <LearningGoal
-            onComplete={handleLearningGoalComplete} 
+            onGoalChange={setSelectedGoalId}
             onBack={handleBack}
-            targetLanguageLabel={targetLangLabel()} 
+            targetLanguageLabel={targetLangLabel()}
             questionPrefix={i18n().get('onboardingLearningGoalQuestionPrefix', 'Why are you learning')}
             questionSuffix={i18n().get('onboardingLearningGoalQuestionSuffix', '?')}
             fallbackLabel={i18n().get('onboardingTargetLanguageFallback', 'your selected language')}
-            continueLabel={i18n().get('onboardingContinue', 'Continue')}
-            messages={messagesData() || {}} 
+            messages={messagesData() || {}}
           />
         );
 
@@ -848,20 +834,18 @@ const OnboardingContent: Component = () => {
 
         {/* ADD BACK Fixed Footer with Dynamic Button */} 
         {/* Show footer only for relevant steps */} 
-        <Show when={currentStep() !== 'language' && currentStep() !== 'learningGoal'}>
-          <div class="fixed bottom-0 left-0 right-0 p-4 md:p-6 border-t border-neutral-800 bg-background flex justify-center z-10">
-            <div class="w-full max-w-xs">
-              <Button
-                size="lg"
-                class="w-full"
-                onClick={handleFooterButtonClick} // Use the dynamic handler
-                disabled={isFooterButtonDisabled()} // Use the dynamic disabled state
-              >
-                {footerButtonLabel()} {/* Use the dynamic label */}
-              </Button>
-            </div>
+        <div class="fixed bottom-0 left-0 right-0 p-4 md:p-6 border-t border-neutral-800 bg-background flex justify-center z-10">
+          <div class="w-full max-w-xs">
+            <Button
+              size="lg"
+              class="w-full"
+              onClick={handleFooterButtonClick} // Use the dynamic handler
+              disabled={isFooterButtonDisabled()} // Use the dynamic disabled state
+            >
+              {footerButtonLabel()} {/* Use the dynamic label */}
+            </Button>
           </div>
-        </Show>
+        </div>
     </div>
   );
 };
