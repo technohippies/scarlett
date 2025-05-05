@@ -1,13 +1,10 @@
-import type { Component } from "solid-js";
+import type { Component, Accessor } from "solid-js";
 import { For, Show } from "solid-js";
 import { Button } from "../../components/ui/button";
 import { 
-  // User, Gear, Palette, // Remove unused icons
-  Brain, ChartLine, BookOpen, SpeakerHigh, // Model Icons
-  TrendUp // Use TrendUp icon
+  Brain, ChartLine, BookOpen, SpeakerHigh,
+  TrendUp
 } from "phosphor-solid";
-
-// Import necessary sidebar components
 import {
   Sidebar,
   SidebarContent,
@@ -19,132 +16,71 @@ import {
   SidebarMenuItem,
   SidebarProvider,
 } from "../../components/ui/sidebar";
-
-// Import the new panel and necessary types
 import RedirectsPanel from "../../features/redirects/RedirectsPanel";
-import type { RedirectSettings, RedirectServiceSetting } from "../../services/storage/types";
-
-// Import the new model panels
-import ProviderSelectionPanel, { type ProviderOption } from "../../features/models/ProviderSelectionPanel";
-import ModelSelectionPanel, { type ModelOption } from "../../features/models/ModelSelectionPanel";
+import type { UserConfiguration, RedirectSettings, RedirectServiceSetting } from "../../services/storage/types"; 
+import type { ProviderOption } from "../../features/models/ProviderSelectionPanel";
+import type { ModelOption } from "../../features/models/ModelSelectionPanel";
+import type { SettingsLoadStatus, FetchStatus, TestStatus } from "../../context/SettingsContext";
+import ProviderSelectionPanel from "../../features/models/ProviderSelectionPanel";
+import ModelSelectionPanel from "../../features/models/ModelSelectionPanel";
 import ConnectionTestPanel from "../../features/models/ConnectionTestPanel";
 
-// Import necessary types/functions from SetupFunction or services
-import type { LLMConfig } from "../../services/llm/types";
-// Import providers individually
-import { OllamaProvider } from "../../services/llm/providers/ollama"; 
-import { JanProvider } from "../../services/llm/providers/jan"; 
-import { LMStudioProvider } from "../../services/llm/providers/lmstudio";
-
-// Import Context
-import { SettingsProvider, useSettings } from "../../context/SettingsContext";
-
-// Updated menu items for Models
+// Menu Items (Keep)
 const settingsMenuItems = [
-  {
-    title: "LLM",
-    url: "/settings/models/llm", // Updated URL
-    icon: Brain 
-  },
-  {
-    title: "Embedding",
-    url: "/settings/models/embedding", // Updated URL
-    icon: ChartLine
-  },
-  {
-    title: "Reader",
-    url: "/settings/models/reader", // Updated URL
-    icon: BookOpen
-  },
-  {
-    title: "TTS",
-    url: "/settings/models/tts", // Updated URL
-    icon: SpeakerHigh
-  },
-  {
-    title: "Redirects",
-    url: "/settings/redirects",
-    icon: TrendUp
-  },
+  { title: "LLM", url: "/settings/models/llm", icon: Brain },
+  { title: "Embedding", url: "/settings/models/embedding", icon: ChartLine },
+  { title: "Reader", url: "/settings/models/reader", icon: BookOpen },
+  { title: "TTS", url: "/settings/models/tts", icon: SpeakerHigh },
+  { title: "Redirects", url: "/settings/redirects", icon: TrendUp }
 ];
 
-// Helper Types (Consider moving to shared location)
-type FetchStatus = 'idle' | 'loading' | 'success' | 'error';
-type TestStatus = 'idle' | 'testing' | 'success' | 'error';
+// --- Type Definitions for Transient State (Assuming structure from getTransientState) ---
+// Could also be imported from context if exported
+interface TransientStateAccessors {
+  models: Accessor<ModelOption[]>;
+  fetchStatus: Accessor<FetchStatus>; // Use exported type
+  fetchError: Accessor<Error | null>;
+  testStatus: Accessor<TestStatus>; // Use exported type
+  testError: Accessor<Error | null>;
+  showSpinner: Accessor<boolean>;
+}
 
-// TODO: Define actual provider options (move to constants?)
-const llmProviderOptions: ProviderOption[] = [
-  { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://127.0.0.1:11434', logoUrl: '/images/llm-providers/ollama.png' },
-  { id: 'jan', name: 'Jan', defaultBaseUrl: 'ws://127.0.0.1:1337', logoUrl: '/images/llm-providers/jan.png' },
-  { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
-];
-const embeddingProviderOptions: ProviderOption[] = [/* ... define ... */];
-const readerProviderOptions: ProviderOption[] = [/* ... define ... */];
-const SettingsPageViewContent: Component = () => {
-  // Use the settings context
-  const settingsContext = useSettings();
+// --- Define Props Interface --- 
+interface SettingsPageViewProps {
+  loadStatus: Accessor<SettingsLoadStatus>;
+  config: UserConfiguration; // Direct config object
+  activeSection: Accessor<string | null>;
+  llmTransientState: TransientStateAccessors;
+  embeddingTransientState: TransientStateAccessors;
+  readerTransientState: TransientStateAccessors;
+  ttsTransientState: TransientStateAccessors;
+  llmProviderOptions: ProviderOption[];
+  embeddingProviderOptions: ProviderOption[];
+  readerProviderOptions: ProviderOption[];
+  ttsProviderOptions: ProviderOption[];
+  onSectionChange: (section: string | null) => void;
+  onLlmSelectProvider: (provider: ProviderOption) => void;
+  onLlmSelectModel: (modelId: string | undefined) => void;
+  onLlmTestConnection: () => void;
+  onEmbeddingSelectProvider: (provider: ProviderOption) => void;
+  onEmbeddingSelectModel: (modelId: string | undefined) => void;
+  onEmbeddingTestConnection: () => void;
+  onReaderSelectProvider: (provider: ProviderOption) => void;
+  onReaderSelectModel: (modelId: string | undefined) => void;
+  onReaderTestConnection: () => void;
+  onRedirectSettingChange: (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => Promise<void>;
+  // Add TTS handlers when needed
+}
 
-  // Local state for UI interaction (e.g., active section)
-  const [activeSection, setActiveSection] = createSignal<string | null>('llm'); 
 
-  // --- Get transient state accessors for the active section (example for LLM) --- 
-  // We need a way to get the *correct* transient state based on activeSection
-  // For now, let's just get LLM for demonstration
-  // TODO: Make this dynamic based on activeSection() for Embedding, Reader, TTS
-  const llmTransientState = settingsContext.getTransientState('LLM');
-  const embeddingTransientState = settingsContext.getTransientState('Embedding');
-  const readerTransientState = settingsContext.getTransientState('Reader');
-  const ttsTransientState = settingsContext.getTransientState('TTS'); // Assuming TTS uses similar pattern
-  
-  // --- Define provider options (These could come from context/config later) ---
-  const llmProviderOptions: ProviderOption[] = [
-      { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
-      { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/llm-providers/jan.png' },
-      { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
-  ];
-  // TODO: Define options for Embedding, Reader, TTS
-  const embeddingProviderOptions: ProviderOption[] = [...llmProviderOptions]; // Placeholder
-  const readerProviderOptions: ProviderOption[] = llmProviderOptions.filter(p => p.id === 'ollama'); // Placeholder
-  const ttsProviderOptions: ProviderOption[] = []; // Placeholder
-
-  // --- Handlers (now mostly call context actions) --- 
-  
-  // LLM Handlers
-  const handleLlmSelectProvider = (provider: ProviderOption) => {
-      // Clear existing model selection in the main store before fetching new ones
-      settingsContext.updateLlmConfig({ providerId: provider.id, modelId: '', baseUrl: provider.defaultBaseUrl });
-      // Trigger fetch models via context
-      settingsContext.fetchModels('LLM', provider);
-  };
-  const handleLlmSelectModel = (modelId: string | undefined) => {
-      // Update only the modelId in the store config
-      if (modelId && settingsContext.config.llmConfig) {
-           settingsContext.updateLlmConfig({ ...settingsContext.config.llmConfig, modelId: modelId });
-      } else if (modelId) { // Handle case where llmConfig might be null initially
-           // This case is less likely if handleLlmSelectProvider sets a base config
-           console.warn("Attempting to set model ID but LLM config provider part is missing");
-      }
-      // Note: Saving happens within updateLlmConfig action
-  };
-  const handleLlmTestConnection = () => {
-      // Test connection requires a valid config object from the store
-      const currentLlmConfig = settingsContext.config.llmConfig;
-      if (currentLlmConfig && currentLlmConfig.providerId && currentLlmConfig.modelId) {
-          // Pass the FunctionConfig format to the context action
-          settingsContext.testConnection('LLM', currentLlmConfig);
-      } else {
-          console.warn("Cannot test LLM connection: Provider or Model not selected.");
-      }
-  };
-  // No explicit handleLlmSave needed if updates save automatically
-
-  // TODO: Add handlers for Embedding, Reader, TTS similarly
-
+// --- SettingsPageView Component (Now Presentational) --- 
+const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
   return (
     <>
       <SidebarProvider>
         <Sidebar collapsible="icon" variant="sidebar">
           <SidebarContent>
+            {/* Model Group */}
             <SidebarGroup>
               <SidebarGroupLabel>MODELS</SidebarGroupLabel>
               <SidebarGroupContent>
@@ -154,9 +90,9 @@ const SettingsPageViewContent: Component = () => {
                       <SidebarMenuItem>
                         <SidebarMenuButton 
                           as="button" 
-                          onClick={() => setActiveSection(item.title.toLowerCase())} 
+                          onClick={() => props.onSectionChange(item.title.toLowerCase())} 
                           tooltip={item.title}
-                          class={activeSection() === item.title.toLowerCase() ? 'bg-muted' : ''}
+                          class={props.activeSection() === item.title.toLowerCase() ? 'bg-muted' : ''}
                         >
                           <item.icon />
                           <span>{item.title}</span>
@@ -168,7 +104,7 @@ const SettingsPageViewContent: Component = () => {
               </SidebarGroupContent>
             </SidebarGroup>
             
-            {/* New Censorship Group */}
+            {/* Censorship Group */}
             <SidebarGroup>
               <SidebarGroupLabel>CENSORSHIP</SidebarGroupLabel>
               <SidebarGroupContent>
@@ -178,9 +114,9 @@ const SettingsPageViewContent: Component = () => {
                       <SidebarMenuItem>
                         <SidebarMenuButton 
                           as="button" 
-                          onClick={() => setActiveSection(item.title.toLowerCase())} 
+                          onClick={() => props.onSectionChange(item.title.toLowerCase())} 
                           tooltip={item.title}
-                          class={activeSection() === item.title.toLowerCase() ? 'bg-muted' : ''}
+                          class={props.activeSection() === item.title.toLowerCase() ? 'bg-muted' : ''}
                         >
                           <item.icon />
                           <span>{item.title}</span>
@@ -193,102 +129,171 @@ const SettingsPageViewContent: Component = () => {
             </SidebarGroup>
           </SidebarContent>
         </Sidebar>
-        <main class="flex-1 p-4">
-          {/* --- Conditional Content Area --- */}
 
-          <Show when={activeSection() === 'llm'}>
-            <h1 class="text-2xl font-semibold mb-4">LLM Settings</h1>
-            <div class="space-y-6">
-              <ProviderSelectionPanel
-                providerOptions={llmProviderOptions}
-                selectedProviderId={() => settingsContext.config.llmConfig?.providerId}
-                onSelectProvider={handleLlmSelectProvider}
-              />
-              {/* --- Block that shows Model/Connection panels --- */}
-              <Show when={settingsContext.config.llmConfig?.providerId !== undefined}>
-                {/* --- Restore ModelSelectionPanel --- */}
-                <ModelSelectionPanel
-                  functionName="LLM"
-                  // Pass provider object based on stored ID (or make panel accept ID)
-                  selectedProvider={() => llmProviderOptions.find(p => p.id === settingsContext.config.llmConfig?.providerId)}
-                  fetchStatus={llmTransientState.fetchStatus} // Use scoped transient state
-                  showSpinner={llmTransientState.showSpinner}
-                  fetchError={llmTransientState.fetchError}
-                  fetchedModels={llmTransientState.models}
-                  remoteModels={() => []} // Adjust if LLM uses remote models
-                  selectedModelId={() => settingsContext.config.llmConfig?.modelId}
-                  onSelectModel={handleLlmSelectModel}
+        {/* Main Content Area uses Props */}
+        <main class="flex-1 p-4 overflow-y-auto">
+          <Show when={props.loadStatus() === 'pending'}>
+              <div class="flex items-center justify-center h-full">
+                  <p class="text-muted-foreground">Loading settings...</p>
+              </div>
+          </Show>
+
+          <Show when={props.loadStatus() === 'errored'}>
+              <div class="flex items-center justify-center h-full">
+                  <p class="text-destructive">Error loading settings.</p>
+              </div>
+          </Show>
+
+          <Show when={props.loadStatus() === 'ready'}>
+            {/* --- LLM Section --- */} 
+            <Show when={props.activeSection() === 'llm'}>
+              <h1 class="text-2xl font-semibold mb-4">LLM Settings</h1>
+              <div class="space-y-6">
+                <ProviderSelectionPanel
+                  providerOptions={props.llmProviderOptions} 
+                  selectedProviderId={() => props.config.llmConfig?.providerId}
+                  onSelectProvider={props.onLlmSelectProvider}
                 />
-
-                {/* --- Restore ConnectionTestPanel and its wrapping Show + Button --- */}
-                <Show when={llmTransientState.fetchStatus() === 'success' && settingsContext.config.llmConfig?.modelId}>
-                  <ConnectionTestPanel
-                    testStatus={llmTransientState.testStatus}
-                    testError={llmTransientState.testError}
+                <Show when={props.config.llmConfig?.providerId !== undefined}>
+                  <ModelSelectionPanel
                     functionName="LLM"
-                     selectedProvider={() => llmProviderOptions.find(p => p.id === settingsContext.config.llmConfig?.providerId)}
+                    selectedProvider={() => props.llmProviderOptions.find(p => p.id === props.config.llmConfig?.providerId)}
+                    fetchStatus={props.llmTransientState.fetchStatus} 
+                    showSpinner={props.llmTransientState.showSpinner}
+                    fetchError={props.llmTransientState.fetchError}
+                    fetchedModels={props.llmTransientState.models}
+                    remoteModels={() => []}
+                    selectedModelId={() => props.config.llmConfig?.modelId}
+                    onSelectModel={props.onLlmSelectModel}
                   />
-                  <div class="flex space-x-4 mt-4">
-                    <Button
-                        onClick={handleLlmTestConnection}
-                        disabled={llmTransientState.testStatus() === 'testing'}
-                    >
-                        {llmTransientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}
-                    </Button>
-                    {/* Save happens automatically on model select now, maybe remove save button */}
-                  </div>
+                  <Show when={props.llmTransientState.fetchStatus() === 'success' && props.config.llmConfig?.modelId}>
+                    <ConnectionTestPanel
+                      testStatus={props.llmTransientState.testStatus}
+                      testError={props.llmTransientState.testError}
+                      functionName="LLM"
+                      selectedProvider={() => props.llmProviderOptions.find(p => p.id === props.config.llmConfig?.providerId)}
+                    />
+                    <div class="flex space-x-4 mt-4">
+                      <Button 
+                          onClick={props.onLlmTestConnection} 
+                          disabled={props.llmTransientState.testStatus() === 'testing'}
+                      >
+                          {props.llmTransientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}
+                      </Button>
+                    </div>
+                  </Show>
                 </Show>
-              </Show>
-            </div>
-          </Show>
-          
-          <Show when={activeSection() === 'embedding'}>
-            <h1>Embedding Settings</h1>
-            <p>Configure Embedding Model settings here.</p>
-          </Show>
+              </div>
+            </Show>
 
-          <Show when={activeSection() === 'reader'}>
-            <h1>Reader Settings</h1>
-            <p>Configure Reader Model settings here.</p>
-          </Show>
-          
-          <Show when={activeSection() === 'tts'}>
-            <h1>TTS Settings</h1>
-            <p>Configure Text-to-Speech settings here.</p>
-          </Show>
+            {/* --- Embedding Section --- */} 
+            <Show when={props.activeSection() === 'embedding'}>
+              <h1 class="text-2xl font-semibold mb-4">Embedding Settings</h1>
+              <div class="space-y-6">
+                <ProviderSelectionPanel
+                  providerOptions={props.embeddingProviderOptions} 
+                  selectedProviderId={() => props.config.embeddingConfig?.providerId}
+                  onSelectProvider={props.onEmbeddingSelectProvider}
+                />
+                <Show when={props.config.embeddingConfig?.providerId !== undefined}>
+                  <ModelSelectionPanel
+                    functionName="Embedding"
+                    selectedProvider={() => props.embeddingProviderOptions.find(p => p.id === props.config.embeddingConfig?.providerId)}
+                    fetchStatus={props.embeddingTransientState.fetchStatus} 
+                    showSpinner={props.embeddingTransientState.showSpinner}
+                    fetchError={props.embeddingTransientState.fetchError}
+                    fetchedModels={props.embeddingTransientState.models}
+                    remoteModels={() => []} 
+                    selectedModelId={() => props.config.embeddingConfig?.modelId}
+                    onSelectModel={props.onEmbeddingSelectModel}
+                  />
+                  <Show when={props.embeddingTransientState.fetchStatus() === 'success' && props.config.embeddingConfig?.modelId}>
+                    <ConnectionTestPanel
+                      testStatus={props.embeddingTransientState.testStatus}
+                      testError={props.embeddingTransientState.testError}
+                      functionName="Embedding"
+                      selectedProvider={() => props.embeddingProviderOptions.find(p => p.id === props.config.embeddingConfig?.providerId)}
+                    />
+                    <div class="flex space-x-4 mt-4">
+                      <Button 
+                          onClick={props.onEmbeddingTestConnection} 
+                          disabled={props.embeddingTransientState.testStatus() === 'testing'}
+                      >
+                          {props.embeddingTransientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}
+                      </Button>
+                    </div>
+                  </Show>
+                </Show>
+              </div>
+            </Show>
 
-          {/* Show RedirectsPanel when active */}
-          <Show when={activeSection() === 'redirects'}>
-            <h1 class="text-2xl font-semibold mb-4">Redirect Settings</h1>
-            <p class="text-muted-foreground mb-6">Enable or disable privacy-preserving frontends for specific services.</p>
-            <RedirectsPanel
-              allRedirectSettings={() => settingsContext.config.redirectSettings || {}}
-              isLoading={() => settingsContext.loadStatus() === 'pending'}
-              onSettingChange={settingsContext.updateRedirectSetting}
-            />
-          </Show>
+            {/* --- Reader Section --- */} 
+            <Show when={props.activeSection() === 'reader'}>
+              <h1 class="text-2xl font-semibold mb-4">Reader Settings</h1>
+              <div class="space-y-6">
+                <ProviderSelectionPanel
+                  providerOptions={props.readerProviderOptions} 
+                  selectedProviderId={() => props.config.readerConfig?.providerId}
+                  onSelectProvider={props.onReaderSelectProvider}
+                />
+                <Show when={props.config.readerConfig?.providerId !== undefined}>
+                  <ModelSelectionPanel
+                    functionName="Reader"
+                    selectedProvider={() => props.readerProviderOptions.find(p => p.id === props.config.readerConfig?.providerId)}
+                    fetchStatus={props.readerTransientState.fetchStatus} 
+                    showSpinner={props.readerTransientState.showSpinner}
+                    fetchError={props.readerTransientState.fetchError}
+                    fetchedModels={props.readerTransientState.models}
+                    remoteModels={() => []} 
+                    selectedModelId={() => props.config.readerConfig?.modelId}
+                    onSelectModel={props.onReaderSelectModel}
+                  />
+                  <Show when={props.readerTransientState.fetchStatus() === 'success' && props.config.readerConfig?.modelId}>
+                    <ConnectionTestPanel
+                      testStatus={props.readerTransientState.testStatus}
+                      testError={props.readerTransientState.testError}
+                      functionName="Reader"
+                      selectedProvider={() => props.readerProviderOptions.find(p => p.id === props.config.readerConfig?.providerId)}
+                    />
+                    <div class="flex space-x-4 mt-4">
+                      <Button 
+                          onClick={props.onReaderTestConnection} 
+                          disabled={props.readerTransientState.testStatus() === 'testing'}
+                      >
+                          {props.readerTransientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}
+                      </Button>
+                    </div>
+                  </Show>
+                </Show>
+              </div>
+            </Show>
+            
+            {/* --- TTS Section --- */} 
+            <Show when={props.activeSection() === 'tts'}>
+              <h1 class="text-2xl font-semibold mb-4">TTS Settings</h1>
+              <p class="text-muted-foreground">TODO: Implement TTS settings using panels/context. Configuration might differ from other models.</p>
+            </Show>
 
-          <Show when={activeSection() === null}>
-             <h1>Settings Content Area</h1>
-             <p>Select a category from the sidebar.</p>
-          </Show>
+            {/* --- Redirects Section --- */} 
+            <Show when={props.activeSection() === 'redirects'}>
+              <h1 class="text-2xl font-semibold mb-4">Redirect Settings</h1>
+              <p class="text-muted-foreground mb-6">Enable or disable privacy-preserving frontends for specific services.</p>
+              <RedirectsPanel
+                allRedirectSettings={() => props.config.redirectSettings || {}}
+                isLoading={() => props.loadStatus() === 'pending'}
+                onSettingChange={props.onRedirectSettingChange}
+              />
+            </Show>
 
-          {/* Remove old placeholder */}
-          {/* <h1>Settings Content Area</h1> */}
-          {/* <p>The selected settings section will be displayed here.</p> */} 
-          {/* Content based on the selected route will go here */} 
+            {/* --- Default / No Selection --- */} 
+            <Show when={props.activeSection() === null && props.loadStatus() === 'ready'}>
+               <h1 class="text-xl font-semibold">Settings</h1>
+               <p class="text-muted-foreground mt-2">Select a category from the sidebar to configure.</p>
+            </Show>
+          </Show> 
         </main>
       </SidebarProvider>
     </>
-  );
-};
-
-// Wrap the content component with the Provider
-const SettingsPageView: Component = () => {
-  return (
-    <SettingsProvider>
-      <SettingsPageViewContent />
-    </SettingsProvider>
   );
 };
 

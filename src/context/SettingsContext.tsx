@@ -1,6 +1,6 @@
 import { createContext, useContext, Component, createResource, createSignal, ParentComponent, createEffect } from 'solid-js';
 import { createStore, produce } from 'solid-js/store'; // Import produce for easier updates
-import { userConfigurationStorage } from '../services/storage';
+import { userConfigurationStorage } from '../services/storage/storage';
 import type { UserConfiguration, FunctionConfig, RedirectSettings, RedirectServiceSetting } from '../services/storage/types'; // Centralize types
 import type { ProviderOption } from '../features/models/ProviderSelectionPanel'; // Use types from panels where appropriate
 import type { ModelOption } from '../features/models/ModelSelectionPanel'; // Need ModelOption too
@@ -13,10 +13,10 @@ import { JanProvider } from '../services/llm/providers/jan';
 import { LMStudioProvider } from '../services/llm/providers/lmstudio';
 
 // --- Helper Types (Local to context or shared) ---
-type FetchStatus = 'idle' | 'loading' | 'success' | 'error';
-type TestStatus = 'idle' | 'testing' | 'success' | 'error';
+export type FetchStatus = 'idle' | 'loading' | 'success' | 'error';
+export type TestStatus = 'idle' | 'testing' | 'success' | 'error';
 // Update SettingsLoadStatus to include all possible states from createResource
-type SettingsLoadStatus = 'pending' | 'ready' | 'errored' | 'unresolved' | 'refreshing';
+export type SettingsLoadStatus = 'pending' | 'ready' | 'errored' | 'unresolved' | 'refreshing';
 
 // --- Provider Implementations Map (Keep close to usage or in a service) ---
 const providerImplementations = {
@@ -58,9 +58,7 @@ const initialSettings: UserConfiguration = {
     llmConfig: null,
     embeddingConfig: null,
     // Default reader config to null instead of specific provider
-    readerProvider: null, 
-    readerModel: null,
-    readerBaseUrl: null,
+    readerConfig: null, // Use the new object structure
     redirectSettings: {}, // Default empty object
     onboardingComplete: false,
 };
@@ -149,10 +147,8 @@ export const SettingsProvider: ParentComponent = (props) => {
       await saveCurrentSettings();
     };
     const updateReaderConfig = async (config: FunctionConfig | null) => {
-      // Update individual reader fields for compatibility if needed
-      setSettingsStore('readerProvider', config?.providerId ?? null);
-      setSettingsStore('readerModel', config?.modelId ?? null);
-      setSettingsStore('readerBaseUrl', config?.baseUrl ?? null);
+      // Directly update the readerConfig object
+      setSettingsStore('readerConfig', config);
       await saveCurrentSettings();
     };
 
@@ -200,19 +196,40 @@ export const SettingsProvider: ParentComponent = (props) => {
 
 
         try {
-            // TODO: Replace placeholder with actual API call using provider info
-            console.log(`[SettingsContext] Fetching models for ${funcType} / ${provider.id}...`);
-            await new Promise(res => setTimeout(res, 750)); // Simulate network delay
-            const mockModels: ModelOption[] = [
-                { id: `mock-${provider.id}-${funcType}-1`, name: `Mock ${provider.name} ${funcType} Model 1` },
-                { id: `mock-${provider.id}-${funcType}-2`, name: `Mock ${provider.name} ${funcType} Model 2` },
-            ];
-             if (Math.random() < 0.1) throw new Error("Simulated fetch network error"); // Uncomment to test
+            // Get the current Base URL for the function type from the main store
+            let baseUrl: string | undefined | null = null;
+            if (funcType === 'LLM' && settingsStore.llmConfig) {
+                baseUrl = settingsStore.llmConfig.baseUrl;
+            } else if (funcType === 'Embedding' && settingsStore.embeddingConfig) {
+                baseUrl = settingsStore.embeddingConfig.baseUrl;
+            } else if (funcType === 'Reader' && settingsStore.readerConfig) {
+                baseUrl = settingsStore.readerConfig.baseUrl;
+            }
 
-            setTransientState(funcType, 'models', mockModels);
+            if (!baseUrl) {
+                baseUrl = provider.defaultBaseUrl; // Fallback to default if not set
+                console.warn(`[SettingsContext] Base URL not found in config for ${funcType}, using default: ${baseUrl}`);
+                if (!baseUrl) {
+                    throw new Error(`Cannot fetch models for ${funcType}: Base URL is missing in config and provider has no default.`);
+                }
+            }
+
+            // Call the actual provider's listModels function
+            const fetchedModelInfo = await providerImplementations[provider.id as keyof typeof providerImplementations].listModels({ baseUrl });
+
+            // Map ModelInfo to ModelOption, ensuring name is a string
+            const fetchedModelOptions: ModelOption[] = fetchedModelInfo.map(info => ({
+                id: info.id,
+                name: info.name || info.id // Use ID as fallback name
+            }));
+
+            // Sort models alphabetically by name
+            fetchedModelOptions.sort((a: ModelOption, b: ModelOption) => a.name.localeCompare(b.name));
+
+            setTransientState(funcType, 'models', fetchedModelOptions);
             setTransientState(funcType, 'fetchStatus', 'success');
             console.log(`[SettingsContext] Models fetched successfully for ${funcType} / ${provider.id}.`);
-            return mockModels; // Return models
+            return fetchedModelOptions;
         } catch (err: any) {
             console.error(`[SettingsContext] Error fetching models for ${funcType} / ${provider.id}:`, err);
             setTransientState(funcType, 'fetchError', err);

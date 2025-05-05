@@ -1,7 +1,7 @@
 import { Component, createSignal, createResource, createEffect } from 'solid-js';
 import { Language, LanguageOptionStub } from '../../src/features/oninstall/Language';
 import { LearningGoal } from '../../src/features/oninstall/LearningGoal';
-import { userConfigurationStorage } from '../../src/services/storage';
+import { userConfigurationStorage } from '../../src/services/storage/storage';
 // Import the shared Messages type
 import type { Messages } from '../../src/types/i18n';
 // Import the new SetupFunction component and its types

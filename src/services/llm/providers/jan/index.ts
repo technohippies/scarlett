@@ -198,7 +198,7 @@ async function testConnection(
 export const JanProvider: LLMProvider = {
   // Use the streaming version by default, ensure chat.ts defines it correctly
   chat: _janChatStream, // Assuming _janChatStream matches the required signature
-  listModels,
+  listModels, // Revert to exporting listModels
   embed: janEmbed, // Re-added embed property
   testConnection, // Add the test function
 }; 

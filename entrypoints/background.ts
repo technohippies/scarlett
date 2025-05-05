@@ -12,7 +12,7 @@ import { registerMessageHandlers } from '../src/background/handlers/message-hand
 // Import handler registration functions
 import { registerContextMenuHandlers } from '../src/background/handlers/context-menu-handler';
 // Import storage to check onboarding status
-import { userConfigurationStorage } from '../src/services/storage';
+import { userConfigurationStorage } from '../src/services/storage/storage';
 
 console.log('[Scarlett BG Entrypoint] Script loaded. Defining background...');
 

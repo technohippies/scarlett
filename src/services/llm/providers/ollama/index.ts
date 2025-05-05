@@ -165,7 +165,7 @@ export const OllamaProvider: LLMProvider = {
   // Cast the combined chat function to the specific type expected by the interface
   // Ensure ollamaChat is correctly typed where it's defined (./chat.ts)
   chat: ollamaChat, // No need to cast if ollamaChat already returns the correct type
-  listModels, // Export the new function
+  listModels, // Revert to exporting listModels
   embed: ollamaEmbed, // Add the embed function
   testConnection, // Add the test function
 }; 

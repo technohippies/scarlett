@@ -28,9 +28,7 @@ export interface UserConfiguration {
     llmConfig: FunctionConfig | null;
     embeddingConfig: FunctionConfig | null;
     // Represent reader config similarly or adjust as needed
-    readerProvider: string | null;
-    readerModel: string | null;
-    readerBaseUrl: string | null;
+    readerConfig: FunctionConfig | null; // Use FunctionConfig like others
     // Add the missing redirect settings field
     redirectSettings: RedirectSettings | null; // Allow null, but not undefined
     onboardingComplete: boolean; // Should likely be non-optional boolean
