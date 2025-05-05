@@ -75,6 +75,10 @@ interface SettingsPageViewProps {
 
 // --- SettingsPageView Component (Now Presentational) --- 
 const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
+  // --- Debug Log --- 
+  console.log('[SettingsPageView] Received props.activeSection:', props.activeSection);
+  console.log('[SettingsPageView] typeof props.activeSection:', typeof props.activeSection);
+
   return (
     <>
       <SidebarProvider>

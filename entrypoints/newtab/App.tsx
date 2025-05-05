@@ -3,7 +3,7 @@ import { Component, createSignal, Match, Switch } from 'solid-js';
 import NewTabPage from '../../src/pages/newtab/NewTabPage';
 import BookmarksPage from '../../src/pages/bookmarks/BookmarksPage';
 import StudyPage from '../../src/pages/study/StudyPage';
-import SettingsPageView from '../../src/pages/settings/SettingsPageView';
+import SettingsPage from '../../src/pages/settings/SettingsPage'; // Import the container Page component
 
 type ActiveView = 'newtab' | 'bookmarks' | 'study' | 'settings';
 
@@ -38,7 +38,7 @@ const App: Component = () => {
         />
       </Match>
       <Match when={activeView() === 'settings'}>
-        <SettingsPageView />
+        <SettingsPage /> { /* Render the container Page component */ }
       </Match>
     </Switch>
   );
