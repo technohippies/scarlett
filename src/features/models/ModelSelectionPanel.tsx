@@ -218,7 +218,7 @@ export const ModelSelectionPanel: Component<ModelSelectionPanelProps> = (props) 
                       options={props.fetchedModels()}
                       optionValue="id"
                       optionTextValue="name"
-                      placeholder="Select a downloaded model..."
+                      placeholder="Select model"
                       itemComponent={(itemProps) => (
                         <SelectItem item={itemProps.item}>{itemProps.item.rawValue.name}</SelectItem>
                       )}

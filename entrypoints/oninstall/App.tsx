@@ -420,9 +420,9 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       if (!config?.providerId) return i18n().get('onboardingContinue', 'Continue'); // Should be disabled anyway
       if (state?.fetchStatus() === 'success' && config?.modelId) {
         if (state?.testStatus() === 'idle' || state?.testStatus() === 'error') {
-          return i18n().get('onboardingTestConnection', 'Test Connection');
+          return i18n().get('onboardingTest', 'Test');
         } else if (state?.testStatus() === 'testing') {
-          return i18n().get('onboardingTestingConnection', 'Testing...');
+          return i18n().get('onboardingConnecting', 'Connecting...');
         } else { // testStatus === 'success'
           return i18n().get('onboardingContinue', 'Continue');
         }
@@ -708,7 +708,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         </Show>
         
         {/* Step Content Area */}
-        <div class="flex-grow flex flex-col items-center p-4 pt-24 md:p-8 md:pt-24">
+        <div class="flex-grow flex flex-col items-center p-4 pt-24 md:p-8 md:pt-24 overflow-y-auto pb-24 md:pb-28">
             {renderStep()}
         </div>
 
@@ -729,5 +729,3 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     </div>
   );
 };
-
-export default App; // Export the main App component

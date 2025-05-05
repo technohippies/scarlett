@@ -49,7 +49,7 @@ export const ConnectionTestPanel: Component<ConnectionTestPanelProps> = (props) 
               <div class="flex items-center text-muted-foreground">
               {/* Use functionName in testing message */}
               <Spinner class="mr-2 h-4 w-4 animate-spin" />
-              <span>Testing connection for {props.functionName}... (Max {props.functionName === 'LLM' ? '15' : '5'}s)</span>
+              <span>Connecting...</span>
               </div>
           </Show>
           
@@ -104,7 +104,7 @@ export const ConnectionTestPanel: Component<ConnectionTestPanelProps> = (props) 
           <Show when={props.testStatus() === 'success'}>
               <div class="text-green-500 flex items-center">
                   <CheckCircle class="mr-2 h-4 w-4" />
-                  <span>Connection successful!</span>
+                  <span>Success!</span>
               </div>
           </Show>
 
