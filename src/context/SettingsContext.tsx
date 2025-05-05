@@ -187,12 +187,22 @@ export const SettingsProvider: ParentComponent = (props) => {
             baseUrl: provider.defaultBaseUrl || '' // Use provider default, ensure string
         };
 
+        // Update the config first
         switch (configKey) {
             case 'llmConfig': await updateLlmConfig(newConfig); break;
             case 'embeddingConfig': await updateEmbeddingConfig(newConfig); break;
             case 'readerConfig': await updateReaderConfig(newConfig); break;
             // Add case for TTS when implemented
-            default: console.warn(`[SettingsContext] Unknown funcType in handleSelectProvider: ${funcType}`);
+            default: console.warn(`[SettingsContext] Unknown funcType in handleSelectProvider: ${funcType}`); return; // Exit if unknown type
+        }
+
+        // --- ADDED: Trigger fetchModels after updating config ---
+        try {
+            console.log(`[SettingsContext] Triggering fetchModels for ${funcType} after provider selection.`);
+            await fetchModels(funcType, provider); 
+        } catch (error) {
+            console.error(`[SettingsContext] Error triggering fetchModels after provider selection for ${funcType}:`, error);
+            // Handle error appropriately, maybe update fetchStatus/fetchError in transient state
         }
     };
 
