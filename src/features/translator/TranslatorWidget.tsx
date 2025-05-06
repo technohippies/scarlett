@@ -14,16 +14,19 @@ export interface AlignmentData {
     character_end_times_seconds: number[];
 }
 
-// --- Props Interface ---
+// --- Props Interface (Update onTTSRequest return type) ---
 export interface TranslatorWidgetProps {
   hoveredWord: string;      // The translated word to display prominently
   originalWord: string;     // The original word for reference
   pronunciation?: string;   // Optional pronunciation (e.g., Pinyin)
   sourceLang: string;       // Source language code (e.g., 'en')
   targetLang: string;       // Target language code (e.g., 'zh-CN')
-  onTTSRequest: (text: string, lang: string, speed: number) => void; // Add speed param
+  // Updated return type for onTTSRequest
+  onTTSRequest: (text: string, lang: string, speed: number) => Promise<{ audioDataUrl?: string; error?: string }>; 
   // Optional alignment data for highlighting
   alignment?: AlignmentData | null;
+  // Add onCloseRequest prop
+  onCloseRequest?: () => void;
 }
 
 // --- Word Data Structure ---
@@ -163,40 +166,76 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   };
 
   // --- Handlers ---
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (isGenerating() || isPlaying()) return;
-    console.log('[Widget] Requesting Audio at 1x');
+    console.log('[Widget] Requesting Audio via onTTSRequest...');
     setIsGenerating(true);
     setIsAudioReady(false);
-    setWordMap([]); 
     setCurrentHighlightIndex(null);
     setIsPlaying(false);
     if (highlightInterval) clearInterval(highlightInterval);
-    // Trigger the external request (won't provide alignment in story)
-    props.onTTSRequest(props.hoveredWord, props.targetLang, 1.0); 
+    
+    // --- Actual TTS Request --- 
+    try {
+      const ttsResult = await props.onTTSRequest(props.hoveredWord, props.targetLang, 1.0);
 
+      if (ttsResult.audioDataUrl) {
+        console.log('[Widget] Received audioDataUrl, attempting to play.');
+        const audio = new Audio(ttsResult.audioDataUrl);
+        audio.oncanplaythrough = () => {
+          setIsAudioReady(true);
+          setIsPlaying(true);
+          console.log('[Widget] Audio ready, playing...');
+          audio.play().catch(e => {
+            console.error('[Widget] Error playing audio:', e);
+            setIsPlaying(false);
+            setIsGenerating(false); // Reset generating state on play error
+          });
+        };
+        audio.onended = () => {
+          console.log('[Widget] Audio playback finished.');
+          setIsPlaying(false);
+          setIsGenerating(false); // Reset generating state when done
+          // If alignment was available and wordMap was set, could clear highlight here
+        };
+        audio.onerror = (e) => {
+          console.error('[Widget] Error loading or playing audio from data URL:', e);
+          setIsAudioReady(false);
+          setIsPlaying(false);
+          setIsGenerating(false);
+          // TODO: Set an error message state to display to the user
+        };
+      } else if (ttsResult.error) {
+        console.error('[Widget] TTS request failed:', ttsResult.error);
+        setIsGenerating(false);
+        // TODO: Set an error message state to display to the user
+      }
+    } catch (error) {
+      console.error('[Widget] Error in handleGenerate calling onTTSRequest:', error);
+      setIsGenerating(false);
+      // TODO: Set an error message state
+    }
+    // The simulation block below should be removed or conditionally run only in Storybook/dev mode
+    // For now, commenting it out to prioritize real TTS playback.
+    /*
     // --- Simulation Block (Re-added for Storybook interaction) ---
-    // Simulate generation finishing
     setTimeout(() => {
       console.log('[Widget Sim] Generation Complete, Audio Ready');
       setIsGenerating(false);
       setIsAudioReady(true);
-      // Create a basic word map for simulation if none provided by props
       if (wordMap().length === 0) {
           const dummyWords = props.hoveredWord.split(/(\s+)/).filter(Boolean).map((w, i) => ({ 
               text: w, 
               index: i, 
-              // Assign arbitrary increasing times for simulation 
               startTime: i * 0.5, 
               endTime: (i + 1) * 0.5 
           }));
           setWordMap(dummyWords);
           console.log("[Widget Sim] Created dummy word map:", dummyWords);
       }
-      // Start auto-play simulation
       handlePlaySpeed(1.0); 
-    }, 1500); // Simulate 1.5s generation time
-    // --- End Simulation Block ---
+    }, 1500); 
+    */
   };
 
   const handlePlayAgain = () => {

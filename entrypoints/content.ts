@@ -177,17 +177,28 @@ export default defineContentScript({
         };
 
         // --- TTS Request Handler (Called from Widget) ---
-        const handleTTSRequest = (text: string, lang: string, speed: number) => {
-            console.log(`[Scarlett CS] TTS Request: Text='${text}', Lang='${lang}', Speed=${speed}`);
-            const payload: GenerateTTSPayload = { text, lang, speed };
-            // Use messageSender to send to background
-            messageSender.sendMessage('generateTTS', payload)
-                .then(response => {
-                    console.log('[Scarlett CS] TTS generation requested. Response:', response);
-                })
-                .catch(error => {
-                    console.error('[Scarlett CS] Error sending TTS request:', error);
-                });
+        const handleTTSRequest = async (text: string, lang: string, speed: number): Promise<{ audioDataUrl?: string; error?: string }> => {
+            console.log(`[Scarlett CS] TTS Request to background: Text='${text}', Lang='${lang}', Speed=${speed}`);
+            try {
+                // Use messageSender to send to background and await the response
+                const response = await messageSender.sendMessage(
+                    'REQUEST_TTS_FROM_WIDGET', 
+                    { text, lang, speed } // Payload remains the same
+                );
+
+                console.log('[Scarlett CS] Response from background for TTS request:', response);
+
+                if (response && response.success && response.audioDataUrl) {
+                    return { audioDataUrl: response.audioDataUrl };
+                } else {
+                    const errorMsg = response?.error || 'Unknown error receiving TTS data from background.';
+                    console.error(`[Scarlett CS] TTS request failed: ${errorMsg}`);
+                    return { error: errorMsg };
+                }
+            } catch (error) {
+                console.error('[Scarlett CS] Error sending TTS request to background or processing response:', error);
+                return { error: error instanceof Error ? error.message : 'Failed to request TTS from background.' };
+            }
         };
 
         // --- Message Listener: Display Translation Widget ---
@@ -203,12 +214,13 @@ export default defineContentScript({
 
             // Update state signals BEFORE creating the UI
             setWidgetProps({
-                hoveredWord: translatedText,
+                hoveredWord: originalText,
                 originalWord: originalText,
-                sourceLang,
-                targetLang,
-                pronunciation,
-                contextText,
+                translatedWord: translatedText,
+                sourceLang: sourceLang,
+                targetLang: targetLang,
+                pronunciation: pronunciation || undefined,
+                contextSentence: contextText || undefined,
             });
             setAlignmentData(null); // Reset alignment for new widget
             setIsVisible(true);     // Set visibility

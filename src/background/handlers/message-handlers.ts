@@ -58,6 +58,8 @@ import { getSummarizationPrompt } from '../../services/llm/prompts/analysis'; //
 import { userConfigurationStorage } from '../../services/storage/storage'; // Correct name
 // --- Import FunctionConfig --- 
 import type { FunctionConfig } from '../../services/storage/types';
+import { generateElevenLabsSpeechStream } from '../../services/tts/elevenLabsService';
+import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
 
 // Define the protocol map for messages handled by the background script
 export interface BackgroundProtocolMap {
@@ -86,6 +88,8 @@ export interface BackgroundProtocolMap {
     getPendingEmbeddingCount(): Promise<{ count: number }>;
     generateTTS(data: GenerateTTSPayload): Promise<void>;
     extractMarkdownFromHtml(data: ExtractMarkdownRequest): Promise<ExtractMarkdownResponse>;
+    REQUEST_TTS_FROM_WIDGET(data: { text: string; lang: string; speed?: number }): 
+        Promise<{ success: boolean; audioDataUrl?: string; error?: string }>;
 }
 
 // Initialize messaging for the background context
@@ -676,5 +680,70 @@ export function registerMessageHandlers(): void {
     });
     // --- End Listener for getPendingEmbeddingCount ---
 
+    // --- Handler for REQUEST_TTS_FROM_WIDGET ---
+    messaging.onMessage('REQUEST_TTS_FROM_WIDGET', async (message) => {
+        console.log('[Message Handlers] Received REQUEST_TTS_FROM_WIDGET:', message.data);
+        const { text, lang, speed } = message.data; 
+
+        try {
+            const userConfig = await userConfigurationStorage.getValue();
+            const ttsConfig = userConfig?.ttsConfig;
+
+            if (!ttsConfig || ttsConfig.providerId !== 'elevenlabs' || !ttsConfig.apiKey) {
+                console.warn('[Message Handlers REQUEST_TTS_FROM_WIDGET] ElevenLabs TTS not configured or API key missing.');
+                return { success: false, error: 'ElevenLabs TTS not configured or API key missing.' };
+            }
+
+            const apiKey = ttsConfig.apiKey;
+            // Use default model and voice IDs from constants as they are not in FunctionConfig for TTS yet
+            const effectiveModelId = DEFAULT_ELEVENLABS_MODEL_ID;
+            const effectiveVoiceId = DEFAULT_ELEVENLABS_VOICE_ID;
+
+            console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Generating audio via ElevenLabs. Text: "${text.substring(0,30)}...", Lang: ${lang}, Model: ${effectiveModelId}, Voice: ${effectiveVoiceId}`);
+
+            const audioBlob = await generateElevenLabsSpeechStream(
+                apiKey, // Only apiKey comes from stored ttsConfig
+                text,
+                effectiveModelId, // Use default constant
+                effectiveVoiceId  // Use default constant
+            );
+
+            if (audioBlob) {
+                const audioDataUrl = await blobToDataURL(audioBlob);
+                console.log('[Message Handlers REQUEST_TTS_FROM_WIDGET] Audio generated, returning data URL.');
+                return { success: true, audioDataUrl };
+            } else {
+                console.error('[Message Handlers REQUEST_TTS_FROM_WIDGET] Failed to generate audio blob.');
+                return { success: false, error: 'Failed to generate audio from ElevenLabs.' };
+            }
+        } catch (error) {
+            console.error('[Message Handlers REQUEST_TTS_FROM_WIDGET] Error generating TTS:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Unknown error generating TTS.' };
+        }
+    });
+
+    // --- Regarding existing 'generateTTS' handler --- 
+    // It seems there's an existing 'generateTTS(data: GenerateTTSPayload): Promise<void>;'
+    // We should review if this is still needed or if REQUEST_TTS_FROM_WIDGET replaces its intended functionality.
+    // For now, I will leave the old one. If it was for direct audio playback in background, it has different requirements.
+    messaging.onMessage('generateTTS', async (message) => {
+        console.log('[Message Handlers] Received OLD generateTTS request:', message.data);
+        // This handler is likely different. It doesn't return audio data to content script.
+        // It might have been intended for background playback or saving, which is not the current goal.
+        // For now, just logging it. If it was used by the widget, it would explain the previous "No response" error.
+        // TODO: Investigate and remove or refactor this old 'generateTTS' if it's redundant or causing confusion.
+        return; // Explicitly return nothing as per its void promise type
+    });
+
     console.log('[Message Handlers] Background message listeners registered.');
+}
+
+// Helper function to convert Blob to Data URL
+async function blobToDataURL(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
 } 
