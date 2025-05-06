@@ -139,7 +139,6 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
         if(originalTextWordStart !== -1){
             let wordStartCharIndexInAlignment = -1;
             let wordEndCharIndexInAlignment = -1;
-            let currentTextCharIndex = 0; // Tracks character position in the *original text*
             let alignmentCharCursor = 0; // Tracks character position in *alignment.characters*
 
             // Attempt to map originalTextWordStart to an alignment character index
@@ -227,8 +226,8 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
           setIsAudioReady(true);
           setIsGeneratingTTS(false);
           setIsPlayingAudio(true);
-          audio.play().catch(e => {
-            console.error('[Widget TTS] Error playing audio:', e);
+          audio.play().catch(_ => {
+            console.error('[Widget TTS] Error playing audio:', _);
             setIsPlayingAudio(false); setCurrentAudio(null); setIsGeneratingTTS(false);
           });
         };
@@ -273,7 +272,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
     if (audio && !isPlayingAudio() && !isGeneratingTTS() && !isTranslationLoading()) {
       setIsPlayingAudio(true);
       audio.currentTime = 0;
-      audio.play().catch(e => { setIsPlayingAudio(false); });
+      audio.play().catch(_ => { setIsPlayingAudio(false); });
     } else if (!audio && !isGeneratingTTS() && !isTranslationLoading()) {
       handleGenerate();
     }

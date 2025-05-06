@@ -10,11 +10,10 @@ import {
 
 // --- Import Component and Types --- Use relative paths
 import TranslatorWidget from '../src/features/translator/TranslatorWidget';
-import type { TranslatorWidgetProps, AlignmentData } from '../src/features/translator/TranslatorWidget';
+import type { AlignmentData } from '../src/features/translator/TranslatorWidget';
 import { extractReadableMarkdown } from '../src/lib/html-processor'; // Import the extraction function
 import type {
     DisplayTranslationPayload, // Expect payload from background for displaying
-    GenerateTTSPayload,      // Payload sent TO background for TTS
     UpdateAlignmentPayload, // Payload from background with alignment
     ExtractMarkdownRequest, // Import new message type
     ExtractMarkdownResponse // Import new message type
