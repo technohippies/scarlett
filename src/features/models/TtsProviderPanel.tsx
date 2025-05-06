@@ -111,26 +111,12 @@ export const TtsProviderPanel: Component<TtsProviderPanelProps> = (props) => {
                         />
                     </TextField>
                     
-                    {/* Test Button & Play */}
-                    <Show when={props.elevenLabsApiKey().length > 0}> 
-                        {(() => {
-                          console.log('[TtsProviderPanel] props.onTestElevenLabs before button render:', typeof props.onTestElevenLabs, props.onTestElevenLabs);
-                          return null; // SolidJS Show expects a valid child or null
-                        })()}
+                    {/* Play Test Audio Button - Test Connection button is removed, logic moves to footer */}
+                    <Show when={props.testAudioData() && selectedProvider() === 'elevenlabs'}>
                         <div class="flex items-center gap-4 mt-4">
-                             <Button 
-                                onClick={props.onTestElevenLabs} 
-                                disabled={props.isElevenLabsTesting()}
-                             > 
-                                 <Show when={props.isElevenLabsTesting()} fallback={<>Test Connection</>}>
-                                     <Spinner class="h-4 w-4 mr-2"/> Testing...
-                                 </Show>
-                             </Button>
-                             <Show when={props.testAudioData() && !props.isElevenLabsTesting() && selectedProvider() === 'elevenlabs'}>
-                                 <Button onClick={props.onPlayTestAudio} variant="outline" >
-                                     <SpeakerSimpleHigh class="h-4 w-4 mr-1" /> Play Test Audio
-                                 </Button>
-                             </Show>
+                            <Button onClick={props.onPlayTestAudio} variant="outline" >
+                                <SpeakerSimpleHigh class="h-4 w-4 mr-1" /> Play Test Audio
+                            </Button>
                         </div>
                     </Show>
                     

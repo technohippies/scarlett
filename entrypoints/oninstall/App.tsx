@@ -517,7 +517,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   // Dynamic Button Label
   const footerButtonLabel = () => {
     const step = currentStep();
-    const state = getCurrentTransientState();
+    const state = getCurrentTransientState(); // For LLM/Embedding
 
     if (step === 'language' || step === 'learningGoal') {
       return i18n().get('onboardingContinue', 'Continue');
@@ -535,17 +535,32 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         }
       }
     }
-    if (step === 'setupTTS') { // Simplified for TTS
-        return i18n().get('onboardingContinue', 'Continue');
+    // --- Updated TTS Logic for footerButtonLabel ---
+    if (step === 'setupTTS') {
+      const provider = selectedTtsProviderIdOnboarding();
+      if (provider === 'elevenlabs') {
+        if (elevenLabsApiKeyOnboarding().length > 0) {
+          if (isTtsTestingOnboarding()) {
+            return i18n().get('onboardingConnecting', 'Testing...');
+          }
+          if (ttsTestAudio()) { // Test was successful
+            return i18n().get('onboardingContinue', 'Continue');
+          }
+          // API key entered, but no successful test yet or test failed
+          return i18n().get('onboardingTest', 'Test Connection'); 
+        }
+      }
+      // Default for TTS (no provider selected, or no API key for EL)
+      return i18n().get('onboardingContinue', 'Continue');
     }
     if (step === 'redirects') return i18n().get('onboardingFinishSetup', 'Finish Setup');
     return i18n().get('onboardingContinue', 'Continue');
   };
 
-  // Dynamic Button Disabled State (Update TTS case)
+  // Dynamic Button Disabled State
   const isFooterButtonDisabled = () => {
     const step = currentStep();
-    const state = getCurrentTransientState();
+    const state = getCurrentTransientState(); // For LLM/Embedding
 
     switch (step) {
       case 'language':
@@ -561,18 +576,18 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         if (state?.testStatus() === 'testing') return true; 
         return false;
       }
+      // --- Updated TTS Logic for isFooterButtonDisabled ---
       case 'setupTTS': {
         const provider = selectedTtsProviderIdOnboarding();
-        if (!provider) return true; 
+        if (!provider) return true; // Disabled if no provider selected
         if (provider === 'elevenlabs') {
-          if (!elevenLabsApiKeyOnboarding()) {
+          if (!elevenLabsApiKeyOnboarding()) { // Disabled if EL selected but no API key
             return true;
           }
         }
-        // REMOVE Kokoro check
-        // if (provider === 'kokoro') { ... }
-        if (isTtsTestingOnboarding()) return true;
-        return false;
+        if (isTtsTestingOnboarding()) return true; // Disabled if currently testing
+        // No other specific disabling condition here, footerButtonLabel handles "Test" vs "Continue"
+        return false; 
       }
       case 'redirects':
         return props.initialRedirectLoading();
@@ -584,7 +599,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   // Dynamic Button onClick Action
   const handleFooterButtonClick = () => {
     const step = currentStep();
-    const state = getCurrentTransientState();
+    const state = getCurrentTransientState(); // For LLM/Embedding
     const llmConfig = settingsContext.config.llmConfig;
     const embeddingConfig = settingsContext.config.embeddingConfig;
 
@@ -609,8 +624,16 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
           handleEmbeddingComplete(embeddingConfig);
         }
         break;
+      // --- Updated TTS Logic for handleFooterButtonClick ---
       case 'setupTTS':
-        handleTTSComplete();
+        const provider = selectedTtsProviderIdOnboarding();
+        if (provider === 'elevenlabs' && elevenLabsApiKeyOnboarding().length > 0 && !ttsTestAudio() && !isTtsTestingOnboarding()) {
+          // If API key is present, no successful test yet, and not currently testing -> perform test
+          handleTestElevenLabsOnboarding();
+        } else {
+          // Otherwise (test successful, or user wants to skip test, or different provider) -> proceed to complete
+          handleTTSComplete();
+        }
         break;
       case 'redirects':
         handleRedirectsComplete();
