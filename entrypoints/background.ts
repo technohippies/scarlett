@@ -15,20 +15,20 @@ import { registerContextMenuHandlers } from '../src/background/handlers/context-
 import { userConfigurationStorage } from '../src/services/storage/storage';
 // Use WXT's browser namespace
 import { browser } from 'wxt/browser';
-// import type { WebNavigation } from 'wxt/browser/webNavigation'; // Reverted import
+// Remove the problematic import
+// import type { WebNavigation } from 'wxt/browser/webNavigation'; 
 
-import type { UserConfiguration, RedirectServiceSetting } from '../src/services/storage/types';
-import { REDIRECT_SERVICES, REDIRECT_INSTANCE_LISTS } from '../src/shared/constants'; // Assuming these are defined correctly
+// Removed unused import:
+// import type { UserConfiguration, RedirectServiceSetting } from '../src/services/storage/types';
+// Correct import path for constants
+import { REDIRECT_SERVICES } from '../src/shared/constants'; // Only need REDIRECT_SERVICES here now
 
 console.log('[Scarlett BG Entrypoint] Script loaded. Defining background...');
 
 // --- Redirect Logic ---
 
-// Helper to get the first available instance for a service
-function getDefaultInstance(serviceName: string): string | null {
-  const instances = REDIRECT_INSTANCE_LISTS[serviceName] ?? [];
-  return instances.length > 0 ? instances[0] : null;
-}
+// Type alias for the details object from onBeforeNavigate listener
+type OnBeforeNavigateDetails = Parameters<Parameters<typeof browser.webNavigation.onBeforeNavigate.addListener>[0]>[0];
 
 // Define hostname checks (can be expanded)
 const serviceHostChecks: { [key: string]: (host: string) => boolean } = {
@@ -38,7 +38,6 @@ const serviceHostChecks: { [key: string]: (host: string) => boolean } = {
     'Reddit': (host) => host.endsWith('reddit.com') || host.endsWith('redd.it'),
     'Twitch': (host) => host.endsWith('twitch.tv'),
     'YouTube': (host) => host.endsWith('youtube.com') || host.endsWith('youtu.be'),
-    'YouTube Music': (host) => host.endsWith('music.youtube.com'),
     'Medium': (host) => host.endsWith('medium.com'),
     'Bluesky': (host) => host.endsWith('bsky.app'),
     'Pixiv': (host) => host.endsWith('pixiv.net'),
@@ -48,7 +47,7 @@ const serviceHostChecks: { [key: string]: (host: string) => boolean } = {
 };
 
 // Use inferred type from browser.webNavigation
-async function handleNavigation(details: typeof browser.webNavigation.OnBeforeNavigateDetailsType): Promise<void> {
+async function handleNavigation(details: OnBeforeNavigateDetails): Promise<void> {
   // --- ADDED: Log entry and basic details --- 
   console.log(`[Redirect] handleNavigation called for URL: ${details.url}, FrameId: ${details.frameId}`);
 
@@ -89,15 +88,16 @@ async function handleNavigation(details: typeof browser.webNavigation.OnBeforeNa
 
       // Check if this service is enabled (using lowercase lookup), has a check function, and the host matches
       if (serviceSetting?.isEnabled && hostCheckFn && hostCheckFn(originalHost)) {
-        // TODO: Implement chosenInstance logic later. For now, use the first default.
-        let instanceUrlString = serviceSetting.chosenInstance || getDefaultInstance(serviceName);
+        // Use only the chosenInstance from settings. Default is set in storage.ts.
+        let instanceUrlString = serviceSetting.chosenInstance;
 
+        // If chosenInstance is somehow empty/nullish despite defaults, skip.
         if (!instanceUrlString) {
-          console.warn(`[Redirect] Service "${serviceName}" is enabled but has no chosen or default instance.`);
+          console.warn(`[Redirect] Service "${serviceName}" is enabled but has no chosen instance URL in settings.`);
           continue; // Skip if no instance is available
         }
 
-        // --- ADDED: Ensure scheme exists --- 
+        // --- ADDED: Ensure scheme exists ---
         if (!instanceUrlString.startsWith('http://') && !instanceUrlString.startsWith('https://')) {
             console.warn(`[Redirect] Instance URL "${instanceUrlString}" for "${serviceName}" is missing a scheme. Prepending https://`);
             instanceUrlString = 'https://' + instanceUrlString;
@@ -165,6 +165,13 @@ export default defineBackground({
   // The main function MUST be synchronous according to WXT warning
   main() {
     console.log('[Scarlett BG Entrypoint] Background main() function running (synchronous).');
+
+    // --- Explicitly ensure storage is touched early --- 
+    userConfigurationStorage.getValue().then(() => {
+        console.log('[Scarlett BG Entrypoint] userConfigurationStorage potentially initialized.');
+    }).catch(err => {
+        console.error('[Scarlett BG Entrypoint] Error during early storage access:', err);
+    });
 
     // --- Synchronous Setup ---
     // Register listeners immediately when the worker starts.

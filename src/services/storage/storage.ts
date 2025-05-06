@@ -1,14 +1,21 @@
 import { storage } from '#imports';
 // Import the correct type definition
-import type { UserConfiguration } from './types';
+import type { UserConfiguration, RedirectSettings } from './types';
+// Import constants needed to build the default
+import { REDIRECT_SERVICES, DEFAULT_REDIRECT_INSTANCES } from '../../shared/constants';
 
-// REMOVE the duplicate definition
-// export interface UserConfiguration {
-//   nativeLanguage: string | null;
-//   targetLanguage: string | null;
-//   learningGoal: string | null;
-//   onboardingComplete: boolean;
-// }
+// Helper function to build default redirect settings
+function buildDefaultRedirectSettings(): RedirectSettings {
+    const settings: RedirectSettings = {};
+    for (const serviceName of REDIRECT_SERVICES) {
+        const lowerCaseName = serviceName.toLowerCase();
+        settings[lowerCaseName] = {
+            isEnabled: false, // Still default to false
+            chosenInstance: DEFAULT_REDIRECT_INSTANCES[lowerCaseName] ?? '', // Get default instance from constant
+        };
+    }
+    return settings;
+}
 
 // Default values for user configuration
 const defaultUserConfiguration: UserConfiguration = {
@@ -18,20 +25,7 @@ const defaultUserConfiguration: UserConfiguration = {
   llmConfig: null, 
   embeddingConfig: null,
   ttsConfig: null,
-  redirectSettings: { // Default redirect settings using lowercase names from constants.ts
-    "github": { isEnabled: false, chosenInstance: '' },
-    "chatgpt": { isEnabled: false, chosenInstance: '' },
-    "x (twitter)": { isEnabled: false, chosenInstance: '' },
-    "reddit": { isEnabled: false, chosenInstance: '' },
-    "twitch": { isEnabled: false, chosenInstance: '' },
-    "youtube": { isEnabled: false, chosenInstance: '' },
-    "youtube music": { isEnabled: false, chosenInstance: '' },
-    "medium": { isEnabled: false, chosenInstance: '' },
-    "bluesky": { isEnabled: false, chosenInstance: '' },
-    "pixiv": { isEnabled: false, chosenInstance: '' },
-    "soundcloud": { isEnabled: false, chosenInstance: '' },
-    "genius": { isEnabled: false, chosenInstance: '' },
-  },
+  redirectSettings: buildDefaultRedirectSettings(), // Use the helper function
   onboardingComplete: false,
 };
 

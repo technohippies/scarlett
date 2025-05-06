@@ -19,7 +19,7 @@ import ProviderSelectionPanel, { type ProviderOption } from '../../src/features/
 import ModelSelectionPanel from '../../src/features/models/ModelSelectionPanel';
 import ConnectionTestPanel from '../../src/features/models/ConnectionTestPanel';
 // Import the constants
-import { REDIRECT_SERVICES } from '../../src/shared/constants';
+import { REDIRECT_SERVICES, DEFAULT_REDIRECT_INSTANCES } from '../../src/shared/constants';
 
 // Define language lists here (could also be moved)
 const nativeLanguagesList: LanguageOptionStub[] = [
@@ -171,7 +171,12 @@ const App: Component = () => {
         // Assuming REDIRECT_SERVICES is available or imported:
         const services = REDIRECT_SERVICES; // You might need to import this
         for (const serviceName of services) {
-            initialOnSettings[serviceName.toLowerCase()] = { isEnabled: true, chosenInstance: '' };
+            const lowerCaseName = serviceName.toLowerCase();
+            // Set isEnabled: true for display, but use the ACTUAL default instance
+            initialOnSettings[lowerCaseName] = {
+                 isEnabled: true, 
+                 chosenInstance: DEFAULT_REDIRECT_INSTANCES[lowerCaseName] ?? '' 
+            };
         }
         setRedirectSettings(initialOnSettings);
     }

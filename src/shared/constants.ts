@@ -10,48 +10,23 @@ export const REDIRECT_SERVICES: readonly string[] = [
     'Reddit',
     'Twitch',
     'YouTube',
-    'YouTube Music',
     'Medium',
     'Bluesky',
     'Pixiv',
-    'Soundcloud',
     'Genius',
 ];
 
-// Placeholder mapping of services to their known alternative frontend instances
-export const REDIRECT_INSTANCE_LISTS: Readonly<Record<string, readonly string[]>> = {
-    Reddit: [
-        'libreddit.kavin.rocks', 
-        'libreddit.strongthany.cc',
-        'reddit.invak.id',
-    ],
-    Medium: [
-        'scribe.rip',
-        'medium.hostux.net',
-    ],
-    'X (Twitter)': [
-        'nitter.net',
-        'nitter.it',
-        'nitter.privacydev.net',
-    ],
-    YouTube: [
-        'yewtu.be',
-        'invidious.kavin.rocks',
-        'vid.puffyan.us',
-    ],
-    'YouTube Music': [],
-    Imgur: [
-        'rimgo.kavin.rocks',
-        'i.bcow.xyz',
-    ],
-    // Default list if a service is not explicitly listed (can be empty)
-    Default: [],
-    // Add lists for other services here
-    GitHub: [], 
-    ChatGPT: [],
-    Twitch: [],
-    Bluesky: [],
-    Pixiv: [],
-    Soundcloud: [],
-    Genius: [],
+// NEW: Define default instances for redirects
+export const DEFAULT_REDIRECT_INSTANCES: Readonly<Record<string, string>> = {
+    "github": 'https://gothub.ducks.party/',
+    "chatgpt": 'https://duck.ai',
+    "x (twitter)": 'https://xcancel.com',
+    "reddit": 'https://redlib.privacyredirect.com/',
+    "twitch": 'https://safetwitch.projectsegfau.lt/',
+    "youtube": 'https://invidious.adminforge.de/',
+    "medium": 'https://scribe.rip',
+    "bluesky": 'https://skyview.social/',
+    "pixiv": 'https://pixivfe.ducks.party/',
+    "genius": 'https://dm.vern.cc/',
+    // Ensure all services from REDIRECT_SERVICES are covered, even if with an empty string
 }; 
