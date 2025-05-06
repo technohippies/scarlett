@@ -449,6 +449,28 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     setCurrentStep('redirects'); // Proceed to redirects
   };
 
+  // --- New Handler for Skipping TTS Setup ---
+  const handleSkipTTS = async () => {
+    console.log('[App Onboarding] TTS setup skipped by user.');
+    // Clear any transient TTS selections for this onboarding session
+    setSelectedTtsProviderIdOnboarding(undefined);
+    setElevenLabsApiKeyOnboarding('');
+    setTtsErrorOnboarding(null);
+    if (settingsContext) { // Ensure context is available
+        settingsContext.setTtsTestAudio(null); // Clear any test audio
+    }
+
+    // Explicitly save null for ttsConfig when skipping
+    const currentConfigVal = await userConfigurationStorage.getValue() || {};
+    // Ensure ttsConfig is explicitly set to null
+    const configWithSkippedTTS = { ...currentConfigVal, ttsConfig: null };
+    await userConfigurationStorage.setValue(configWithSkippedTTS);
+    console.log('[App Onboarding] TTS configuration explicitly set to null due to skip.');
+
+    setCurrentStep('redirects'); // Proceed to the next step
+  };
+  // --- End New Handler ---
+
   // --- Redirects Handlers (Keep as is) ---
   const handleRedirectsComplete = async () => {
     // Use the passed redirectSettings accessor
@@ -863,6 +885,19 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
                 aria-label="Go back"
             >
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="currentColor" viewBox="0 0 256 256"><path d="M165.66,202.34a8,8,0,0,1-11.32,11.32l-80-80a8,8,0,0,1,0-11.32l80-80a8,8,0,0,1,11.32,11.32L91.31,128Z"></path></svg>
+            </Button>
+        </Show>
+        
+        {/* Skip Button for TTS Step */}
+        <Show when={currentStep() === 'setupTTS'}>
+            <Button
+                onClick={handleSkipTTS}
+                variant="ghost"
+                size="default"
+                class="absolute top-12 right-4 text-muted-foreground hover:text-foreground z-10"
+                aria-label={i18n().get('onboardingSkipTTSAriaLabel', 'Skip TTS setup and continue')}
+            >
+                {i18n().get('onboardingSkipButton', 'Skip')}
             </Button>
         </Show>
         
