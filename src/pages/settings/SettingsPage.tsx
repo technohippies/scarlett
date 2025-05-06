@@ -39,7 +39,9 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
   ];
   const mockEmbeddingProviderOptions: ProviderOption[] = [...mockLlmProviderOptions];
-  const mockTtsProviderOptions: ProviderOption[] = []; // Example: No TTS providers currently
+  const mockTtsProviderOptions: ProviderOption[] = [
+    { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
+  ];
 
   return (
     <SettingsPageView
@@ -62,6 +64,9 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       onEmbeddingSelectProvider={(provider) => { void settings.handleSelectProvider('Embedding', provider); }}
       onEmbeddingSelectModel={(modelId) => { void settings.handleSelectModel('Embedding', modelId); }}
       onEmbeddingTestConnection={(config: FunctionConfig) => { void settings.testConnection('Embedding', config); }}
+      onTtsSelectProvider={(provider) => { void settings.handleSelectProvider('TTS', provider); }}
+      onTtsSelectModel={(modelId) => { void settings.handleSelectModel('TTS', modelId); }}
+      onTtsTestConnection={(config: FunctionConfig) => { void settings.testConnection('TTS', config); }}
       onRedirectSettingChange={(service, update) => settings.handleRedirectSettingChange(service, update)}
       // Pass navigation handler with fallback
       onBackClick={props.onNavigateBack ?? (() => { console.warn("onBackClick called but no handler provided"); })}

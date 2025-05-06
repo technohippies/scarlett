@@ -76,8 +76,14 @@ const availableEmbeddingProviders: ProviderOption[] = [
     { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
 ];
 
+// Define available TTS Providers
+const availableTTSProviders: ProviderOption[] = [
+    { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
+    // Add others like Kokoro later if needed
+];
+
 // Simplified Step type for the new flow
-type Step = 'language' | 'learningGoal' | 'setupLLM' | 'setupEmbedding' | 'redirects';
+type Step = 'language' | 'learningGoal' | 'setupLLM' | 'setupEmbedding' | 'setupTTS' | 'redirects';
 
 // Helper function modified to return the best determined language code
 function getBestInitialLangCode(): string {
@@ -143,7 +149,7 @@ const fetchMessages = async (langCode: string): Promise<Messages> => {
 };
 
 // Keep steps definition for progress calculation
-const onboardingSteps: Step[] = ['language', 'learningGoal', 'setupLLM', 'setupEmbedding', 'redirects'];
+const onboardingSteps: Step[] = ['language', 'learningGoal', 'setupLLM', 'setupEmbedding', 'setupTTS', 'redirects'];
 
 const App: Component = () => {
 
@@ -317,7 +323,21 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         await userConfigurationStorage.setValue(updatedConfig);
         console.log('[App] Config after saving Embedding setup:', updatedConfig);
     }
-    setCurrentStep('redirects');
+    setCurrentStep('setupTTS'); // Proceed to TTS setup
+  };
+
+  // --- Add TTS Handler ---
+  const handleTTSComplete = async (config: FunctionConfig) => {
+    console.log('[App] TTS Setup Complete:', config);
+    if (!config.providerId || !config.modelId) {
+      console.warn('[App] TTS setup skipped or incomplete.');
+    } else {
+      const currentConfig = await userConfigurationStorage.getValue() || {};
+      const updatedConfig = { ...currentConfig, ttsConfig: config }; // Save ttsConfig
+      await userConfigurationStorage.setValue(updatedConfig);
+      console.log('[App] Config after saving TTS setup:', updatedConfig);
+    }
+    setCurrentStep('redirects'); // Proceed to redirects
   };
 
   // --- Redirects Handlers (Keep as is) ---
@@ -363,8 +383,11 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       case 'setupEmbedding':
         setCurrentStep('setupLLM'); 
         break;
-      case 'redirects': 
+      case 'setupTTS':
         setCurrentStep('setupEmbedding');
+        break;
+      case 'redirects': 
+        setCurrentStep('setupTTS');
         break;
       default:
         console.warn('[App] Back requested from unhandled step:', step);
@@ -378,6 +401,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     switch (step) {
       case 'setupLLM': return settingsContext.getTransientState('LLM');
       case 'setupEmbedding': return settingsContext.getTransientState('Embedding');
+      case 'setupTTS': return settingsContext.getTransientState('TTS');
       default: return null; 
     }
   };
@@ -387,6 +411,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       switch (step) {
           case 'setupLLM': return settingsContext.config.llmConfig;
           case 'setupEmbedding': return settingsContext.config.embeddingConfig;
+          case 'setupTTS': return settingsContext.config.ttsConfig;
           default: return undefined;
       }
   };
@@ -400,7 +425,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     if (step === 'language' || step === 'learningGoal') {
       return i18n().get('onboardingContinue', 'Continue');
     }
-    if (step === 'setupLLM' || step === 'setupEmbedding') { 
+    if (step === 'setupLLM' || step === 'setupEmbedding' || step === 'setupTTS') { 
       if (!config?.providerId) return i18n().get('onboardingContinue', 'Continue'); 
       if (state?.fetchStatus() === 'success' && config?.modelId) {
         if (state?.testStatus() === 'idle' || state?.testStatus() === 'error') {
@@ -429,6 +454,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         return !selectedGoalId(); 
       case 'setupLLM':
       case 'setupEmbedding':
+      case 'setupTTS':
         if (!config?.providerId) return true; 
         if (state?.fetchStatus() === 'loading') return true; 
         if (state?.fetchStatus() === 'success' && !config?.modelId) return true; 
@@ -456,11 +482,13 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         break;
       case 'setupLLM':
       case 'setupEmbedding':
+      case 'setupTTS':
         if (config && state && (state.testStatus() === 'idle' || state.testStatus() === 'error')) {
-          settingsContext.testConnection(step.substring(5) as 'LLM' | 'Embedding', config);
+          settingsContext.testConnection(step.substring(5) as 'LLM' | 'Embedding' | 'TTS', config);
         } else if (config && state && state.testStatus() === 'success') {
           if (step === 'setupLLM') handleLLMComplete(config);
           else if (step === 'setupEmbedding') handleEmbeddingComplete(config);
+          else if (step === 'setupTTS') handleTTSComplete(config);
         }
         break;
       case 'redirects':
@@ -590,6 +618,52 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
                     testError={transientState.testError}
                     functionName={funcType}
                     selectedProvider={() => availableEmbeddingProviders.find(p => p.id === config?.providerId)}
+                  />
+                </Show>
+              </div>
+            </Show>
+          </div>
+        );
+      }
+
+      case 'setupTTS': {
+        const funcType = 'TTS';
+        const transientState = settingsContext.getTransientState(funcType);
+        const config = settingsContext.config.ttsConfig;
+        return (
+          <div class="w-full max-w-lg">
+            <p class="text-xl md:text-2xl mb-2">
+              {i18n().get('onboardingSetupTTSTitle', 'Choose TTS (Optional)')}
+            </p>
+             <p class="text-lg text-muted-foreground mb-6">
+               {i18n().get('onboardingSetupTTSDescription', 'Select a Text-to-Speech model. Orpheus models in LM Studio work well.')}
+             </p>
+            <div class="mb-6">
+              <ProviderSelectionPanel
+                providerOptions={availableTTSProviders}
+                selectedProviderId={() => config?.providerId}
+                onSelectProvider={(provider) => settingsContext.handleSelectProvider(funcType, provider)}
+              />
+            </div>
+            <Show when={config?.providerId !== undefined}>
+              <div class="space-y-6">
+                <ModelSelectionPanel
+                  functionName={funcType}
+                  selectedProvider={() => availableTTSProviders.find(p => p.id === config?.providerId)}
+                  fetchStatus={transientState.fetchStatus}
+                  showSpinner={transientState.showSpinner}
+                  fetchError={transientState.fetchError}
+                  fetchedModels={transientState.localModels}
+                  remoteModels={transientState.remoteModels}
+                  selectedModelId={() => config?.modelId}
+                  onSelectModel={(modelId) => settingsContext.handleSelectModel(funcType, modelId)}
+                />
+                <Show when={transientState.fetchStatus() === 'success' && config?.modelId}>
+                  <ConnectionTestPanel
+                    testStatus={transientState.testStatus}
+                    testError={transientState.testError}
+                    functionName={funcType}
+                    selectedProvider={() => availableTTSProviders.find(p => p.id === config?.providerId)}
                   />
                 </Show>
               </div>

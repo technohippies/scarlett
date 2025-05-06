@@ -64,6 +64,9 @@ interface SettingsPageViewProps {
   onEmbeddingSelectProvider: (provider: ProviderOption) => void;
   onEmbeddingSelectModel: (modelId: string | undefined) => void;
   onEmbeddingTestConnection: (config: FunctionConfig) => void;
+  onTtsSelectProvider: (provider: ProviderOption) => void;
+  onTtsSelectModel: (modelId: string | undefined) => void;
+  onTtsTestConnection: (config: FunctionConfig) => void;
   onRedirectSettingChange: (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => Promise<void>;
   onBackClick: () => void;
   // Add TTS handlers when needed
@@ -236,7 +239,42 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                     
                     {/* --- TTS Section --- */} 
                     <Show when={props.activeSection() === 'tts'}>
-                      <p class="text-muted-foreground">TODO: Implement TTS settings using panels/context. Configuration might differ from other models.</p>
+                      <div class="space-y-4">
+                        <ProviderSelectionPanel
+                          providerOptions={props.ttsProviderOptions} 
+                          selectedProviderId={() => props.config.ttsConfig?.providerId}
+                          onSelectProvider={props.onTtsSelectProvider}
+                        />
+                        <Show when={props.config.ttsConfig?.providerId === 'lmstudio'}> 
+                          <ModelSelectionPanel
+                            functionName="TTS"
+                            selectedProvider={() => props.ttsProviderOptions.find(p => p.id === props.config.ttsConfig?.providerId)}
+                            fetchStatus={props.ttsTransientState.fetchStatus} 
+                            showSpinner={props.ttsTransientState.showSpinner}
+                            fetchError={props.ttsTransientState.fetchError}
+                            fetchedModels={props.ttsTransientState.localModels}
+                            remoteModels={props.ttsTransientState.remoteModels}
+                            selectedModelId={() => props.config.ttsConfig?.modelId}
+                            onSelectModel={props.onTtsSelectModel}
+                          />
+                          <Show when={props.ttsTransientState.fetchStatus() === 'success' && props.config.ttsConfig?.modelId}>
+                            <ConnectionTestPanel
+                              testStatus={props.ttsTransientState.testStatus}
+                              testError={props.ttsTransientState.testError}
+                              functionName="TTS"
+                              selectedProvider={() => props.ttsProviderOptions.find(p => p.id === props.config.ttsConfig?.providerId)}
+                            />
+                            <div class="flex space-x-4 mt-6">
+                              <Button 
+                                  onClick={() => props.onTtsTestConnection(props.config.ttsConfig as FunctionConfig)} 
+                                  disabled={props.ttsTransientState.testStatus() === 'testing'}
+                              >
+                                  {props.ttsTransientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}
+                              </Button>
+                            </div>
+                          </Show>
+                        </Show>
+                      </div>
                     </Show>
 
                     {/* --- Redirects Section --- */} 
