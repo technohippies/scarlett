@@ -25,18 +25,4 @@ export function parseSseChunk(chunk: string): any | null {
 }
 // --- End Added Section ---
 
-// --- Add WebGPU Check ---
-/**
- * Checks if the browser supports the WebGPU API.
- * @returns {boolean} True if WebGPU is supported, false otherwise.
- */
-export const checkWebGPUSupport = (): boolean => {
-    // Basic check for the presence of the navigator.gpu object
-    if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
-        console.log("[checkWebGPUSupport] navigator.gpu found.");
-        return true;
-    } else {
-        console.log("[checkWebGPUSupport] navigator.gpu NOT found.");
-        return false;
-    }
-}; 
+// REMOVE WebGPU Check function as it is no longer used 

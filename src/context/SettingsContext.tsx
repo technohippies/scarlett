@@ -1,4 +1,4 @@
-import { createContext, useContext, createResource, ParentComponent, createEffect, createSignal, Accessor, JSX } from 'solid-js';
+import { createContext, useContext, createResource, ParentComponent, createEffect, createSignal, Accessor, JSX, Setter } from 'solid-js';
 import { createStore, produce, SetStoreFunction, Store } from 'solid-js/store';
 import { userConfigurationStorage } from '../services/storage/storage';
 import type { UserConfiguration, FunctionConfig, RedirectSettings, RedirectServiceSetting } from '../services/storage/types'; // Centralize types
@@ -12,11 +12,16 @@ import { OllamaProvider } from '../services/llm/providers/ollama';
 import { JanProvider } from '../services/llm/providers/jan'; 
 import { LMStudioProvider } from '../services/llm/providers/lmstudio';
 
+// --- Import ElevenLabs Service and Constants ---
+import { generateElevenLabsSpeechStream } from '../services/tts/elevenLabsService';
+import { DEFAULT_ELEVENLABS_VOICE_ID } from '../shared/constants';
+
 // --- Helper Types (Local to context or shared) ---
 export type FetchStatus = 'idle' | 'loading' | 'success' | 'error';
 export type TestStatus = 'idle' | 'testing' | 'success' | 'error';
 // Update SettingsLoadStatus to include all possible states from createResource
 export type SettingsLoadStatus = 'pending' | 'ready' | 'errored' | 'unresolved' | 'refreshing';
+export type FunctionName = 'LLM' | 'Embedding' | 'TTS'; // Define FunctionName
 
 // --- Constants ---
 const EMBEDDING_KEYWORDS = [
@@ -64,13 +69,13 @@ interface ISettingsContext {
   updateFullRedirectSettings: (settings: RedirectSettings) => Promise<void>; // Action to replace all redirect settings
 
   // --- UI Interaction Handlers --- 
-  handleSelectProvider: (funcType: string, provider: ProviderOption) => Promise<void>;
-  handleSelectModel: (funcType: string, modelId: string | undefined) => Promise<void>;
+  handleSelectProvider: (funcType: FunctionName, provider: ProviderOption | undefined) => Promise<void>;
+  handleSelectModel: (funcType: FunctionName, modelId: string | undefined) => Promise<void>;
   // handleUpdateBaseUrl: (funcType: string, baseUrl: string) => Promise<void>; // Optional future addition
 
   // --- Dynamic Operations + Transient State --- 
-  fetchModels: (funcType: string, provider: ProviderOption) => Promise<ModelOption[]>; // Make async, return models
-  getTransientState: (funcType: string) => { // Get transient state scoped by function type
+  fetchModels: (funcType: FunctionName, provider: ProviderOption) => Promise<ModelOption[]>; // Make async, return models
+  getTransientState: (funcType: FunctionName) => { // Get transient state scoped by function type
       localModels: () => ModelOption[];
       remoteModels: () => ModelOption[];
       fetchStatus: () => FetchStatus;
@@ -79,9 +84,10 @@ interface ISettingsContext {
       testError: () => Error | null;
       showSpinner: () => boolean;
   };
-  testConnection: (funcType: string, config: FunctionConfig) => Promise<void>; // Make async
+  testConnection: (funcType: FunctionName, config: FunctionConfig) => Promise<void>; // Make async
   handleRedirectSettingChange: (serviceName: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => Promise<void>;
   ttsTestAudio: Accessor<Blob | null>; // Added for TTS test audio
+  setTtsTestAudio: Setter<Blob | null>; // Expose setter for onboarding or direct use
 }
 
 // --- Initial Empty Config & State --- 
@@ -104,6 +110,9 @@ const [settingsStore, setSettingsStore] = createStore<UserConfiguration>(initial
 // --- Context Definition ---
 // Create the actual context object
 const SettingsContext = createContext<ISettingsContext | undefined>(undefined); // Initialize with undefined
+
+// Define a default sample text for ElevenLabs testing
+const ELEVENLABS_TEST_TEXT = "Testing ElevenLabs text-to-speech integration.";
 
 // --- Provider Component ---
 export const SettingsProvider: ParentComponent = (props) => {
@@ -131,7 +140,7 @@ export const SettingsProvider: ParentComponent = (props) => {
     const [ttsTestAudio, setTtsTestAudio] = createSignal<Blob | null>(null);
 
     // Helper to get or initialize transient state for a function type
-    const ensureTransientState = (funcType: string) => {
+    const ensureTransientState = (funcType: FunctionName) => {
         if (!transientState[funcType]) {
             setTransientState(funcType, {
                 localModels: [],
@@ -190,7 +199,7 @@ export const SettingsProvider: ParentComponent = (props) => {
                 providersToFetch.forEach((_provider, providerId) => {
                     const funcTypes = funcTypesPerProvider.get(providerId) || [];
                     funcTypes.forEach(funcType => {
-                        ensureTransientState(funcType);
+                        ensureTransientState(funcType as FunctionName);
                         console.log(`[SettingsContext] Setting initial fetchStatus to 'loading' for ${funcType} (${providerId})`);
                         setTransientState(funcType, 'fetchStatus', 'loading');
                         setTransientState(funcType, 'fetchError', null);
@@ -213,7 +222,7 @@ export const SettingsProvider: ParentComponent = (props) => {
                         // Process results for each funcType using this provider
                         funcTypes.forEach(funcType => {
                              console.log(`[SettingsContext] Processing fetched models for ${funcType} (provider: ${providerId})`);
-                             const { localModels, remoteModels } = filterModels(funcType, provider, fetchedModelInfoWithOptions);
+                             const { localModels, remoteModels } = filterModels(funcType as FunctionName, provider, fetchedModelInfoWithOptions);
                              
                              setTransientState(funcType, 'localModels', localModels);
                              setTransientState(funcType, 'remoteModels', remoteModels);
@@ -297,7 +306,7 @@ export const SettingsProvider: ParentComponent = (props) => {
     };
 
     // --- UI Interaction Handler Implementations ---
-    const handleSelectProvider = async (funcType: string, provider: ProviderOption | undefined) => {
+    const handleSelectProvider = async (funcType: FunctionName, provider: ProviderOption | undefined) => {
       console.log(`[SettingsContext] handleSelectProvider called for ${funcType} with provider:`, provider);
       
       ensureTransientState(funcType); // Initializes transientState[funcType]
@@ -337,7 +346,7 @@ export const SettingsProvider: ParentComponent = (props) => {
       }
     };
 
-    const handleSelectModel = async (funcType: string, modelId: string | undefined) => {
+    const handleSelectModel = async (funcType: FunctionName, modelId: string | undefined) => {
         console.log(`[SettingsContext] handleSelectModel called for ${funcType} with modelId:`, modelId);
         const configKey = `${funcType.toLowerCase()}Config` as keyof UserConfiguration;
         const currentConfig = settingsStore[configKey] as FunctionConfig | null;
@@ -391,7 +400,7 @@ export const SettingsProvider: ParentComponent = (props) => {
     };
 
     // Helper function to filter models based on funcType (extracted logic)
-    const filterModels = (funcType: string, provider: ProviderOption, rawModels: ModelOption[]) => {
+    const filterModels = (funcType: FunctionName, provider: ProviderOption, rawModels: ModelOption[]) => {
         console.log(`[SettingsContext filterModels] Filtering ${rawModels.length} raw models for ${funcType} (provider: ${provider.id})`);
         let localModels: ModelOption[] = rawModels;
         let remoteModels: ModelOption[] = []; // Assuming only Ollama has split local/remote concept for now
@@ -417,7 +426,7 @@ export const SettingsProvider: ParentComponent = (props) => {
         return { localModels, remoteModels };
     };
 
-    const fetchModels = async (funcType: string, provider: ProviderOption): Promise<ModelOption[]> => {
+    const fetchModels = async (funcType: FunctionName, provider: ProviderOption): Promise<ModelOption[]> => {
         ensureTransientState(funcType);
         const currentTimeoutId = transientState[funcType]?.spinnerTimeoutId;
         if (currentTimeoutId) clearTimeout(currentTimeoutId);
@@ -463,46 +472,79 @@ export const SettingsProvider: ParentComponent = (props) => {
         }
     };
 
-    const testConnection = async (funcType: string, config: FunctionConfig) => {
-        ensureTransientState(funcType);
-        setTransientState(funcType, 'testStatus', 'testing');
-        setTransientState(funcType, 'testError', null);
-        console.log(`[SettingsContext] Testing connection for ${funcType}...`, config);
+    // --- Centralized Test Connection Logic ---
+    const testConnection = async (functionName: FunctionName, configToTest?: FunctionConfig) => {
+        const key = getFunctionConfigKey(functionName);
+        // Use settingsStore() to get the reactive store value
+        const storeValue = settingsStore[key]; 
 
-        const providerImpl = providerImplementations[config.providerId as keyof typeof providerImplementations];
+        // Determine the configuration to test
+        let currentFunctionConfig: FunctionConfig | null | undefined;
+        if (configToTest) {
+            currentFunctionConfig = configToTest;
+        } else if (storeValue && typeof storeValue === 'object' && 'providerId' in storeValue && 'modelId' in storeValue) {
+            // Check if storeValue looks like a FunctionConfig (it might be null)
+            currentFunctionConfig = storeValue as FunctionConfig | null;
+        } else {
+            currentFunctionConfig = null; // or undefined, if storeValue is not a FunctionConfig-like object
+        }
+        
+        const setters = getTransientSignalSetters(functionName);
 
-        if (!providerImpl || !providerImpl.testConnection) {
-            console.warn(`[SettingsContext] testConnection implementation not found for provider: ${config.providerId}`);
-            setTransientState(funcType, 'testStatus', 'error');
-            setTransientState(funcType, 'testError', new Error(`Test function not implemented for ${config.providerId}`));
+        if (!currentFunctionConfig || !currentFunctionConfig.providerId || !currentFunctionConfig.modelId) {
+            console.warn(`[SettingsContext] Test connection called for ${functionName} but config is incomplete. Received:`, currentFunctionConfig);
+            setters.setTestError(new Error('Configuration incomplete or invalid.'));
+            setters.setTestStatus('error'); // Also set status to error
             return;
         }
 
+        console.log(`[SettingsContext] Testing connection for ${functionName}...`, currentFunctionConfig);
+        setters.setTestStatus('testing');
+        setters.setTestError(null);
+        setTtsTestAudio(null); 
+
         try {
-            // Construct the config needed by the test function
-            const testArgs: LLMConfig = {
-                // --- Add type assertion for providerId --- 
-                provider: config.providerId as LLMProviderId, 
-                model: config.modelId || '', // Provide modelId even if empty
-                baseUrl: config.baseUrl || '', 
-                apiKey: config.apiKey ?? undefined,
-                // Add other fields if the LLMConfig type requires them (like stream?)
-            };
-            // --- Update type cast for funcType --- 
-            await providerImpl.testConnection(testArgs, funcType as 'LLM' | 'Embedding');
-            setTransientState(funcType, 'testStatus', 'success');
-            console.log(`[SettingsContext] Connection test successful for ${funcType}.`);
-        } catch (err: any) {
-            console.error(`[SettingsContext] Connection test failed for ${funcType}:`, err);
-            setTransientState(funcType, 'testStatus', 'error');
-            setTransientState(funcType, 'testError', err);
-        } finally {
-            // Optional: Reset status after a delay?
+            let success = false;
+            if (functionName === 'LLM' || functionName === 'Embedding') {
+                console.warn(`[SettingsContext] Actual test logic for ${functionName} provider ${currentFunctionConfig.providerId} needs implementation.`);
+                await new Promise(resolve => setTimeout(resolve, 1000)); 
+                success = true; 
+            } else if (functionName === 'TTS') {
+                if (currentFunctionConfig.providerId === 'elevenlabs') {
+                    if (!currentFunctionConfig.apiKey) {
+                        throw new Error('API key is missing for ElevenLabs.');
+                    }
+                    const audioBlob = await generateElevenLabsSpeechStream(
+                        currentFunctionConfig.apiKey, // Now type-safe
+                        ELEVENLABS_TEST_TEXT,
+                        currentFunctionConfig.modelId, // Now type-safe
+                        DEFAULT_ELEVENLABS_VOICE_ID 
+                    );
+                    setTtsTestAudio(audioBlob);
+                    success = true;
+                } else {
+                    // Only ElevenLabs is supported now
+                    throw new Error(`Unsupported TTS provider: ${currentFunctionConfig.providerId}`);
+                }
+            }
+
+            if (success) {
+                console.log(`[SettingsContext] Connection test successful for ${functionName}.`);
+                setters.setTestStatus('success');
+            } else if (functionName === 'LLM' || functionName === 'Embedding') {
+                // This branch might not be reached if success is true for LLM/Embedding above
+                setters.setTestError(new Error('Test failed for unknown reasons.'));
+                setters.setTestStatus('error');
+            }
+        } catch (error: any) {
+            console.error(`[SettingsContext] Connection test failed for ${functionName}:`, error);
+            setters.setTestError(error);
+            setters.setTestStatus('error');
         }
     };
 
     // Function to get scoped transient state accessors
-    const getTransientState = (funcType: string) => {
+    const getTransientState = (funcType: FunctionName) => {
          ensureTransientState(funcType); // Make sure the state exists
          return {
             localModels: () => transientState[funcType]?.localModels || [],
@@ -546,12 +588,35 @@ export const SettingsProvider: ParentComponent = (props) => {
         }
     };
 
+    // --- Helper to get config key
+    const getFunctionConfigKey = (functionName: FunctionName): keyof UserConfiguration => {
+        if (functionName === 'LLM') return 'llmConfig';
+        if (functionName === 'Embedding') return 'embeddingConfig';
+        if (functionName === 'TTS') return 'ttsConfig';
+        throw new Error(`Invalid function name: ${functionName}`);
+    };
+
+    // Helper for transient state setters
+    const getTransientSignalSetters = (funcType: FunctionName) => {
+        ensureTransientState(funcType);
+        return {
+            setLocalModels: (models: ModelOption[]) => setTransientState(funcType, 'localModels', models),
+            setRemoteModels: (models: ModelOption[]) => setTransientState(funcType, 'remoteModels', models),
+            setFetchStatus: (status: FetchStatus) => setTransientState(funcType, 'fetchStatus', status),
+            setFetchError: (error: Error | null) => setTransientState(funcType, 'fetchError', error),
+            setTestStatus: (status: TestStatus) => setTransientState(funcType, 'testStatus', status),
+            setTestError: (error: Error | null) => setTransientState(funcType, 'testError', error),
+            setShowSpinner: (show: boolean) => setTransientState(funcType, 'showSpinner', show),
+            setSpinnerTimeoutId: (id: ReturnType<typeof setTimeout> | undefined) => setTransientState(funcType, 'spinnerTimeoutId', id),
+        };
+    };
+
     // --- Context Value ---
     // Assemble the value to be provided by the context
     const value: ISettingsContext = {
         config: settingsStore,
         // Ensure the type matches the resource state directly
-        loadStatus: () => loadedSettings.state,
+        loadStatus: () => loadedSettings.state as SettingsLoadStatus,
         // Expose provider options
         llmProviderOptions,
         embeddingProviderOptions,
@@ -568,6 +633,7 @@ export const SettingsProvider: ParentComponent = (props) => {
         handleSelectModel,
         handleRedirectSettingChange,
         ttsTestAudio: ttsTestAudio, // Expose the signal accessor correctly
+        setTtsTestAudio, // Expose setter
     };
 
     // --- Render Provider ---

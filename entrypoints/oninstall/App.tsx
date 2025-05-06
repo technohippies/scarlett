@@ -20,6 +20,12 @@ import ModelSelectionPanel from '../../src/features/models/ModelSelectionPanel';
 import ConnectionTestPanel from '../../src/features/models/ConnectionTestPanel';
 // Import the constants
 import { REDIRECT_SERVICES, DEFAULT_REDIRECT_INSTANCES } from '../../src/shared/constants';
+// --- Import TtsProviderPanel and related types ---
+import { TtsProviderPanel, type TtsProviderOption as OnboardingTtsProviderOption } from '../../src/features/models/TtsProviderPanel';
+import { generateElevenLabsSpeechStream } from '../../src/services/tts/elevenLabsService';
+import { DEFAULT_ELEVENLABS_VOICE_ID, DEFAULT_ELEVENLABS_MODEL_ID } from '../../src/shared/constants'; // Assuming ELEVENLABS_TEST_TEXT might be moved here or defined locally
+
+const ONBOARDING_ELEVENLABS_TEST_TEXT = "Hello from Scarlett! This is an onboarding test.";
 
 // Define language lists here (could also be moved)
 const nativeLanguagesList: LanguageOptionStub[] = [
@@ -76,10 +82,10 @@ const availableEmbeddingProviders: ProviderOption[] = [
     { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
 ];
 
-// Define available TTS Providers
-const availableTTSProviders: ProviderOption[] = [
-    { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
-    // Add others like Kokoro later if needed
+// Define available TTS Providers for Onboarding (Kokoro removed)
+const onboardingTtsProviderOptions: OnboardingTtsProviderOption[] = [
+    { id: 'elevenlabs', name: 'ElevenLabs', logoUrl: '/images/tts-providers/elevenlabs.png' }, 
+    // { id: 'kokoro', name: 'Kokoro (Local)', logoUrl: '/images/tts-providers/kokoro.png' }, 
 ];
 
 // Simplified Step type for the new flow
@@ -168,7 +174,6 @@ const App: Component = () => {
 
   // Effect to update the working signal when resource loads/reloads
   createEffect(() => {
-    const loadedConfig = initialRedirectSettingsData();
     // During onboarding (this component), always initialize signal with all redirects ON
     if (!initialRedirectSettingsData.loading) {
         console.log("[App] Onboarding: Initializing redirect settings signal with all ON.");
@@ -226,6 +231,91 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   const settingsContext = useSettings(); // Now we can use the context!
   const ttsTestAudio = settingsContext.ttsTestAudio; // Get audio signal
 
+  // --- TTS State Management for Onboarding (Kokoro state removed) ---
+  const [selectedTtsProviderIdOnboarding, setSelectedTtsProviderIdOnboarding] = createSignal<string | undefined>(undefined);
+  const [elevenLabsApiKeyOnboarding, setElevenLabsApiKeyOnboarding] = createSignal('');
+  
+  // REMOVE Kokoro state signals
+  // const [kokoroStatusOnboarding, setKokoroStatusOnboarding] = createSignal<OnboardingKokoroDownloadStatus>('not-downloaded');
+  // const [kokoroProgressOnboarding, setKokoroProgressOnboarding] = createSignal(0);
+  // const [isWebGPUSupportedOnboarding, setIsWebGPUSupportedOnboarding] = createSignal(false);
+  // const [kokoroDeviceOnboarding, setKokoroDeviceOnboarding] = createSignal<'cpu' | 'webgpu'>('cpu');
+  
+  const [isTtsTestingOnboarding, setIsTtsTestingOnboarding] = createSignal(false); 
+  const [ttsErrorOnboarding, setTtsErrorOnboarding] = createSignal<Error | null>(null);
+
+  // REMOVE onMount for WebGPU check
+  // onMount(() => { ... });
+
+  // --- TTS Panel Handlers for Onboarding (Kokoro handlers removed) ---
+  const handleSelectTtsProviderOnboarding = (providerId: string | undefined) => {
+    console.log(`[App Onboarding] TTS Provider selected: ${providerId}`);
+    setSelectedTtsProviderIdOnboarding(providerId);
+    setTtsErrorOnboarding(null);
+    // Reset specific provider states if necessary (only EL relevant now)
+    // if (providerId !== 'elevenlabs') { ... }
+    // REMOVE Kokoro reset
+    // if (providerId !== 'kokoro') { ... }
+  };
+
+  const handleElevenLabsApiKeyChangeOnboarding = (apiKey: string) => {
+    console.log(`[App Onboarding] handleElevenLabsApiKeyChangeOnboarding called with key (length ${apiKey.length}):`, apiKey);
+    setElevenLabsApiKeyOnboarding(apiKey);
+  };
+  const handleTestElevenLabsOnboarding: () => Promise<void> = async () => {
+    console.log("[App Onboarding] handleTestElevenLabsOnboarding triggered (explicit type).");
+    console.log(`[App Onboarding] Inside test handler - API Key length: ${elevenLabsApiKeyOnboarding().length}, Is TTS Testing: ${isTtsTestingOnboarding()}`);
+
+    if (!elevenLabsApiKeyOnboarding()) { 
+      console.warn("[App Onboarding] ElevenLabs API key is missing for test.");
+      setTtsErrorOnboarding(new Error("API key is required."));
+      return;
+    }
+    
+    if (isTtsTestingOnboarding()) { 
+      console.log("[App Onboarding] ElevenLabs test already in progress.");
+      return; 
+    }
+
+    console.log("[App Onboarding] Passed initial checks, preparing for try block...");
+    setIsTtsTestingOnboarding(true);
+    setTtsErrorOnboarding(null);
+    settingsContext.setTtsTestAudio(null);
+
+    try {
+      console.log("[App Onboarding] Entered try block for ElevenLabs test.");
+      const apiKey = elevenLabsApiKeyOnboarding();
+      
+      console.log(`[App Onboarding] Calling generateElevenLabsSpeechStream with apiKey (len: ${apiKey.length}), text: ${ONBOARDING_ELEVENLABS_TEST_TEXT}`);
+
+      const audioBlob = await generateElevenLabsSpeechStream(
+        apiKey,
+        ONBOARDING_ELEVENLABS_TEST_TEXT,
+        DEFAULT_ELEVENLABS_MODEL_ID,
+        DEFAULT_ELEVENLABS_VOICE_ID
+      );
+
+      if (audioBlob) {
+        console.log("[App Onboarding] ElevenLabs test successful, audio received.");
+        settingsContext.setTtsTestAudio(audioBlob);
+      } else {
+        console.error("[App Onboarding] ElevenLabs test failed: No audio blob received.");
+        setTtsErrorOnboarding(new Error("Test failed: No audio data received from ElevenLabs."));
+      }
+    } catch (error) {
+      console.error("[App Onboarding] Error during ElevenLabs test:", error);
+      setTtsErrorOnboarding(error instanceof Error ? error : new Error("An unknown error occurred during the ElevenLabs test."));
+    } finally {
+      console.log("[App Onboarding] ElevenLabs test finished.");
+      setIsTtsTestingOnboarding(false);
+    }
+  };
+
+  // REMOVE Kokoro Handlers
+  // const handleDownloadKokoroModelOnboarding = () => { ... };
+  // const handleKokoroDeviceChangeOnboarding = (device: 'cpu' | 'webgpu') => { ... };
+  // const handleTestKokoroOnboarding = () => { ... };
+
   // Calculate progress values (Keep as is)
   const progressValue = () => onboardingSteps.indexOf(currentStep()) + 1;
   const progressMax = () => onboardingSteps.length;
@@ -255,8 +345,6 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     const targetLabel = targetLangLabel(); // This is already set by the change handler
 
     console.log('[App] Language Complete:', { targetValue, targetLabel, nativeLang });
-    // Set targetLangLabel signal needed by the LearningGoal component
-    // setTargetLangLabel(targetLabel); // Already set by onTargetLangChange
 
     if (!targetValue) {
       console.error('[App] Cannot complete language step: target language value is missing.');
@@ -327,16 +415,36 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     setCurrentStep('setupTTS'); // Proceed to TTS setup
   };
 
-  // --- Add TTS Handler ---
-  const handleTTSComplete = async (config: FunctionConfig) => {
-    console.log('[App] TTS Setup Complete:', config);
-    if (!config.providerId || !config.modelId) {
-      console.warn('[App] TTS setup skipped or incomplete.');
-    } else {
+  // --- Add TTS Handler --- (Update to remove Kokoro case)
+  const handleTTSComplete = async () => {
+    const providerId = selectedTtsProviderIdOnboarding();
+    let ttsConfig: FunctionConfig | null = null;
+
+    if (providerId === 'elevenlabs') {
+      const apiKey = elevenLabsApiKeyOnboarding();
+      const modelId = DEFAULT_ELEVENLABS_MODEL_ID;
+      if (providerId && modelId && apiKey) { 
+        ttsConfig = { providerId, modelId, apiKey };
+      }
+    } 
+    // REMOVE Kokoro case
+    // else if (providerId === 'kokoro') { ... }
+
+    if (ttsConfig) {
+      console.log('[App Onboarding] TTS Setup Complete with config:', ttsConfig);
       const currentConfig = await userConfigurationStorage.getValue() || {};
-      const updatedConfig = { ...currentConfig, ttsConfig: config }; // Save ttsConfig
+      const updatedConfig = { ...currentConfig, ttsConfig: ttsConfig }; 
       await userConfigurationStorage.setValue(updatedConfig);
-      console.log('[App] Config after saving TTS setup:', updatedConfig);
+      console.log('[App Onboarding] Config after saving TTS setup:', updatedConfig);
+    } else {
+      console.warn('[App Onboarding] TTS setup skipped or incomplete. No valid TTS config to save.');
+      // Optionally, save a null ttsConfig if user proceeds without completing TTS setup
+      const currentConfig = await userConfigurationStorage.getValue() || {};
+      if (currentConfig.ttsConfig !== undefined) { // Only update if it was previously set
+        const updatedConfig = { ...currentConfig, ttsConfig: null };
+        await userConfigurationStorage.setValue(updatedConfig);
+        console.log('[App Onboarding] Cleared TTS config as setup was incomplete.');
+      }
     }
     setCurrentStep('redirects'); // Proceed to redirects
   };
@@ -396,39 +504,28 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     }
   };
 
-  // --- Footer Button Logic (Remove Reader references) --- 
+  // --- Footer Button Logic (Adjusted for TTS Panel) --- 
   const getCurrentTransientState = () => {
     const step = currentStep();
     switch (step) {
       case 'setupLLM': return settingsContext.getTransientState('LLM');
       case 'setupEmbedding': return settingsContext.getTransientState('Embedding');
-      case 'setupTTS': return settingsContext.getTransientState('TTS');
       default: return null; 
     }
-  };
-
-  const getCurrentConfig = (): FunctionConfig | null | undefined => {
-      const step = currentStep();
-      switch (step) {
-          case 'setupLLM': return settingsContext.config.llmConfig;
-          case 'setupEmbedding': return settingsContext.config.embeddingConfig;
-          case 'setupTTS': return settingsContext.config.ttsConfig;
-          default: return undefined;
-      }
   };
 
   // Dynamic Button Label
   const footerButtonLabel = () => {
     const step = currentStep();
     const state = getCurrentTransientState();
-    const config = getCurrentConfig();
 
     if (step === 'language' || step === 'learningGoal') {
       return i18n().get('onboardingContinue', 'Continue');
     }
-    if (step === 'setupLLM' || step === 'setupEmbedding' || step === 'setupTTS') { 
-      if (!config?.providerId) return i18n().get('onboardingContinue', 'Continue'); 
-      if (state?.fetchStatus() === 'success' && config?.modelId) {
+    if (step === 'setupLLM' || step === 'setupEmbedding') { 
+      const llmOrEmbeddingConfig = step === 'setupLLM' ? settingsContext.config.llmConfig : settingsContext.config.embeddingConfig;
+      if (!llmOrEmbeddingConfig?.providerId) return i18n().get('onboardingContinue', 'Continue'); 
+      if (state?.fetchStatus() === 'success' && llmOrEmbeddingConfig?.modelId) {
         if (state?.testStatus() === 'idle' || state?.testStatus() === 'error') {
           return i18n().get('onboardingTest', 'Test');
         } else if (state?.testStatus() === 'testing') {
@@ -438,15 +535,17 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         }
       }
     }
+    if (step === 'setupTTS') { // Simplified for TTS
+        return i18n().get('onboardingContinue', 'Continue');
+    }
     if (step === 'redirects') return i18n().get('onboardingFinishSetup', 'Finish Setup');
     return i18n().get('onboardingContinue', 'Continue');
   };
 
-  // Dynamic Button Disabled State
+  // Dynamic Button Disabled State (Update TTS case)
   const isFooterButtonDisabled = () => {
     const step = currentStep();
     const state = getCurrentTransientState();
-    const config = getCurrentConfig();
 
     switch (step) {
       case 'language':
@@ -454,13 +553,27 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       case 'learningGoal':
         return !selectedGoalId(); 
       case 'setupLLM':
-      case 'setupEmbedding':
-      case 'setupTTS':
-        if (!config?.providerId) return true; 
+      case 'setupEmbedding': {
+        const llmOrEmbeddingConfig = step === 'setupLLM' ? settingsContext.config.llmConfig : settingsContext.config.embeddingConfig;
+        if (!llmOrEmbeddingConfig?.providerId) return true; 
         if (state?.fetchStatus() === 'loading') return true; 
-        if (state?.fetchStatus() === 'success' && !config?.modelId) return true; 
+        if (state?.fetchStatus() === 'success' && !llmOrEmbeddingConfig?.modelId) return true; 
         if (state?.testStatus() === 'testing') return true; 
         return false;
+      }
+      case 'setupTTS': {
+        const provider = selectedTtsProviderIdOnboarding();
+        if (!provider) return true; 
+        if (provider === 'elevenlabs') {
+          if (!elevenLabsApiKeyOnboarding()) {
+            return true;
+          }
+        }
+        // REMOVE Kokoro check
+        // if (provider === 'kokoro') { ... }
+        if (isTtsTestingOnboarding()) return true;
+        return false;
+      }
       case 'redirects':
         return props.initialRedirectLoading();
       default:
@@ -472,7 +585,8 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   const handleFooterButtonClick = () => {
     const step = currentStep();
     const state = getCurrentTransientState();
-    const config = getCurrentConfig();
+    const llmConfig = settingsContext.config.llmConfig;
+    const embeddingConfig = settingsContext.config.embeddingConfig;
 
     switch (step) {
       case 'language':
@@ -482,15 +596,21 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         handleLearningGoalComplete(); 
         break;
       case 'setupLLM':
-      case 'setupEmbedding':
-      case 'setupTTS':
-        if (config && state && (state.testStatus() === 'idle' || state.testStatus() === 'error')) {
-          settingsContext.testConnection(step.substring(5) as 'LLM' | 'Embedding' | 'TTS', config);
-        } else if (config && state && state.testStatus() === 'success') {
-          if (step === 'setupLLM') handleLLMComplete(config);
-          else if (step === 'setupEmbedding') handleEmbeddingComplete(config);
-          else if (step === 'setupTTS') handleTTSComplete(config);
+        if (llmConfig && state && (state.testStatus() === 'idle' || state.testStatus() === 'error')) {
+          settingsContext.testConnection('LLM', llmConfig);
+        } else if (llmConfig && state && state.testStatus() === 'success') {
+          handleLLMComplete(llmConfig);
         }
+        break;
+      case 'setupEmbedding':
+        if (embeddingConfig && state && (state.testStatus() === 'idle' || state.testStatus() === 'error')) {
+          settingsContext.testConnection('Embedding', embeddingConfig);
+        } else if (embeddingConfig && state && state.testStatus() === 'success') {
+          handleEmbeddingComplete(embeddingConfig);
+        }
+        break;
+      case 'setupTTS':
+        handleTTSComplete();
         break;
       case 'redirects':
         handleRedirectsComplete();
@@ -499,21 +619,21 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   };
   // --- End Footer Button Logic ---
 
-  // --- Audio Playback Helper ---
+  // --- Audio Playback Helper --- (ensure this is defined before renderStep or accessible)
   const playAudioBlob = (blob: Blob | null) => {
     if (!blob) {
-      console.warn("[App] playAudioBlob called with null blob.");
+      console.warn("[App Onboarding] playAudioBlob called with null blob.");
       return;
     }
     try {
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audio.onended = () => URL.revokeObjectURL(url);
-      audio.onerror = (e) => { console.error("[App] Error playing audio:", e); URL.revokeObjectURL(url); };
+      audio.onerror = (e) => { console.error("[App Onboarding] Error playing audio:", e); URL.revokeObjectURL(url); };
       void audio.play();
-      console.log("[App] Attempting to play audio blob...");
+      console.log("[App Onboarding] Attempting to play audio blob...");
     } catch (error) {
-      console.error("[App] Error creating/playing audio:", error);
+      console.error("[App Onboarding] Error creating/playing audio:", error);
     }
   };
 
@@ -646,49 +766,41 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       }
 
       case 'setupTTS': {
-        const funcType = 'TTS';
-        const transientState = settingsContext.getTransientState(funcType);
-        const config = settingsContext.config.ttsConfig;
         return (
           <div class="w-full max-w-lg">
             <p class="text-xl md:text-2xl mb-2">
               {i18n().get('onboardingSetupTTSTitle', 'Choose TTS (Optional)')}
             </p>
              <p class="text-lg text-muted-foreground mb-6">
-               {i18n().get('onboardingSetupTTSDescription', 'Select a Text-to-Speech model. Orpheus models in LM Studio work well.')}
+               {/* Update description slightly */}
+               {i18n().get('onboardingSetupTTSDescription', 'Configure ElevenLabs Text-to-Speech.')}
              </p>
-            <div class="mb-6">
-              <ProviderSelectionPanel
-                providerOptions={availableTTSProviders}
-                selectedProviderId={() => config?.providerId}
-                onSelectProvider={(provider) => settingsContext.handleSelectProvider(funcType, provider)}
-              />
-            </div>
-            <Show when={config?.providerId !== undefined}>
-              <div class="space-y-6">
-                <ModelSelectionPanel
-                  functionName={funcType}
-                  selectedProvider={() => availableTTSProviders.find(p => p.id === config?.providerId)}
-                  fetchStatus={transientState.fetchStatus}
-                  showSpinner={transientState.showSpinner}
-                  fetchError={transientState.fetchError}
-                  fetchedModels={transientState.localModels}
-                  remoteModels={transientState.remoteModels}
-                  selectedModelId={() => config?.modelId}
-                  onSelectModel={(modelId) => settingsContext.handleSelectModel(funcType, modelId)}
-                />
-                <Show when={transientState.fetchStatus() === 'success' && config?.modelId}>
-                  <ConnectionTestPanel
-                    testStatus={transientState.testStatus}
-                    testError={transientState.testError}
-                    functionName={funcType}
-                    selectedProvider={() => availableTTSProviders.find(p => p.id === config?.providerId)}
-                    testAudioData={ttsTestAudio} // Pass audio signal
-                    onPlayAudio={() => playAudioBlob(ttsTestAudio())} // Pass play handler
-                  />
-                </Show>
-              </div>
-            </Show>
+            <TtsProviderPanel
+                availableProviders={onboardingTtsProviderOptions} // Will only contain EL now
+                selectedProviderId={selectedTtsProviderIdOnboarding}
+                onSelectProvider={handleSelectTtsProviderOnboarding}
+                
+                // Pass ElevenLabs props 
+                elevenLabsApiKey={elevenLabsApiKeyOnboarding}
+                onElevenLabsApiKeyChange={handleElevenLabsApiKeyChangeOnboarding}
+                isElevenLabsTesting={isTtsTestingOnboarding} 
+                onTestElevenLabs={handleTestElevenLabsOnboarding}
+
+                // REMOVE Kokoro props
+                // kokoroDownloadStatus={...}
+                // kokoroDownloadProgress={...}
+                // onDownloadKokoroModel={...}
+                // kokoroDevicePreference={...}
+                // onKokoroDevicePreferenceChange={...}
+                // isKokoroTesting={...} 
+                // onTestKokoro={...}
+                // isWebGPUSupported={...}
+                
+                // Pass General Test/Audio props
+                testAudioData={ttsTestAudio} 
+                onPlayTestAudio={() => playAudioBlob(ttsTestAudio())}
+                testError={ttsErrorOnboarding}
+            />
           </div>
         );
       }

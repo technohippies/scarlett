@@ -24,7 +24,7 @@ import type { SettingsLoadStatus, FetchStatus, TestStatus } from "../../context/
 import ProviderSelectionPanel from "../../features/models/ProviderSelectionPanel";
 import ModelSelectionPanel from "../../features/models/ModelSelectionPanel";
 import ConnectionTestPanel from "../../features/models/ConnectionTestPanel";
-import { TtsProviderPanel, type TtsProviderOption, type TtsModelOption, type KokoroDownloadStatus } from "../../features/models/TtsProviderPanel"; // Import the new TTS panel
+import { TtsProviderPanel, type TtsProviderOption } from "../../features/models/TtsProviderPanel";
 import { Header } from '../../components/layout/Header';
 
 // Menu Items (Keep)
@@ -76,26 +76,13 @@ interface SettingsPageViewProps {
   // ElevenLabs specific props
   elevenLabsApiKey: Accessor<string>;
   onElevenLabsApiKeyChange: (apiKey: string) => void;
-  elevenLabsModels: TtsModelOption[]; // Assuming these are fetched/static
-  selectedElevenLabsModelId: Accessor<string | undefined>;
-  onSelectElevenLabsModel: (modelId: string | undefined) => void;
   isElevenLabsTesting: Accessor<boolean>;
   onTestElevenLabs: () => void;
-
-  // Kokoro specific props
-  kokoroDownloadStatus: Accessor<KokoroDownloadStatus>;
-  kokoroDownloadProgress: Accessor<number>;
-  onDownloadKokoroModel: () => void;
-  kokoroDevicePreference: Accessor<'cpu' | 'webgpu'>;
-  onKokoroDevicePreferenceChange: (device: 'cpu' | 'webgpu') => void;
-  isKokoroTesting: Accessor<boolean>;
-  onTestKokoro: () => void;
-  isWebGPUSupported?: Accessor<boolean>; // Added to receive WebGPU support status
 
   // General TTS Test/Audio
   ttsTestAudioData: Accessor<Blob | null>;
   onTtsPlayAudio: () => void;
-  ttsTestError: Accessor<Error | null>; // Combined error signal
+  ttsTestError: Accessor<Error | null>;
 
   // Redirects Props (keep)
   onRedirectSettingChange: (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => Promise<void>;
@@ -277,20 +264,8 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                         // Pass ElevenLabs props
                         elevenLabsApiKey={props.elevenLabsApiKey}
                         onElevenLabsApiKeyChange={props.onElevenLabsApiKeyChange}
-                        elevenLabsModels={props.elevenLabsModels}
-                        selectedElevenLabsModelId={props.selectedElevenLabsModelId}
-                        onSelectElevenLabsModel={props.onSelectElevenLabsModel}
                         isElevenLabsTesting={props.isElevenLabsTesting}
                         onTestElevenLabs={props.onTestElevenLabs}
-
-                        // Pass Kokoro props
-                        kokoroDownloadStatus={props.kokoroDownloadStatus}
-                        kokoroDownloadProgress={props.kokoroDownloadProgress}
-                        onDownloadKokoroModel={props.onDownloadKokoroModel}
-                        kokoroDevicePreference={props.kokoroDevicePreference}
-                        onKokoroDevicePreferenceChange={props.onKokoroDevicePreferenceChange}
-                        isKokoroTesting={props.isKokoroTesting}
-                        onTestKokoro={props.onTestKokoro}
                         
                         // Pass General Test/Audio props
                         testAudioData={props.ttsTestAudioData}
