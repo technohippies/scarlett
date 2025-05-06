@@ -13,7 +13,10 @@ import { registerMessageHandlers } from '../src/background/handlers/message-hand
 import { registerContextMenuHandlers } from '../src/background/handlers/context-menu-handler';
 // Import storage to check onboarding status
 import { userConfigurationStorage } from '../src/services/storage/storage';
-import { browser, type WebNavigation } from 'wxt/browser';
+// Use WXT's browser namespace
+import { browser } from 'wxt/browser';
+// import type { WebNavigation } from 'wxt/browser/webNavigation'; // Reverted import
+
 import type { UserConfiguration, RedirectServiceSetting } from '../src/services/storage/types';
 import { REDIRECT_SERVICES, REDIRECT_INSTANCE_LISTS } from '../src/shared/constants'; // Assuming these are defined correctly
 
@@ -44,7 +47,7 @@ const serviceHostChecks: { [key: string]: (host: string) => boolean } = {
     // Add more precise checks as needed
 };
 
-
+// Use inferred type from browser.webNavigation
 async function handleNavigation(details: typeof browser.webNavigation.OnBeforeNavigateDetailsType): Promise<void> {
   // --- ADDED: Log entry and basic details --- 
   console.log(`[Redirect] handleNavigation called for URL: ${details.url}, FrameId: ${details.frameId}`);
@@ -76,12 +79,15 @@ async function handleNavigation(details: typeof browser.webNavigation.OnBeforeNa
 
     // Iterate through defined redirectable services
     for (const serviceName of REDIRECT_SERVICES) {
-      const serviceSetting = config.redirectSettings[serviceName];
+      const lowerCaseServiceName = serviceName.toLowerCase(); // Get lowercase version
+      // Read settings using lowercase key
+      const serviceSetting = config.redirectSettings[lowerCaseServiceName];
+      // Assume serviceHostChecks uses the original casing from REDIRECT_SERVICES
       const hostCheckFn = serviceHostChecks[serviceName];
       // --- ADDED: Log service check --- 
       // console.log(`[Redirect] Checking service: "${serviceName}", Enabled: ${serviceSetting?.isEnabled}, Host matches: ${hostCheckFn ? hostCheckFn(originalHost) : 'N/A'}`);
 
-      // Check if this service is enabled, has a check function, and the host matches
+      // Check if this service is enabled (using lowercase lookup), has a check function, and the host matches
       if (serviceSetting?.isEnabled && hostCheckFn && hostCheckFn(originalHost)) {
         // TODO: Implement chosenInstance logic later. For now, use the first default.
         let instanceUrlString = serviceSetting.chosenInstance || getDefaultInstance(serviceName);

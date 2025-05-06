@@ -18,6 +18,8 @@ import { SettingsProvider, useSettings } from '../../src/context/SettingsContext
 import ProviderSelectionPanel, { type ProviderOption } from '../../src/features/models/ProviderSelectionPanel';
 import ModelSelectionPanel from '../../src/features/models/ModelSelectionPanel';
 import ConnectionTestPanel from '../../src/features/models/ConnectionTestPanel';
+// Import the constants
+import { REDIRECT_SERVICES } from '../../src/shared/constants';
 
 // Define language lists here (could also be moved)
 const nativeLanguagesList: LanguageOptionStub[] = [
@@ -160,10 +162,18 @@ const App: Component = () => {
 
   // Effect to update the working signal when resource loads/reloads
   createEffect(() => {
-    const loadedSettings = initialRedirectSettingsData();
-    if (!initialRedirectSettingsData.loading && loadedSettings) {
-        console.log("[App] Initial redirect settings loaded, updating signal:", loadedSettings);
-        setRedirectSettings(loadedSettings);
+    const loadedConfig = initialRedirectSettingsData();
+    // During onboarding (this component), always initialize signal with all redirects ON
+    if (!initialRedirectSettingsData.loading) {
+        console.log("[App] Onboarding: Initializing redirect settings signal with all ON.");
+        const initialOnSettings: RedirectSettings = {};
+        // Import REDIRECT_SERVICES here or pass it down
+        // Assuming REDIRECT_SERVICES is available or imported:
+        const services = REDIRECT_SERVICES; // You might need to import this
+        for (const serviceName of services) {
+            initialOnSettings[serviceName.toLowerCase()] = { isEnabled: true, chosenInstance: '' };
+        }
+        setRedirectSettings(initialOnSettings);
     }
   });
   // --- Redirects State Management END ---
@@ -307,7 +317,6 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
 
   // --- Redirects Handlers (Keep as is) ---
   const handleRedirectsComplete = async () => {
-    // Mark onboarding complete definitively here
     // Use the passed redirectSettings accessor
     const currentRedirects = props.redirectSettings();
     const currentConfig = await userConfigurationStorage.getValue() || {};
@@ -316,9 +325,11 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       redirectSettings: currentRedirects, // Save the latest state
       onboardingComplete: true,
     };
+    console.log('[App] Attempting to save final config:', finalConfig); // Added log
     await userConfigurationStorage.setValue(finalConfig);
-    console.log('[App] Saving final config:', finalConfig);
-    window.close(); // Close the onboarding tab
+    console.log('[App] Final config save complete.'); // Added log
+    // window.close(); // Close the onboarding tab - Replaced below
+    window.location.href = 'newtab.html'; // Navigate to newtab.html
   };
 
   const handleRedirectSettingChange = (serviceName: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => {
@@ -330,7 +341,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         ...update, // Apply the update (isEnabled)
       }
      }));
-     console.log(`[App] Redirect setting changed for ${serviceName}:`, update);
+     console.log(`[App] handleRedirectSettingChange: Updated signal for ${serviceName}. New state:`, props.redirectSettings());
   };
 
   // Back Handler (Keep as is)

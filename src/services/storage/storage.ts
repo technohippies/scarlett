@@ -1,6 +1,6 @@
 import { storage } from '#imports';
 // Import the correct type definition
-import type { UserConfiguration, FunctionConfig, RedirectSettings } from './types';
+import type { UserConfiguration } from './types';
 
 // REMOVE the duplicate definition
 // export interface UserConfiguration {
@@ -18,16 +18,19 @@ const defaultUserConfiguration: UserConfiguration = {
   llmConfig: null, 
   embeddingConfig: null,
   ttsConfig: null,
-  redirectSettings: { // Default redirect settings
-    // Provide default values for all required fields
-    "youtube": { isEnabled: false, chosenInstance: '' },
-    "x": { isEnabled: false, chosenInstance: '' },
+  redirectSettings: { // Default redirect settings using lowercase names from constants.ts
+    "github": { isEnabled: false, chosenInstance: '' },
+    "chatgpt": { isEnabled: false, chosenInstance: '' },
+    "x (twitter)": { isEnabled: false, chosenInstance: '' },
     "reddit": { isEnabled: false, chosenInstance: '' },
+    "twitch": { isEnabled: false, chosenInstance: '' },
+    "youtube": { isEnabled: false, chosenInstance: '' },
+    "youtube music": { isEnabled: false, chosenInstance: '' },
     "medium": { isEnabled: false, chosenInstance: '' },
-    "wikipedia": { isEnabled: false, chosenInstance: '' },
-    "imdb": { isEnabled: false, chosenInstance: '' },
-    "quora": { isEnabled: false, chosenInstance: '' },
-    "reuters": { isEnabled: false, chosenInstance: '' },
+    "bluesky": { isEnabled: false, chosenInstance: '' },
+    "pixiv": { isEnabled: false, chosenInstance: '' },
+    "soundcloud": { isEnabled: false, chosenInstance: '' },
+    "genius": { isEnabled: false, chosenInstance: '' },
   },
   onboardingComplete: false,
 };

@@ -16,13 +16,15 @@ const services = REDIRECT_SERVICES as readonly string[];
 export const RedirectsPanel: Component<RedirectsPanelProps> = (props) => {
   // Helper to get enabled state for a specific service
   const getIsEnabledForService = (serviceName: string): boolean => {
-    const settings = props.allRedirectSettings()?.[serviceName];
-    // Default to enabled if not explicitly set
-    return settings === undefined ? true : settings.isEnabled;
+    // Use toLowerCase() when reading from the settings signal
+    const settings = props.allRedirectSettings()?.[serviceName.toLowerCase()];
+    // If the setting exists (using lowercase key), return its value.
+    // Otherwise, default to false.
+    return settings !== undefined ? settings.isEnabled : false;
   };
 
   const handleEnabledChange = (serviceName: string, checked: boolean) => {
-    props.onSettingChange(serviceName, { isEnabled: checked });
+    props.onSettingChange(serviceName.toLowerCase(), { isEnabled: checked });
   };
 
   return (
