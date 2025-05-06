@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, Accessor, /* onMount, */ Setter } from 'solid-js';
+import { Component, createSignal, createEffect } from 'solid-js';
 import SettingsPageView from './SettingsPageView';
 import { useSettings } from '../../context/SettingsContext';
 import type { TtsProviderOption } from '../../features/models/TtsProviderPanel';

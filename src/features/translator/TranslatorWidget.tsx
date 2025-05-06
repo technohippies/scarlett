@@ -307,41 +307,6 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
     }
   };
 
-  const startPlaybackSimulation = (speed: number) => {
-    console.log(`[Widget] startPlaybackSimulation called with speed ${speed}x. (For alignment-based highlight)`);
-    if (wordMap().length === 0) {
-         console.warn("[Widget Sim] No word map available for playback simulation.");
-         return;
-     }
-    setIsPlaying(true);
-    setCurrentHighlightIndex(null);
-    if (highlightInterval) clearInterval(highlightInterval);
-
-    const words = wordMap();
-    let simTime = 0;
-    const timeStep = 50;
-
-    highlightInterval = window.setInterval(() => {
-        simTime += timeStep / 1000 * speed; 
-        let activeWordIndex: number | null = null;
-        for (const word of words) {
-            if (simTime >= word.startTime && simTime < word.endTime) {
-                activeWordIndex = word.index;
-                break;
-            }
-        }
-        setCurrentHighlightIndex(activeWordIndex);
-        const lastWord = words[words.length - 1];
-        if (lastWord && simTime >= lastWord.endTime) {
-            console.log("[Widget Sim] Playback simulation finished (alignment).");
-            if (highlightInterval) clearInterval(highlightInterval);
-            highlightInterval = null;
-            setIsPlaying(false);
-            setCurrentHighlightIndex(null);
-        }
-    }, timeStep);
-  };
-
   const handleRegenerate = () => {
     // Regenerate always uses normal speed (calls handleGenerate)
     setIsPopoverOpen(false);
@@ -385,16 +350,16 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
             </div>
         </Show>
 
-        {/* Row 2: Original Word (Moved up) */}
-        <div class="text-neutral-400 text-lg italic"> {/* Adjusted size */}
-            {props.originalWord}
+        {/* Row 2: Displaying what was props.hoveredWord (the translation) here */}
+        <div class="text-neutral-400 text-lg italic"> 
+            {props.hoveredWord} {/* SWAPPED from originalWord */}
         </div>
 
-        {/* Row 3: Translated Word (with highlight spans) */}
+        {/* Row 3: Displaying what was props.originalWord here (with highlight spans) */}
         <div class="flex justify-between items-center gap-2">
-            <span class="text-2xl font-semibold text-foreground"> {/* Kept size */}
-                <For each={wordMap().length > 0 ? wordMap() : props.hoveredWord.split(/(\s+)/).filter(Boolean).map((w, i) => ({ text: w, index: i, startTime: 0, endTime: 0 })) }>
-                  {(word, _) => (
+            <span class="text-2xl font-semibold text-foreground"> 
+                <For each={wordMap().length > 0 ? wordMap() : props.originalWord.split(/(\s+)/).filter(Boolean).map((w, i) => ({ text: w, index: i, startTime: 0, endTime: 0 })) }> 
+                  {(word: WordInfo, _) => (
                     <span
                        class="scarlett-word-span"
                        classList={{ 'scarlett-word-highlight': currentHighlightIndex() === word.index }}
