@@ -68,6 +68,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   const [wordMap, setWordMap] = createSignal<WordInfo[]>([]);
   const [currentHighlightIndex, setCurrentHighlightIndex] = createSignal<number | null>(null);
   const [isPopoverOpen, setIsPopoverOpen] = createSignal(false);
+  const [currentAudio, setCurrentAudio] = createSignal<HTMLAudioElement | null>(null);
   let highlightInterval: number | null = null;
   let rootRef: HTMLDivElement | undefined;
 
@@ -167,157 +168,134 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
 
   // --- Handlers ---
   const handleGenerate = async () => {
-    if (isGenerating() || isPlaying()) return;
+    // Log state *before* the early exit condition
+    console.log(`[Widget handleGenerate] Entry. isGenerating: ${isGenerating()}, isPlaying: ${isPlaying()}`);
+    if (isGenerating() || isPlaying()) {
+      console.log('[Widget handleGenerate] Exiting early because already generating or playing.');
+      return;
+    }
     console.log('[Widget] Requesting Audio via onTTSRequest...');
     setIsGenerating(true);
     setIsAudioReady(false);
+    setCurrentAudio(null);
     setCurrentHighlightIndex(null);
     setIsPlaying(false);
     if (highlightInterval) clearInterval(highlightInterval);
     
-    // --- Actual TTS Request --- 
     try {
       const ttsResult = await props.onTTSRequest(props.hoveredWord, props.targetLang, 1.0);
 
       if (ttsResult.audioDataUrl) {
         console.log('[Widget] Received audioDataUrl, attempting to play.');
         const audio = new Audio(ttsResult.audioDataUrl);
+        setCurrentAudio(audio);
+
         audio.oncanplaythrough = () => {
           setIsAudioReady(true);
           setIsPlaying(true);
-          console.log('[Widget] Audio ready, playing...');
+          console.log('[Widget] Audio ready, playing after generation...');
           audio.play().catch(e => {
-            console.error('[Widget] Error playing audio:', e);
+            console.error('[Widget] Error playing audio post-generation:', e);
             setIsPlaying(false);
-            setIsGenerating(false); // Reset generating state on play error
+            setIsGenerating(false);
+            setCurrentAudio(null);
           });
         };
         audio.onended = () => {
-          console.log('[Widget] Audio playback finished.');
+          console.log('[Widget] Audio playback finished after generation.');
           setIsPlaying(false);
-          setIsGenerating(false); // Reset generating state when done
-          // If alignment was available and wordMap was set, could clear highlight here
+          setIsGenerating(false);
         };
         audio.onerror = (e) => {
-          console.error('[Widget] Error loading or playing audio from data URL:', e);
+          console.error('[Widget] Error with audio object post-generation:', e);
           setIsAudioReady(false);
           setIsPlaying(false);
           setIsGenerating(false);
-          // TODO: Set an error message state to display to the user
+          setCurrentAudio(null);
         };
       } else if (ttsResult.error) {
         console.error('[Widget] TTS request failed:', ttsResult.error);
         setIsGenerating(false);
-        // TODO: Set an error message state to display to the user
+        setCurrentAudio(null);
       }
     } catch (error) {
       console.error('[Widget] Error in handleGenerate calling onTTSRequest:', error);
       setIsGenerating(false);
-      // TODO: Set an error message state
+      setCurrentAudio(null);
     }
-    // The simulation block below should be removed or conditionally run only in Storybook/dev mode
-    // For now, commenting it out to prioritize real TTS playback.
-    /*
-    // --- Simulation Block (Re-added for Storybook interaction) ---
-    setTimeout(() => {
-      console.log('[Widget Sim] Generation Complete, Audio Ready');
-      setIsGenerating(false);
-      setIsAudioReady(true);
-      if (wordMap().length === 0) {
-          const dummyWords = props.hoveredWord.split(/(\s+)/).filter(Boolean).map((w, i) => ({ 
-              text: w, 
-              index: i, 
-              startTime: i * 0.5, 
-              endTime: (i + 1) * 0.5 
-          }));
-          setWordMap(dummyWords);
-          console.log("[Widget Sim] Created dummy word map:", dummyWords);
-      }
-      handlePlaySpeed(1.0); 
-    }, 1500); 
-    */
+    // Simulation block remains commented out
   };
 
   const handlePlayAgain = () => {
-      // If already playing, stop and restart after a delay
-      if (isPlaying()) {
-          if (highlightInterval) clearInterval(highlightInterval);
-          setIsPlaying(false);
-          setCurrentHighlightIndex(null);
-          setTimeout(() => startPlaybackSimulation(1.0), 50); 
-          return;
-      }
-      // If not playing but audio is ready, start playback
-      if (isAudioReady()) {
-          startPlaybackSimulation(1.0);
-      }
-      // --- REMOVED: No longer calls handlePlaySpeed, which closed the popover ---
+    const audio = currentAudio();
+    if (audio && !isPlaying()) {
+      console.log('[Widget] Playing stored audio again...');
+      setIsPlaying(true);
+      audio.currentTime = 0; 
+      audio.play().catch(e => {
+        console.error('[Widget] Error playing stored audio again:', e);
+        setIsPlaying(false);
+      });
+    } else if (audio && isPlaying()) {
+      console.log('[Widget] Audio is already playing. (Play Again clicked)');
+    } else if (!audio) {
+        console.warn('[Widget] Play Again clicked, but no audio is loaded. Triggering generation.');
+        handleGenerate();
+    }
   };
 
   const handlePlaySpeed = (speed: number) => {
     setIsPopoverOpen(false);
-    if (isPlaying()) {
-        // If already playing, maybe stop and restart?
-        if (highlightInterval) clearInterval(highlightInterval);
-        setIsPlaying(false);
-        setCurrentHighlightIndex(null);
-        // Add a small delay before restarting to avoid glitches
-        setTimeout(() => startPlaybackSimulation(speed), 50);
-        return;
+    console.log(`[Widget] Play speed ${speed}x selected. (Currently only affects simulated playback if alignment data was present)`);
+    const audio = currentAudio();
+    if (audio && isAudioReady() && !isPlaying()) {
+        audio.playbackRate = speed;
+        handlePlayAgain();
+    } else if (audio && isPlaying()) {
+        console.log('[Widget] Setting playbackRate on already playing audio.');
+        audio.playbackRate = speed;
     }
-    if (!isAudioReady()) return; // Don't play if not ready
-
-    startPlaybackSimulation(speed);
   };
 
-  // --- Simulation for Highlighting ---
   const startPlaybackSimulation = (speed: number) => {
-     console.log(`[Widget Sim] Starting playback at ${speed}x`);
-     setIsPlaying(true);
-     setCurrentHighlightIndex(null);
-     if (highlightInterval) clearInterval(highlightInterval);
-
-     const words = wordMap();
-     if (words.length === 0) {
+    console.log(`[Widget] startPlaybackSimulation called with speed ${speed}x. (For alignment-based highlight)`);
+    if (wordMap().length === 0) {
          console.warn("[Widget Sim] No word map available for playback simulation.");
-         setIsPlaying(false);
          return;
      }
+    setIsPlaying(true);
+    setCurrentHighlightIndex(null);
+    if (highlightInterval) clearInterval(highlightInterval);
 
-     let simTime = 0;
-     const timeStep = 50; // Check every 50ms
+    const words = wordMap();
+    let simTime = 0;
+    const timeStep = 50;
 
-     highlightInterval = window.setInterval(() => {
-         simTime += timeStep / 1000 * speed; // Advance time based on speed
-         let activeWordIndex: number | null = null;
-
-         for (const word of words) {
-             if (simTime >= word.startTime && simTime < word.endTime) {
-                 activeWordIndex = word.index;
-                 break;
-             }
-         }
-         setCurrentHighlightIndex(activeWordIndex);
-
-         // Stop simulation if time exceeds last word's end time
-         const lastWord = words[words.length - 1];
-         if (simTime >= lastWord.endTime) {
-             console.log("[Widget Sim] Playback simulation finished.");
-             if (highlightInterval) clearInterval(highlightInterval);
-             highlightInterval = null;
-             setIsPlaying(false);
-             setCurrentHighlightIndex(null); // Ensure highlight is cleared
-         }
-
-     }, timeStep);
-
-     // TODO: Play actual audio here using the selected speed
+    highlightInterval = window.setInterval(() => {
+        simTime += timeStep / 1000 * speed; 
+        let activeWordIndex: number | null = null;
+        for (const word of words) {
+            if (simTime >= word.startTime && simTime < word.endTime) {
+                activeWordIndex = word.index;
+                break;
+            }
+        }
+        setCurrentHighlightIndex(activeWordIndex);
+        const lastWord = words[words.length - 1];
+        if (lastWord && simTime >= lastWord.endTime) {
+            console.log("[Widget Sim] Playback simulation finished (alignment).");
+            if (highlightInterval) clearInterval(highlightInterval);
+            highlightInterval = null;
+            setIsPlaying(false);
+            setCurrentHighlightIndex(null);
+        }
+    }, timeStep);
   };
 
   const handleRegenerate = () => {
-      setIsPopoverOpen(false);
-      console.log('[Widget] Regenerating Audio');
-      handleGenerate();
+    setIsPopoverOpen(false);
+    console.log('[Widget] Regenerating Audio');
+    handleGenerate();
   };
 
   const allDisabled = () => isPlaying() || isGenerating();
