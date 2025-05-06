@@ -413,7 +413,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         console.warn('[App] LLM setup skipped or incomplete. Proceeding without saving LLM config.');
     } else {
         const currentConfig = await userConfigurationStorage.getValue() || {};
-        const updatedConfig = { ...currentConfig, llmConfig: config };
+        const updatedConfig = { ...currentConfig, llmConfig: { ...config } }; // Spread to clone
         await userConfigurationStorage.setValue(updatedConfig);
         console.log('[App] Config after saving LLM setup:', updatedConfig);
     }
@@ -426,7 +426,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         console.warn('[App] Embedding setup skipped or incomplete.');
     } else {
         const currentConfig = await userConfigurationStorage.getValue() || {};
-        const updatedConfig = { ...currentConfig, embeddingConfig: config };
+        const updatedConfig = { ...currentConfig, embeddingConfig: { ...config } }; // Spread to clone
         await userConfigurationStorage.setValue(updatedConfig);
         console.log('[App] Config after saving Embedding setup:', updatedConfig);
     }

@@ -91,5 +91,3 @@ This project utilizes a **dual-licensing** model:
 **Important:** Use of the source code under the AGPLv3 license **does not** grant any rights to use the "Scarlett Supercoach" character assets found in `public/images/scarlett-supercoach/`. Any use of these assets must comply with the terms specified in their respective license file or obtained via Story Protocol.
 
 ## Contributing
-Storybook:
-https://6807fc0e4d2023605848d60d-fgekrgzpyw.chromatic.com/
