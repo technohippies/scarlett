@@ -99,7 +99,7 @@ export interface LLMProvider {
   ) => Promise<LLMChatResponse> | AsyncGenerator<StreamedChatResponsePart>; // Yield structured parts
   embed?: (text: EmbeddingInput, config: LLMConfig) => Promise<EmbeddingResponse>;
   // Optional method to test connectivity and basic inference
-  testConnection?: (config: LLMConfig, functionName: 'LLM' | 'Embedding' | 'Reader') => Promise<void>;
+  testConnection?: (config: LLMConfig, functionName: 'LLM' | 'Embedding' | 'TTS') => Promise<void>;
   // Add other methods like tts, etc., if needed
   // tts?: (...) => Promise<any>;
 } 

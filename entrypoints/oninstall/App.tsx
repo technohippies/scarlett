@@ -224,6 +224,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
 
   // --- Use Settings Context --- 
   const settingsContext = useSettings(); // Now we can use the context!
+  const ttsTestAudio = settingsContext.ttsTestAudio; // Get audio signal
 
   // Calculate progress values (Keep as is)
   const progressValue = () => onboardingSteps.indexOf(currentStep()) + 1;
@@ -498,6 +499,24 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   };
   // --- End Footer Button Logic ---
 
+  // --- Audio Playback Helper ---
+  const playAudioBlob = (blob: Blob | null) => {
+    if (!blob) {
+      console.warn("[App] playAudioBlob called with null blob.");
+      return;
+    }
+    try {
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => URL.revokeObjectURL(url);
+      audio.onerror = (e) => { console.error("[App] Error playing audio:", e); URL.revokeObjectURL(url); };
+      void audio.play();
+      console.log("[App] Attempting to play audio blob...");
+    } catch (error) {
+      console.error("[App] Error creating/playing audio:", error);
+    }
+  };
+
   // --- Render Step Logic (Remove Reader Case) --- 
   const renderStep = () => {
     const step = currentStep();
@@ -664,6 +683,8 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
                     testError={transientState.testError}
                     functionName={funcType}
                     selectedProvider={() => availableTTSProviders.find(p => p.id === config?.providerId)}
+                    testAudioData={ttsTestAudio} // Pass audio signal
+                    onPlayAudio={() => playAudioBlob(ttsTestAudio())} // Pass play handler
                   />
                 </Show>
               </div>

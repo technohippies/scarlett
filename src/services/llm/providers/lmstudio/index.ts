@@ -71,7 +71,6 @@ async function* lmStudioChatStream(
         model: config.model,
         messages: messages,
         stream: true,
-        ...(config.extraParams || {}), 
       }),
     });
 
@@ -149,7 +148,6 @@ async function lmStudioEmbed(
       body: JSON.stringify({
         model: config.model,
         input: inputText, 
-        ...(config.extraParams || {}),
       }),
     });
 
@@ -183,67 +181,87 @@ async function lmStudioEmbed(
   }
 }
 
-// --- Test Connection Function ---
+// Test connection - Reuse chat/completions or a dedicated endpoint if available
 async function testConnection(
   config: LLMConfig,
-  functionName: 'LLM' | 'Embedding' | 'Reader'
+  funcType: 'LLM' | 'Embedding' | 'TTS'
 ): Promise<void> {
   const baseUrl = config.baseUrl || DEFAULT_LMSTUDIO_URL;
   const validatedBaseUrl = /^https?:\/\//.test(baseUrl) ? baseUrl : DEFAULT_LMSTUDIO_URL;
-  let testApiUrl = '';
-  let requestBody: any = {};
+  const apiUrl = funcType === 'TTS' ? `${validatedBaseUrl}/tts` : `${validatedBaseUrl}/api/v0/chat/completions`;
 
-  if (functionName === 'Embedding') {
-    testApiUrl = new URL('/api/v0/embeddings', validatedBaseUrl).toString();
-    requestBody = { model: config.model, input: "test" }; 
-  } else { // LLM or Reader - Test with streaming chat
-    testApiUrl = new URL('/api/v0/chat/completions', validatedBaseUrl).toString();
-    requestBody = {
-      model: config.model,
-      messages: [{ role: 'user', content: 'hi' }], 
-      max_tokens: 1, 
-      stream: true
-    };
-  }
+  console.log(`[LMStudio testConnection] Testing ${funcType} at ${apiUrl}...`);
 
-  console.log(`[LMStudio testConnection] Testing ${functionName} at ${testApiUrl}`);
+  try {
+    const controller = new AbortController();
+    const timeoutMs = funcType === 'TTS' ? 60000 : 15000; // 60s for TTS, 15s otherwise
+    const timeoutId = setTimeout(() => controller.abort(new Error('TimeoutError: signal timed out')), timeoutMs);
+    
+    console.log(`[LMStudio testConnection] Endpoint: ${apiUrl}, Timeout: ${timeoutMs}ms`);
 
-  const response = await fetch(testApiUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(requestBody),
-    signal: AbortSignal.timeout(10000) 
-  });
-
-  if (!response.ok) {
-    let errorMsg = `HTTP error! status: ${response.status}`;
-    try { errorMsg += ` - ${await response.text()}`; } catch { /* Ignore */ }
-    const error = new Error(errorMsg);
-    (error as any).status = response.status;
-    throw error;
-  }
-
-  if (functionName === 'Embedding') {
-    await response.json(); 
-    console.log(`[LMStudio testConnection] Embedding test successful.`);
-  } else {
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error("Failed to get stream reader.");
-    let firstChunkReceived = false;
-    try {
-      const { done, value } = await reader.read();
-      if (done || !value) throw new Error("Stream ended or first chunk empty.");
-      firstChunkReceived = true;
-      console.log(`[LMStudio testConnection] Stream test successful (first chunk received).`);
-    } finally {
-        if (reader) await reader.cancel().catch(e => console.warn("[LMStudio testConnection] Error cancelling stream reader:", e));
+    let response;
+    if (funcType === 'TTS') {
+      // Test TTS by sending sample text
+      const testText = "Hello, how are you?";
+      console.log(`[LMStudio testConnection] POSTing to TTS endpoint with text: "${testText}"`);
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(config.apiKey ? { 'Authorization': `Bearer ${config.apiKey}` } : {})
+        },
+        body: JSON.stringify({ text: testText, model: config.model }), // Re-added model parameter
+        signal: controller.signal
+      });
+    } else {
+      // Test LLM/Embedding by sending a minimal chat request
+      console.log("[LMStudio testConnection] POSTing minimal chat request to test LLM/Embedding");
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(config.apiKey ? { 'Authorization': `Bearer ${config.apiKey}` } : {})
+        },
+        body: JSON.stringify({
+          model: config.model, // Use the selected model for the test
+          messages: [{ role: "user", content: "Test" }],
+          max_tokens: 1
+        }),
+        signal: controller.signal
+      });
     }
-    if (!firstChunkReceived) {
-        throw new Error("Stream test failed: No chunk received.");
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      let errorBody = 'Unknown error';
+      try {
+        errorBody = await response.text();
+      } catch { /* ignore */ }
+       console.error(`[LMStudio testConnection] Test failed with status ${response.status}:`, errorBody);
+      throw new Error(`HTTP error! status: ${response.status} - ${errorBody}`);
     }
+
+    if (funcType === 'TTS') {
+      // For TTS, check if we got an audio blob
+      const audioBlob = await response.blob();
+      if (audioBlob.size > 0 && audioBlob.type.startsWith('audio/')) {
+        console.log("[LMStudio testConnection] TTS test successful: Received audio blob.");
+        // We don't return the blob here, context handles that
+      } else {
+        console.error("[LMStudio testConnection] TTS test failed: Received empty or non-audio response.");
+        throw new Error('Received empty or non-audio response from TTS endpoint.');
+      }
+    } else {
+      // For LLM/Embedding, just log success
+      console.log(`[LMStudio testConnection] ${funcType} test successful.`);
+    }
+
+  } catch (error) {
+    console.error(`[LMStudio testConnection] Error during ${funcType} test:`, error);
+    throw error; // Re-throw the error to be caught by the context
   }
 }
-// --- End Test Connection ---
 
 export const LMStudioProvider: LLMProvider = {
   chat: lmStudioChatStream,

@@ -1,4 +1,4 @@
-import { NewTabPageView } from '../../../src/pages/newtab/NewTabPageView';
+import NewTabPageView from '../../../src/pages/newtab/NewTabPageView';
 import { action } from '@storybook/addon-actions';
 
 export default {

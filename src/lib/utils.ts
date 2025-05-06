@@ -3,10 +3,7 @@ import { twMerge } from "tailwind-merge"
 
 // Placeholder cn function - you might want to install clsx and tailwind-merge
 // or use a simpler implementation if preferred.
-export function cn(...inputs: ClassValue[]) {
-  // return inputs.filter(Boolean).join(' ')
-  return twMerge(clsx(inputs))
-}
+export const cn = (...inputs: ClassValue[]) => twMerge(clsx(inputs));
 
 // --- Added SSE Chunk Parser ---
 /**
@@ -26,4 +23,20 @@ export function parseSseChunk(chunk: string): any | null {
     return null;
   }
 }
-// --- End Added Section --- 
+// --- End Added Section ---
+
+// --- Add WebGPU Check ---
+/**
+ * Checks if the browser supports the WebGPU API.
+ * @returns {boolean} True if WebGPU is supported, false otherwise.
+ */
+export const checkWebGPUSupport = (): boolean => {
+    // Basic check for the presence of the navigator.gpu object
+    if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
+        console.log("[checkWebGPUSupport] navigator.gpu found.");
+        return true;
+    } else {
+        console.log("[checkWebGPUSupport] navigator.gpu NOT found.");
+        return false;
+    }
+}; 

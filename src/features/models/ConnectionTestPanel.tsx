@@ -1,9 +1,10 @@
 import { Component, Show, Switch, Match } from 'solid-js';
 import { Spinner } from '../../components/ui/spinner';
-import { CheckCircle, WarningCircle } from 'phosphor-solid';
+import { CheckCircle, WarningCircle, SpeakerSimpleHigh } from 'phosphor-solid';
 import type { ProviderOption } from './ProviderSelectionPanel'; // Import from sibling
 // Import OllamaCorsInstructions from ModelSelectionPanel
 import OllamaCorsInstructions from './OllamaCorsInstructions';
+import { Button } from '../../components/ui/button'; // Added Button
 
 // Helper type
 type TestStatus = 'idle' | 'testing' | 'success' | 'error';
@@ -24,6 +25,8 @@ export interface ConnectionTestPanelProps {
   testError: () => Error | null; // Accessor
   functionName: string; // To display context in messages if needed
   selectedProvider: () => ProviderOption | undefined; // Accessor, needed for CORS help
+  testAudioData?: () => Blob | null; // Optional: Blob for TTS audio
+  onPlayAudio?: () => void; // Optional: Handler to play audio
    // Prop specifically for Storybook control
   _forceOSForOllamaInstructions?: 'linux' | 'macos' | 'windows' | 'unknown';
   // Optional i18n messages
@@ -105,6 +108,17 @@ export const ConnectionTestPanel: Component<ConnectionTestPanelProps> = (props) 
               <div class="text-green-500 flex items-center">
                   <CheckCircle class="mr-2 h-4 w-4" />
                   <span>Success!</span>
+                  {/* Conditionally show Play button for TTS */}
+                  <Show when={props.functionName === 'TTS' && props.testAudioData && props.testAudioData()}> 
+                     <Button 
+                       variant="outline"
+                       size="sm"
+                       class="ml-4"
+                       onClick={props.onPlayAudio} 
+                     >
+                        <SpeakerSimpleHigh class="h-4 w-4 mr-1" /> Play Test Audio
+                     </Button>
+                  </Show>
               </div>
           </Show>
 

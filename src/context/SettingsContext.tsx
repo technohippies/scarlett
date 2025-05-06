@@ -1,5 +1,5 @@
-import { createContext, useContext, createResource, ParentComponent, createEffect } from 'solid-js';
-import { createStore, produce } from 'solid-js/store'; // Import produce for easier updates
+import { createContext, useContext, createResource, ParentComponent, createEffect, createSignal, Accessor, JSX } from 'solid-js';
+import { createStore, produce, SetStoreFunction, Store } from 'solid-js/store';
 import { userConfigurationStorage } from '../services/storage/storage';
 import type { UserConfiguration, FunctionConfig, RedirectSettings, RedirectServiceSetting } from '../services/storage/types'; // Centralize types
 import type { ProviderOption } from '../features/models/ProviderSelectionPanel'; // Use types from panels where appropriate
@@ -59,6 +59,7 @@ interface ISettingsContext {
   // --- Direct Config Update Actions (Use with care) ---
   updateLlmConfig: (config: FunctionConfig | null) => Promise<void>;
   updateEmbeddingConfig: (config: FunctionConfig | null) => Promise<void>;
+  updateTtsConfig: (config: FunctionConfig | null) => Promise<void>;
   updateRedirectSetting: (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => Promise<void>;
   updateFullRedirectSettings: (settings: RedirectSettings) => Promise<void>; // Action to replace all redirect settings
 
@@ -80,6 +81,7 @@ interface ISettingsContext {
   };
   testConnection: (funcType: string, config: FunctionConfig) => Promise<void>; // Make async
   handleRedirectSettingChange: (serviceName: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => Promise<void>;
+  ttsTestAudio: Accessor<Blob | null>; // Added for TTS test audio
 }
 
 // --- Initial Empty Config & State --- 
@@ -112,6 +114,37 @@ export const SettingsProvider: ParentComponent = (props) => {
         console.log("[SettingsContext] Value loaded from storage:", storedValue);
         return storedValue || initialConfig; 
     });
+
+    // Transient state signals MAP for fetch/test (scoped by function type)
+    const [transientState, setTransientState] = createStore<Record<string, {
+        localModels: ModelOption[];
+        remoteModels: ModelOption[];
+        fetchStatus: FetchStatus;
+        fetchError: Error | null;
+        testStatus: TestStatus;
+        testError: Error | null;
+        showSpinner: boolean;
+        spinnerTimeoutId?: ReturnType<typeof setTimeout>;
+    }>>({});
+
+    // Define the signal for the TTS test audio blob
+    const [ttsTestAudio, setTtsTestAudio] = createSignal<Blob | null>(null);
+
+    // Helper to get or initialize transient state for a function type
+    const ensureTransientState = (funcType: string) => {
+        if (!transientState[funcType]) {
+            setTransientState(funcType, {
+                localModels: [],
+                remoteModels: [],
+                fetchStatus: 'idle',
+                fetchError: null,
+                testStatus: 'idle',
+                testError: null,
+                showSpinner: false,
+                spinnerTimeoutId: undefined
+            });
+        }
+    };
 
     // Effect to populate the store once the resource is ready
     createEffect(() => {
@@ -213,34 +246,6 @@ export const SettingsProvider: ParentComponent = (props) => {
         }
     });
 
-    // --- Transient state signals MAP for fetch/test (scoped by function type) ---
-    const [transientState, setTransientState] = createStore<Record<string, {
-        localModels: ModelOption[];
-        remoteModels: ModelOption[];
-        fetchStatus: FetchStatus;
-        fetchError: Error | null;
-        testStatus: TestStatus;
-        testError: Error | null;
-        showSpinner: boolean;
-        spinnerTimeoutId?: ReturnType<typeof setTimeout>;
-    }>>({});
-
-    // Helper to get or initialize transient state for a function type
-    const ensureTransientState = (funcType: string) => {
-        if (!transientState[funcType]) {
-            setTransientState(funcType, {
-                localModels: [],
-                remoteModels: [],
-                fetchStatus: 'idle',
-                fetchError: null,
-                testStatus: 'idle',
-                testError: null,
-                showSpinner: false,
-                spinnerTimeoutId: undefined
-            });
-        }
-    };
-
     // Helper to save settings (can be called by update actions)
     const saveCurrentSettings = async () => {
         try {
@@ -264,6 +269,12 @@ export const SettingsProvider: ParentComponent = (props) => {
     const updateEmbeddingConfig = async (config: FunctionConfig | null) => {
       setSettingsStore('embeddingConfig', config);
       await saveCurrentSettings();
+    };
+
+    // Added TTS config update function
+    const updateTtsConfig = async (config: FunctionConfig | null) => {
+        setSettingsStore('ttsConfig', config);
+        await saveCurrentSettings();
     };
 
     const updateRedirectSetting = async (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => {
@@ -339,7 +350,7 @@ export const SettingsProvider: ParentComponent = (props) => {
             switch (configKey) {
                 case 'llmConfig': await updateLlmConfig(newConfig); break;
                 case 'embeddingConfig': await updateEmbeddingConfig(newConfig); break;
-                // Add case for TTS
+                case 'ttsConfig': await updateTtsConfig(newConfig); break; // Added TTS case
                 default: console.warn(`[SettingsContext] Unknown funcType in handleSelectModel: ${funcType}`);
             }
         } else {
@@ -547,6 +558,7 @@ export const SettingsProvider: ParentComponent = (props) => {
         ttsProviderOptions,
         updateLlmConfig,
         updateEmbeddingConfig,
+        updateTtsConfig,
         updateRedirectSetting,
         updateFullRedirectSettings,
         fetchModels,
@@ -555,6 +567,7 @@ export const SettingsProvider: ParentComponent = (props) => {
         handleSelectProvider,
         handleSelectModel,
         handleRedirectSettingChange,
+        ttsTestAudio: ttsTestAudio, // Expose the signal accessor correctly
     };
 
     // --- Render Provider ---

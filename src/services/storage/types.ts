@@ -17,6 +17,7 @@ export interface FunctionConfig {
     modelId: string;
     baseUrl?: string | null; // Base URL might be needed
     apiKey?: string | null; // API Key might be needed
+    kokoroDevicePreference?: 'cpu' | 'webgpu'; // Added for Kokoro device preference
     // Add other common fields if necessary
 }
 

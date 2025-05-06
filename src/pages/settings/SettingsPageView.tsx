@@ -24,6 +24,7 @@ import type { SettingsLoadStatus, FetchStatus, TestStatus } from "../../context/
 import ProviderSelectionPanel from "../../features/models/ProviderSelectionPanel";
 import ModelSelectionPanel from "../../features/models/ModelSelectionPanel";
 import ConnectionTestPanel from "../../features/models/ConnectionTestPanel";
+import { TtsProviderPanel, type TtsProviderOption, type TtsModelOption, type KokoroDownloadStatus } from "../../features/models/TtsProviderPanel"; // Import the new TTS panel
 import { Header } from '../../components/layout/Header';
 
 // Menu Items (Keep)
@@ -51,25 +52,54 @@ interface SettingsPageViewProps {
   loadStatus: Accessor<SettingsLoadStatus>;
   config: UserConfiguration; // Direct config object
   activeSection: Accessor<string | null>;
+  onSectionChange: (section: string) => void;
+  
+  // LLM Props (keep)
   llmTransientState: TransientStateAccessors;
-  embeddingTransientState: TransientStateAccessors;
-  ttsTransientState: TransientStateAccessors;
   llmProviderOptions: ProviderOption[];
-  embeddingProviderOptions: ProviderOption[];
-  ttsProviderOptions: ProviderOption[];
-  onSectionChange: (section: string | null) => void;
   onLlmSelectProvider: (provider: ProviderOption) => void;
   onLlmSelectModel: (modelId: string | undefined) => void;
   onLlmTestConnection: (config: FunctionConfig) => void;
+  
+  // Embedding Props (keep)
+  embeddingTransientState: TransientStateAccessors;
+  embeddingProviderOptions: ProviderOption[];
   onEmbeddingSelectProvider: (provider: ProviderOption) => void;
   onEmbeddingSelectModel: (modelId: string | undefined) => void;
   onEmbeddingTestConnection: (config: FunctionConfig) => void;
-  onTtsSelectProvider: (provider: ProviderOption) => void;
-  onTtsSelectModel: (modelId: string | undefined) => void;
-  onTtsTestConnection: (config: FunctionConfig) => void;
+
+  // --- NEW TTS Props --- 
+  availableTtsProviders: TtsProviderOption[];
+  selectedTtsProviderId: Accessor<string | undefined>; 
+  onSelectTtsProvider: (providerId: string | undefined) => void;
+
+  // ElevenLabs specific props
+  elevenLabsApiKey: Accessor<string>;
+  onElevenLabsApiKeyChange: (apiKey: string) => void;
+  elevenLabsModels: TtsModelOption[]; // Assuming these are fetched/static
+  selectedElevenLabsModelId: Accessor<string | undefined>;
+  onSelectElevenLabsModel: (modelId: string | undefined) => void;
+  isElevenLabsTesting: Accessor<boolean>;
+  onTestElevenLabs: () => void;
+
+  // Kokoro specific props
+  kokoroDownloadStatus: Accessor<KokoroDownloadStatus>;
+  kokoroDownloadProgress: Accessor<number>;
+  onDownloadKokoroModel: () => void;
+  kokoroDevicePreference: Accessor<'cpu' | 'webgpu'>;
+  onKokoroDevicePreferenceChange: (device: 'cpu' | 'webgpu') => void;
+  isKokoroTesting: Accessor<boolean>;
+  onTestKokoro: () => void;
+  isWebGPUSupported?: Accessor<boolean>; // Added to receive WebGPU support status
+
+  // General TTS Test/Audio
+  ttsTestAudioData: Accessor<Blob | null>;
+  onTtsPlayAudio: () => void;
+  ttsTestError: Accessor<Error | null>; // Combined error signal
+
+  // Redirects Props (keep)
   onRedirectSettingChange: (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => Promise<void>;
   onBackClick: () => void;
-  // Add TTS handlers when needed
 }
 
 
@@ -237,44 +267,36 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                       </div>
                     </Show>
                     
-                    {/* --- TTS Section --- */} 
+                    {/* --- TTS Section (Replaced with TtsProviderPanel) --- */} 
                     <Show when={props.activeSection() === 'tts'}>
-                      <div class="space-y-4">
-                        <ProviderSelectionPanel
-                          providerOptions={props.ttsProviderOptions} 
-                          selectedProviderId={() => props.config.ttsConfig?.providerId}
-                          onSelectProvider={props.onTtsSelectProvider}
-                        />
-                        <Show when={props.config.ttsConfig?.providerId === 'lmstudio'}> 
-                          <ModelSelectionPanel
-                            functionName="TTS"
-                            selectedProvider={() => props.ttsProviderOptions.find(p => p.id === props.config.ttsConfig?.providerId)}
-                            fetchStatus={props.ttsTransientState.fetchStatus} 
-                            showSpinner={props.ttsTransientState.showSpinner}
-                            fetchError={props.ttsTransientState.fetchError}
-                            fetchedModels={props.ttsTransientState.localModels}
-                            remoteModels={props.ttsTransientState.remoteModels}
-                            selectedModelId={() => props.config.ttsConfig?.modelId}
-                            onSelectModel={props.onTtsSelectModel}
-                          />
-                          <Show when={props.ttsTransientState.fetchStatus() === 'success' && props.config.ttsConfig?.modelId}>
-                            <ConnectionTestPanel
-                              testStatus={props.ttsTransientState.testStatus}
-                              testError={props.ttsTransientState.testError}
-                              functionName="TTS"
-                              selectedProvider={() => props.ttsProviderOptions.find(p => p.id === props.config.ttsConfig?.providerId)}
-                            />
-                            <div class="flex space-x-4 mt-6">
-                              <Button 
-                                  onClick={() => props.onTtsTestConnection(props.config.ttsConfig as FunctionConfig)} 
-                                  disabled={props.ttsTransientState.testStatus() === 'testing'}
-                              >
-                                  {props.ttsTransientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}
-                              </Button>
-                            </div>
-                          </Show>
-                        </Show>
-                      </div>
+                      <TtsProviderPanel
+                        availableProviders={props.availableTtsProviders}
+                        selectedProviderId={props.selectedTtsProviderId}
+                        onSelectProvider={props.onSelectTtsProvider}
+                        
+                        // Pass ElevenLabs props
+                        elevenLabsApiKey={props.elevenLabsApiKey}
+                        onElevenLabsApiKeyChange={props.onElevenLabsApiKeyChange}
+                        elevenLabsModels={props.elevenLabsModels}
+                        selectedElevenLabsModelId={props.selectedElevenLabsModelId}
+                        onSelectElevenLabsModel={props.onSelectElevenLabsModel}
+                        isElevenLabsTesting={props.isElevenLabsTesting}
+                        onTestElevenLabs={props.onTestElevenLabs}
+
+                        // Pass Kokoro props
+                        kokoroDownloadStatus={props.kokoroDownloadStatus}
+                        kokoroDownloadProgress={props.kokoroDownloadProgress}
+                        onDownloadKokoroModel={props.onDownloadKokoroModel}
+                        kokoroDevicePreference={props.kokoroDevicePreference}
+                        onKokoroDevicePreferenceChange={props.onKokoroDevicePreferenceChange}
+                        isKokoroTesting={props.isKokoroTesting}
+                        onTestKokoro={props.onTestKokoro}
+                        
+                        // Pass General Test/Audio props
+                        testAudioData={props.ttsTestAudioData}
+                        onPlayTestAudio={props.onTtsPlayAudio}
+                        testError={props.ttsTestError}
+                      />
                     </Show>
 
                     {/* --- Redirects Section --- */} 
