@@ -1,30 +1,35 @@
 import { Component, createResource, createSignal } from 'solid-js';
-// import { messaging } from '#imports'; // Remove incorrect import
-import { defineExtensionMessaging } from '@webext-core/messaging'; // Import the core function
+import { defineExtensionMessaging } from '@webext-core/messaging';
 import NewTabPageView from './NewTabPageView';
-import type { StudySummary } from '../../services/srs/types'; // Use StudySummary type
-import type { BackgroundProtocolMap } from '../../background/handlers/message-handlers'; // Import the protocol map
+import type { StudySummary } from '../../services/srs/types';
+import type { BackgroundProtocolMap } from '../../background/handlers/message-handlers';
+import type { Messages } from '../../types/i18n'; // Import Messages type
 
-// Initialize messaging specifically for this page, typed with the background protocol
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
 
-// Props definition
 interface NewTabPageProps {
   onNavigateToBookmarks: () => void;
   onNavigateToStudy: () => void;
   onNavigateToSettings: () => void;
+  messages: Messages | undefined;
+  messagesLoading: boolean;
 }
 
 const NewTabPage: Component<NewTabPageProps> = (props) => {
   console.log('[NewTabPage] Component rendering');
 
-  // Resource for fetching study summary
+  const i18n = () => {
+    const msgs = props.messages;
+    return {
+      get: (key: string, fallback: string) => msgs?.[key]?.message || fallback,
+    };
+  };
+
   const [summaryData] = createResource<StudySummary | null>(async () => {
     console.log('[NewTabPage] Fetching study summary...');
     try {
       const summary = await messaging.sendMessage('getStudySummary', {});
       console.log('[NewTabPage] Received study summary:', summary);
-      // Ensure counts are numbers before returning
       return {
           dueCount: Number(summary?.dueCount || 0),
           reviewCount: Number(summary?.reviewCount || 0),
@@ -34,9 +39,8 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
       console.error('[NewTabPage] Error fetching study summary:', error);
       return null;
     }
-  }, { initialValue: { dueCount: 0, reviewCount: 0, newCount: 0 } }); // Provide initial structure
+  }, { initialValue: { dueCount: 0, reviewCount: 0, newCount: 0 } });
 
-  // --- State for Manual Embedding ---
   const [embeddingCountData, { refetch: refetchEmbeddingCount }] = createResource<{ count: number }>(async () => {
     console.log('[NewTabPage] Fetching pending embedding count...');
     try {
@@ -55,50 +59,54 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
   const handleEmbedClick = async () => {
     console.log('[NewTabPage] handleEmbedClick triggered.');
     setIsEmbedding(true);
-    setEmbedStatusMessage('Starting embedding process...');
+    setEmbedStatusMessage(i18n().get('newTabPageEmbeddingStarting', 'Starting embedding process...'));
     try {
       const result = await messaging.sendMessage('triggerBatchEmbedding', undefined);
       
-      // --- Update status message based on new response fields ---
       if (result.success) {
         console.log('[NewTabPage] Batch embedding successful:', result);
-        let status = `Embedding complete.`;
+        let status = i18n().get('newTabPageEmbeddingComplete', 'Embedding complete.');
         const details = [];
-        if (result.finalizedCount && result.finalizedCount > 0) details.push(`${result.finalizedCount} new pages embedded`);
-        if (result.duplicateCount && result.duplicateCount > 0) details.push(`${result.duplicateCount} duplicates skipped`);
-        if (result.errorCount && result.errorCount > 0) details.push(`${result.errorCount} errors`);
+        if (result.finalizedCount && result.finalizedCount > 0) {
+          details.push(i18n().get('newTabPageEmbeddingFinalized', '{count} new pages embedded').replace('{count}', result.finalizedCount.toString()));
+        }
+        if (result.duplicateCount && result.duplicateCount > 0) {
+          details.push(i18n().get('newTabPageEmbeddingDuplicates', '{count} duplicates skipped').replace('{count}', result.duplicateCount.toString()));
+        }
+        if (result.errorCount && result.errorCount > 0) {
+          details.push(i18n().get('newTabPageEmbeddingErrors', '{count} errors').replace('{count}', result.errorCount.toString()));
+        }
         if (details.length > 0) status += ` (${details.join(', ')})`;
         setEmbedStatusMessage(status + '.');
-        refetchEmbeddingCount(); // Refresh the count after processing
+        refetchEmbeddingCount(); 
       } else {
         console.error('[NewTabPage] Batch embedding failed:', result.error);
-        // Use the error message from the response if available
-        setEmbedStatusMessage(`Error: ${result.error || 'Embedding failed.'}`);
+        const errorMsg = result.error || i18n().get('newTabPageEmbeddingFailedFallback', 'Embedding failed.');
+        setEmbedStatusMessage(`${i18n().get('newTabPageEmbeddingErrorPrefix', 'Error:')} ${errorMsg}`);
       }
-      // --- End status message update ---
-
     } catch (error: any) {
       console.error('[NewTabPage] Error sending triggerBatchEmbedding message:', error);
-      setEmbedStatusMessage(`Error: ${error.message || 'Could not trigger embedding.'}`);
+      const errorMsg = error.message || i18n().get('newTabPageEmbeddingTriggerErrorFallback', 'Could not trigger embedding.');
+      setEmbedStatusMessage(`${i18n().get('newTabPageEmbeddingErrorPrefix', 'Error:')} ${errorMsg}`);
     } finally {
       setIsEmbedding(false);
-      // Optionally clear the status message after a delay
-      setTimeout(() => setEmbedStatusMessage(null), 7000); // Increased delay slightly
+      setTimeout(() => setEmbedStatusMessage(null), 7000);
     }
   };
-  // --- End State for Manual Embedding ---
 
   return (
     <NewTabPageView 
-      summary={summaryData} // Pass the resource accessor
-      summaryLoading={() => summaryData.loading} // Wrap loading state in an accessor
-      pendingEmbeddingCount={() => embeddingCountData()?.count ?? 0} // Accessor for count
-      isEmbedding={isEmbedding} // Pass embedding status signal accessor
-      embedStatusMessage={embedStatusMessage} // Pass status message signal accessor
-      onEmbedClick={handleEmbedClick} // Pass the handler
+      summary={summaryData}
+      summaryLoading={() => summaryData.loading || props.messagesLoading} // Combine loading states
+      pendingEmbeddingCount={() => embeddingCountData()?.count ?? 0}
+      isEmbedding={isEmbedding}
+      embedStatusMessage={embedStatusMessage}
+      onEmbedClick={handleEmbedClick}
       onNavigateToBookmarks={props.onNavigateToBookmarks}
       onNavigateToStudy={props.onNavigateToStudy}
       onNavigateToSettings={props.onNavigateToSettings}
+      messages={props.messages} // Pass messages down to the view
+      // No messagesLoading prop for NewTabPageView, it's handled here
     />
   );
 };

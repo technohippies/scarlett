@@ -49,5 +49,125 @@
   "learningGoalTravel": { "message": "旅行", "description": "学习目标选项：旅行" },
   "learningGoalSchool": { "message": "学习", "description": "学习目标选项：学习" },
   "learningGoalSelf": { "message": "自我提升", "description": "学习目标选项：自我提升" },
-  "learningGoalOther": { "message": "其他", "description": "学习目标选项：其他" }
+  "learningGoalOther": { "message": "其他", "description": "学习目标选项：其他" },
+  "extensionName": {
+    "message": "Scarlett"
+  },
+  "extensionDescription": {
+    "message": "您的综合语言学习和生产力助手，旨在使您的浏览体验更加沉浸和高效。"
+  },
+  "onboardingBackButtonAriaLabel": {
+    "message": "返回"
+  },
+  "bookmarkerTagInputPlaceholder": {
+    "message": "添加标签..."
+  },
+  "onboardingTest": {
+    "message": "测试"
+  },
+  "onboardingConnecting": {
+    "message": "连接中..."
+  },
+  "onboardingFinishSetup": {
+    "message": "完成设置"
+  },
+  "onboardingSkipButton": {
+    "message": "跳过"
+  },
+  "onboardingSkipTTSAriaLabel": {
+    "message": "跳过 TTS 设置并继续"
+  },
+  "onboardingSetupLLMTitle": {
+    "message": "选择一个 LLM"
+  },
+  "onboardingSetupLLMDescription": {
+    "message": "无法在本地运行像 Gemma3 或 Qwen3 这样的 4B+ 模型？请使用 Jan 和 OpenRouter 模型，许多都是免费的！"
+  },
+  "onboardingSetupEmbeddingTitle": {
+    "message": "选择 Embedding"
+  },
+  "onboardingSetupEmbeddingDescription": {
+    "message": "Bge-m3 或 bge-large 因其多语言支持而成为最佳选择。"
+  },
+  "onboardingSetupTTSTitle": {
+    "message": "选择 TTS（可选）"
+  },
+  "onboardingSetupTTSDescription": {
+    "message": "配置 ElevenLabs 文本转语音。"
+  },
+  "onboardingTestConnection": {
+    "message": "测试连接"
+  },
+  "onboardingRedirectsTitle": {
+    "message": "绕过审查和付费墙"
+  },
+  "onboardingRedirectsDescription": {
+    "message": "使用具有多个镜像且注重隐私保护的前端。"
+  },
+  "onboardingErrorApiKeyRequired": {
+    "message": "API 密钥是必需的。"
+  },
+  "onboardingErrorTestFailedNoAudio": {
+    "message": "测试失败：未从 ElevenLabs 收到音频数据。"
+  },
+  "onboardingErrorUnknownTestError": {
+    "message": "ElevenLabs 测试期间发生未知错误。"
+  },
+  "onboardingUnknownStep": {
+    "message": "未知步骤"
+  },
+  "newTabPageUnknownView": {
+    "message": "未知视图"
+  },
+  "newTabPageEmbeddingStarting": {
+    "message": "开始嵌入过程..."
+  },
+  "newTabPageEmbeddingComplete": {
+    "message": "嵌入完成。"
+  },
+  "newTabPageEmbeddingFinalized": {
+    "message": "已嵌入 {count} 个新页面"
+  },
+  "newTabPageEmbeddingDuplicates": {
+    "message": "已跳过 {count} 个重复项"
+  },
+  "newTabPageEmbeddingErrors": {
+    "message": "{count} 个错误"
+  },
+  "newTabPageEmbeddingErrorPrefix": {
+    "message": "错误："
+  },
+  "newTabPageEmbeddingFailedFallback": {
+    "message": "嵌入失败。"
+  },
+  "newTabPageEmbeddingTriggerErrorFallback": {
+    "message": "无法触发嵌入。"
+  },
+  "newTabPageNoStudyData": {
+    "message": "无学习数据可用。"
+  },
+  "newTabPageButtonBookmarks": {
+    "message": "书签"
+  },
+  "newTabPageButtonSettings": {
+    "message": "设置"
+  },
+  "flashcardPanelLabelNew": {
+    "message": "新"
+  },
+  "flashcardPanelLabelReview": {
+    "message": "复习"
+  },
+  "flashcardPanelLabelDue": {
+    "message": "到期"
+  },
+  "flashcardPanelButtonStudy": {
+    "message": "学习"
+  },
+  "embeddingPanelButtonEmbeddingInProgress": {
+    "message": "嵌入中..."
+  },
+  "embeddingPanelButtonEmbed": {
+    "message": "嵌入"
+  }
 } 

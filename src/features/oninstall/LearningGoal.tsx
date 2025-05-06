@@ -91,7 +91,7 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
                     props.onGoalChange(goalStub.id);
                   }}
                   class={cn(
-                    'h-auto p-4 flex flex-col items-center justify-center space-y-2 text-base border',
+                    'h-32 aspect-square p-4 flex flex-col items-center justify-center space-y-2 text-base border',
                     'cursor-pointer hover:bg-neutral-700 hover:border-neutral-600 focus:outline-none focus:ring-0',
                     selectedGoalId() === goalStub.id
                       ? 'bg-neutral-800 text-foreground border-neutral-700'

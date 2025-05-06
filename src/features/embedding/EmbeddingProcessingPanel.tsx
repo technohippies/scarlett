@@ -2,6 +2,7 @@ import { Component, type Accessor } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { Spinner } from '../../components/ui/spinner';
 import { ArrowClockwise } from 'phosphor-solid';
+import type { Messages } from '../../types/i18n'; // Import Messages
 
 // Props for the component
 export interface EmbeddingProcessingPanelProps {
@@ -13,10 +14,17 @@ export interface EmbeddingProcessingPanelProps {
   processedCount?: Accessor<number>; // Optional: Items processed in current batch
   totalCount?: Accessor<number>;   // Optional: Total items in current batch
   class?: string; // Allow passing additional classes for positioning/margin
+  messages?: Messages | undefined; // Added messages prop
 }
 
 export const EmbeddingProcessingPanel: Component<EmbeddingProcessingPanelProps> = (props) => {
-  
+  const i18n = () => {
+    const msgs = props.messages;
+    return {
+      get: (key: string, fallback: string) => msgs?.[key]?.message || fallback,
+    };
+  };
+
   // Determine button text and state
   const buttonContent = () => {
     const processed = props.processedCount ? props.processedCount() : 0;
@@ -26,7 +34,7 @@ export const EmbeddingProcessingPanel: Component<EmbeddingProcessingPanelProps> 
       return (
         <span class="flex items-center justify-center w-full">
           <Spinner class="mr-2 h-5 w-5 animate-spin" />
-          Embedding...
+          {i18n().get('embeddingPanelButtonEmbeddingInProgress', 'Embedding...')}
           {(total > 0) && <span class="ml-2 text-sm">({processed}/{total})</span>}
         </span>
       );
@@ -34,13 +42,13 @@ export const EmbeddingProcessingPanel: Component<EmbeddingProcessingPanelProps> 
       return (
         <span class="flex items-center justify-center w-full">
           <ArrowClockwise weight="bold" size={18} class="mr-2" />
-          Embed ({props.pendingEmbeddingCount()})
+          {i18n().get('embeddingPanelButtonEmbed', 'Embed')} ({props.pendingEmbeddingCount()})
         </span>
       );
     } else {
         return (
             <span class="flex items-center justify-center w-full">
-                Embed
+                {i18n().get('embeddingPanelButtonEmbed', 'Embed')}
             </span>
         );
     }

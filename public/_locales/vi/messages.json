@@ -35,6 +35,12 @@
     "message": "Tiếp tục",
     "description": "Văn bản cho nút để chuyển sang bước giới thiệu tiếp theo."
   },
+  "onboardingBackButtonAriaLabel": {
+    "message": "Trở lại"
+  },
+  "bookmarkerTagInputPlaceholder": {
+    "message": "Thêm thẻ..."
+  },
   "langNameEn": { "message": "Tiếng Anh", "description": "Tên ngôn ngữ: Tiếng Anh" },
   "langNameZh": { "message": "Tiếng Trung", "description": "Tên ngôn ngữ: Tiếng Trung" },
   "langNameTh": { "message": "Tiếng Thái", "description": "Tên ngôn ngữ: Tiếng Thái" },
@@ -49,5 +55,116 @@
   "learningGoalTravel": { "message": "Du lịch", "description": "Lựa chọn mục tiêu học tập: Du lịch" },
   "learningGoalSchool": { "message": "Học tập", "description": "Lựa chọn mục tiêu học tập: Học tập" },
   "learningGoalSelf": { "message": "Phát triển bản thân", "description": "Lựa chọn mục tiêu học tập: Phát triển bản thân" },
-  "learningGoalOther": { "message": "Khác", "description": "Lựa chọn mục tiêu học tập: Khác" }
-} 
+  "learningGoalOther": {
+    "message": "Khác",
+    "description": "Lựa chọn mục tiêu học tập: Khác"
+  },
+  "onboardingTest": {
+    "message": "Kiểm tra"
+  },
+  "onboardingConnecting": {
+    "message": "Đang kết nối..."
+  },
+  "onboardingFinishSetup": {
+    "message": "Hoàn tất Cài đặt"
+  },
+  "onboardingSkipButton": {
+    "message": "Bỏ qua"
+  },
+  "onboardingSkipTTSAriaLabel": {
+    "message": "Bỏ qua cài đặt TTS và tiếp tục"
+  },
+  "onboardingSetupLLMTitle": {
+    "message": "Chọn một LLM"
+  },
+  "onboardingSetupLLMDescription": {
+    "message": "Không thể chạy mô hình 4B+ cục bộ như Gemma3 hoặc Qwen3? Hãy dùng Jan với mô hình OpenRouter, nhiều mô hình miễn phí!"
+  },
+  "onboardingSetupEmbeddingTitle": {
+    "message": "Chọn Embedding"
+  },
+  "onboardingSetupEmbeddingDescription": {
+    "message": "Bge-m3 hoặc bge-large là tốt nhất do hỗ trợ đa ngôn ngữ."
+  },
+  "onboardingSetupTTSTitle": {
+    "message": "Chọn TTS (Tùy chọn)"
+  },
+  "onboardingSetupTTSDescription": {
+    "message": "Cấu hình ElevenLabs Text-to-Speech."
+  },
+  "onboardingTestConnection": {
+    "message": "Kiểm tra Kết nối"
+  },
+  "onboardingRedirectsTitle": {
+    "message": "Vượt Kiểm duyệt & Tường lửa Trả phí"
+  },
+  "onboardingRedirectsDescription": {
+    "message": "Sử dụng các giao diện người dùng ưu tiên quyền riêng tư với nhiều máy chủ nhân bản."
+  },
+  "onboardingErrorApiKeyRequired": {
+    "message": "Yêu cầu khóa API."
+  },
+  "onboardingErrorTestFailedNoAudio": {
+    "message": "Kiểm tra thất bại: Không nhận được dữ liệu âm thanh từ ElevenLabs."
+  },
+  "onboardingErrorUnknownTestError": {
+    "message": "Đã xảy ra lỗi không xác định trong quá trình kiểm tra ElevenLabs."
+  },
+  "onboardingUnknownStep": {
+    "message": "Bước không xác định"
+  },
+  "newTabPageUnknownView": {
+    "message": "Chế độ xem không xác định"
+  },
+  "newTabPageEmbeddingStarting": {
+    "message": "Bắt đầu quá trình nhúng..."
+  },
+  "newTabPageEmbeddingComplete": {
+    "message": "Nhúng hoàn tất."
+  },
+  "newTabPageEmbeddingFinalized": {
+    "message": "Đã nhúng {count} trang mới"
+  },
+  "newTabPageEmbeddingDuplicates": {
+    "message": "Đã bỏ qua {count} bản trùng lặp"
+  },
+  "newTabPageEmbeddingErrors": {
+    "message": "{count} lỗi"
+  },
+  "newTabPageEmbeddingErrorPrefix": {
+    "message": "Lỗi: "
+  },
+  "newTabPageEmbeddingFailedFallback": {
+    "message": "Nhúng thất bại."
+  },
+  "newTabPageEmbeddingTriggerErrorFallback": {
+    "message": "Không thể kích hoạt nhúng."
+  },
+  "newTabPageNoStudyData": {
+    "message": "Không có dữ liệu học tập."
+  },
+  "newTabPageButtonBookmarks": {
+    "message": "Dấu trang"
+  },
+  "newTabPageButtonSettings": {
+    "message": "Cài đặt"
+  },
+  "flashcardPanelLabelNew": {
+    "message": "Mới"
+  },
+  "flashcardPanelLabelReview": {
+    "message": "Ôn tập"
+  },
+  "flashcardPanelLabelDue": {
+    "message": "Đến hạn"
+  },
+  "flashcardPanelButtonStudy": {
+    "message": "Học"
+  },
+  "embeddingPanelButtonEmbeddingInProgress": {
+    "message": "Đang nhúng..."
+  },
+  "embeddingPanelButtonEmbed": {
+    "message": "Nhúng"
+  }
+}

@@ -5,6 +5,7 @@ import { FlashcardStudyPanel } from '../../features/srs/FlashcardStudyPanel';
 import { EmbeddingProcessingPanel } from '../../features/embedding/EmbeddingProcessingPanel';
 import { BookmarkSimple, Gear } from 'phosphor-solid';
 import type { StudySummary } from '../../services/srs/types';
+import type { Messages } from '../../types/i18n';
 
 // Props for the View component
 export interface NewTabPageViewProps {
@@ -17,10 +18,18 @@ export interface NewTabPageViewProps {
   onNavigateToBookmarks: () => void;
   onNavigateToStudy: () => void;
   onNavigateToSettings: () => void;
+  messages: Messages | undefined;
 }
 
 // --- Rearranged View Component ---
 const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
+
+  const i18n = () => {
+    const msgs = props.messages;
+    return {
+      get: (key: string, fallback: string) => msgs?.[key]?.message || fallback,
+    };
+  };
 
   return (
     // --- Main container: flex-col, padding, min-height ---
@@ -34,7 +43,7 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
           >
               <Show
                   when={props.summary()}
-                  fallback={ <p class="text-muted-foreground p-4 text-sm bg-card rounded-lg shadow-md">No study data available.</p> }
+                  fallback={ <p class="text-muted-foreground p-4 text-sm bg-card rounded-lg shadow-md">{i18n().get('newTabPageNoStudyData', 'No study data available.')}</p> }
               >
                   {(data) => (
                       <FlashcardStudyPanel
@@ -43,6 +52,7 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
                           newCount={data().newCount}
                           onStudyClick={props.onNavigateToStudy}
                           class="bg-card p-4 rounded-lg shadow-md"
+                          messages={props.messages}
                       />
                   )}
               </Show>
@@ -59,17 +69,18 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
             isEmbedding={props.isEmbedding}
             embedStatusMessage={props.embedStatusMessage}
             onProcessClick={props.onEmbedClick}
+            messages={props.messages}
           />
 
           {/* --- Remove the quick-actions div --- */}
           {/* Action Buttons (now direct children) */} 
           <Button onClick={props.onNavigateToBookmarks} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
               <BookmarkSimple weight="fill" size={18} />
-              Bookmarks
+              {i18n().get('newTabPageButtonBookmarks', 'Bookmarks')}
           </Button>
           <Button onClick={props.onNavigateToSettings} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
               <Gear weight="fill" size={18} />
-              Settings
+              {i18n().get('newTabPageButtonSettings', 'Settings')}
           </Button>
       </div>
 

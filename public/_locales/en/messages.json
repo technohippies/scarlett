@@ -49,5 +49,125 @@
   "learningGoalTravel": { "message": "Travel", "description": "Learning goal option: Travel" },
   "learningGoalSchool": { "message": "School", "description": "Learning goal option: School" },
   "learningGoalSelf": { "message": "Self growth", "description": "Learning goal option: Self growth" },
-  "learningGoalOther": { "message": "Other", "description": "Learning goal option: Other" }
+  "learningGoalOther": { "message": "Other", "description": "Learning goal option: Other" },
+  "extensionName": {
+    "message": "Scarlett"
+  },
+  "extensionDescription": {
+    "message": "Your comprehensive language learning and productivity assistant, designed to make your browsing experience more immersive and efficient."
+  },
+  "onboardingBackButtonAriaLabel": {
+    "message": "Go back"
+  },
+  "bookmarkerTagInputPlaceholder": {
+    "message": "Add tags..."
+  },
+  "onboardingTest": {
+    "message": "Test"
+  },
+  "onboardingConnecting": {
+    "message": "Connecting..."
+  },
+  "onboardingFinishSetup": {
+    "message": "Finish Setup"
+  },
+  "onboardingSkipButton": {
+    "message": "Skip"
+  },
+  "onboardingSkipTTSAriaLabel": {
+    "message": "Skip TTS setup and continue"
+  },
+  "onboardingSetupLLMTitle": {
+    "message": "Choose an LLM"
+  },
+  "onboardingSetupLLMDescription": {
+    "message": "Cant run a 4B+ model locally like Gemma3 or Qwen3? Use Jan with an OpenRouter model, many are free!"
+  },
+  "onboardingSetupEmbeddingTitle": {
+    "message": "Choose Embedding"
+  },
+  "onboardingSetupEmbeddingDescription": {
+    "message": "Bge-m3 or bge-large are best due to multi-language support."
+  },
+  "onboardingSetupTTSTitle": {
+    "message": "Choose TTS (Optional)"
+  },
+  "onboardingSetupTTSDescription": {
+    "message": "Configure ElevenLabs Text-to-Speech."
+  },
+  "onboardingTestConnection": {
+    "message": "Test Connection"
+  },
+  "onboardingRedirectsTitle": {
+    "message": "Bypass Censorship & Paywalls"
+  },
+  "onboardingRedirectsDescription": {
+    "message": "Use privacy-preserving frontends with many mirrors."
+  },
+  "onboardingErrorApiKeyRequired": {
+    "message": "API key is required."
+  },
+  "onboardingErrorTestFailedNoAudio": {
+    "message": "Test failed: No audio data received from ElevenLabs."
+  },
+  "onboardingErrorUnknownTestError": {
+    "message": "An unknown error occurred during the ElevenLabs test."
+  },
+  "onboardingUnknownStep": {
+    "message": "Unknown step"
+  },
+  "newTabPageUnknownView": {
+    "message": "Unknown View"
+  },
+  "newTabPageEmbeddingStarting": {
+    "message": "Starting embedding process..."
+  },
+  "newTabPageEmbeddingComplete": {
+    "message": "Embedding complete."
+  },
+  "newTabPageEmbeddingFinalized": {
+    "message": "{count} new pages embedded"
+  },
+  "newTabPageEmbeddingDuplicates": {
+    "message": "{count} duplicates skipped"
+  },
+  "newTabPageEmbeddingErrors": {
+    "message": "{count} errors"
+  },
+  "newTabPageEmbeddingErrorPrefix": {
+    "message": "Error: "
+  },
+  "newTabPageEmbeddingFailedFallback": {
+    "message": "Embedding failed."
+  },
+  "newTabPageEmbeddingTriggerErrorFallback": {
+    "message": "Could not trigger embedding."
+  },
+  "newTabPageNoStudyData": {
+    "message": "No study data available."
+  },
+  "newTabPageButtonBookmarks": {
+    "message": "Bookmarks"
+  },
+  "newTabPageButtonSettings": {
+    "message": "Settings"
+  },
+  "flashcardPanelLabelNew": {
+    "message": "New"
+  },
+  "flashcardPanelLabelReview": {
+    "message": "Review"
+  },
+  "flashcardPanelLabelDue": {
+    "message": "Due"
+  },
+  "flashcardPanelButtonStudy": {
+    "message": "Study"
+  },
+  "embeddingPanelButtonEmbeddingInProgress": {
+    "message": "Embedding..."
+  },
+  "embeddingPanelButtonEmbed": {
+    "message": "Embed"
+  }
 } 
