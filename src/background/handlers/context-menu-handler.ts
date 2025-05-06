@@ -17,6 +17,7 @@ const messaging = defineExtensionMessaging<ProtocolMap>();
 /**
  * Handles clicks on the context menu item.
  */
+// @ts-ignore
 async function handleContextMenuClick(info: browser.Menus.OnClickData, tab?: browser.Tabs.Tab): Promise<void> {
     if (info.menuItemId === CONTEXT_MENU_ID && info.selectionText && tab?.id) {
       const selectedText = info.selectionText.trim();
@@ -29,6 +30,24 @@ async function handleContextMenuClick(info: browser.Menus.OnClickData, tab?: bro
       }
 
       console.log(`[Context Menu Handler] Processing text: "${selectedText.substring(0, 50)}..." from ${sourceUrl}`);
+
+      // --- Send Initial Message to Display Widget with Loading State ---
+      const initialPayload: DisplayTranslationPayload = {
+        originalText: selectedText,
+        isLoading: true,
+        sourceLang: 'auto',
+        targetLang: 'en',
+      };
+
+      if (typeof tabId === 'number') {
+        try {
+          await messaging.sendMessage('displayTranslationWidget', initialPayload, tabId);
+          console.log('[Context Menu Handler] Sent initial displayTranslationWidget with loading state.');
+        } catch (msgError) {
+          console.error('[Context Menu Handler] Error sending initial displayTranslationWidget message:', msgError);
+          // Optionally, could decide not to proceed if the initial display fails, or log and continue.
+        }
+      }
 
       // Store the selection before starting the potentially long pipeline
       setLastContextMenuSelection(selectedText);
@@ -72,25 +91,22 @@ async function handleContextMenuClick(info: browser.Menus.OnClickData, tab?: bro
         });
         console.log('[Context Menu Handler] Pipeline completed successfully. Result:', analysisResult);
 
-        // Send data to Content Script to display the widget
-        // Use detectedSourceLang and retrievedTargetLang from the result
-        const displayPayload: DisplayTranslationPayload = {
-          originalText: analysisResult.originalPhrase,
+        // --- Send Final Message with Translation Results ---
+        const finalPayload: DisplayTranslationPayload = {
+          originalText: selectedText,
           translatedText: analysisResult.translatedPhrase,
-          sourceLang: analysisResult.detectedSourceLang, // Use from result
-          targetLang: analysisResult.retrievedTargetLang, // Use from result
+          sourceLang: analysisResult.detectedSourceLang, 
+          targetLang: analysisResult.retrievedTargetLang, 
+          isLoading: false, 
+          pronunciation: undefined,
         };
-        console.log('[Context Menu Handler] Sending displayTranslationWidget to content script with payload:', displayPayload);
-        try {
-            // Ensure tabId is valid before sending message
-            if (typeof tabId === 'number') {
-                await messaging.sendMessage('displayTranslationWidget', displayPayload, tabId);
-                console.log('[Context Menu Handler] displayTranslationWidget message sent successfully.');
-            } else {
-                console.error('[Context Menu Handler] Invalid tabId, cannot send message.', tabId);
-            }
-        } catch (msgError) {
-             console.error('[Context Menu Handler] Error sending displayTranslationWidget message:', msgError);
+        console.log('[Context Menu Handler] Sending final displayTranslationWidget to content script with payload:', finalPayload);
+        
+        if (typeof tabId === 'number') {
+            await messaging.sendMessage('displayTranslationWidget', finalPayload, tabId);
+            console.log('[Context Menu Handler] Final displayTranslationWidget message sent successfully.');
+        } else {
+            console.error('[Context Menu Handler] Invalid tabId, cannot send final message.', tabId);
         }
 
       } catch (error: any) {

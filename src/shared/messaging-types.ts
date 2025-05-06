@@ -8,12 +8,12 @@ import type { Bookmark, Tag } from "../services/db/types";
  * to display the translator widget with the translation result.
  */
 export interface DisplayTranslationPayload {
-  originalText: string;
-  translatedText: string;
+  originalText: string;       // The text that was originally selected
+  translatedText?: string;    // The translation result (optional during loading)
   sourceLang: string;
   targetLang: string;
   pronunciation?: string;
-  contextText?: string; // Optional context from where the text was selected
+  isLoading: boolean;         // To indicate the loading state
 }
 
 /**
@@ -190,3 +190,13 @@ export interface ExtractMarkdownResponse {
 }
 
 // --- END NEW Message Type ---
+
+// AlignmentData is imported from "../features/translator/TranslatorWidget.tsx"
+// The local re-definition below is removed to avoid conflict and use the canonical version.
+/*
+export interface AlignmentData {
+    characters: string[];
+    character_start_times_seconds: number[];
+    character_end_times_seconds: number[];
+}
+*/

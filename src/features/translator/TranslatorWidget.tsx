@@ -14,18 +14,16 @@ export interface AlignmentData {
     character_end_times_seconds: number[];
 }
 
-// --- Props Interface (Update onTTSRequest return type) ---
+// --- Props Interface (Update to match DisplayTranslationPayload) ---
 export interface TranslatorWidgetProps {
-  hoveredWord: string;      // The translated word to display prominently
-  originalWord: string;     // The original word for reference
-  pronunciation?: string;   // Optional pronunciation (e.g., Pinyin)
-  sourceLang: string;       // Source language code (e.g., 'en')
-  targetLang: string;       // Target language code (e.g., 'zh-CN')
-  // Updated return type for onTTSRequest
+  textToTranslate: string;      // The text that was selected/is being translated
+  translatedText?: string;     // The result from the LLM (optional initially)
+  sourceLang?: string;         // Detected/provided source language
+  targetLang?: string;         // Target language for translation
+  isLoading: boolean;           // True if currently translating
+  pronunciation?: string;      // Optional pronunciation (e.g., Pinyin for Chinese)
   onTTSRequest: (text: string, lang: string, speed: number) => Promise<{ audioDataUrl?: string; error?: string }>; 
-  // Optional alignment data for highlighting
-  alignment?: AlignmentData | null;
-  // Add onCloseRequest prop
+  alignment?: AlignmentData | null; // Optional alignment data from TTS for highlighting
   onCloseRequest?: () => void;
 }
 
@@ -61,6 +59,24 @@ const HIGHLIGHT_CSS = `
 
 // --- Component ---
 const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
+  // Log props at the beginning of the component function
+  try {
+    // Use a more robust way to log props if they contain functions or non-serializable values
+    const loggableProps = { ...props };
+    // Remove functions from loggableProps if they cause issues with stringify
+    if (typeof loggableProps.onTTSRequest === 'function') {
+      // @ts-ignore
+      loggableProps.onTTSRequest = '[function]';
+    }
+    if (typeof loggableProps.onCloseRequest === 'function') {
+      // @ts-ignore
+      loggableProps.onCloseRequest = '[function]';
+    }
+    console.log("[TranslatorWidget] Received props:", JSON.parse(JSON.stringify(loggableProps)));
+  } catch (e) {
+    console.error("[TranslatorWidget] Error logging props:", e, props);
+  }
+
   // State Signals
   const [isGenerating, setIsGenerating] = createSignal(false);
   const [isAudioReady, setIsAudioReady] = createSignal(false);
@@ -79,16 +95,15 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   };
 
   // --- Effects ---
-  // Effect to process alignment data when it arrives (REMOVED auto-play from here)
+  // Effect to process alignment data when it arrives
   createEffect(on(() => props.alignment, (alignmentData) => {
-    if (alignmentData && props.hoveredWord) {
-      const words = processAlignment(props.hoveredWord, alignmentData);
+    if (alignmentData && props.translatedText) { // Use translatedText for alignment if that's what alignment corresponds to
+      const words = processAlignment(props.translatedText, alignmentData);
       setWordMap(words);
       setIsAudioReady(true); 
       setIsGenerating(false);
-      // REMOVED: handlePlaySpeed(1.0, true); // Auto-play handled by simulation now
     } else {
-      // Clear map but don't affect ready state here
+      // Clear map if no alignment or text
       // setWordMap([]); 
     }
   }));
@@ -173,8 +188,8 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
       console.log('[Widget handleGenerate] Exiting early because already generating or playing.');
       return;
     }
-    // Use originalWord and sourceLang for TTS request
-    console.log(`[Widget] Requesting Audio for originalText: "${props.originalWord}" in lang: ${props.sourceLang}`);
+    // Use textToTranslate and sourceLang for TTS request
+    console.log(`[Widget] Requesting Audio for textToTranslate: "${props.textToTranslate}" in lang: ${props.sourceLang || 'und'}`);
     setIsGenerating(true);
     setIsAudioReady(false);
     setCurrentAudio(null);
@@ -183,8 +198,8 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
     if (highlightInterval) clearInterval(highlightInterval);
     
     try {
-      // Send props.originalWord and props.sourceLang for TTS
-      const ttsResult = await props.onTTSRequest(props.originalWord, props.sourceLang, 1.0);
+      // Send props.textToTranslate and props.sourceLang for TTS
+      const ttsResult = await props.onTTSRequest(props.textToTranslate, props.sourceLang || 'und', 1.0);
 
       if (ttsResult.audioDataUrl) {
         console.log('[Widget] Received audioDataUrl, attempting to play.');
@@ -250,10 +265,9 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
     setIsPopoverOpen(false);
     console.log(`[Widget] Requesting regeneration at speed: ${speed}x`);
     
-    // Similar logic to handleGenerate, but using the specified speed
     if (isGenerating() || isPlaying()) {
       console.log('[Widget handlePlaySpeed] Ignoring request because already generating or playing.');
-      return; // Don't interrupt current generation/playback for speed change for now
+      return; 
     }
     
     setIsGenerating(true);
@@ -264,8 +278,8 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
     if (highlightInterval) clearInterval(highlightInterval);
 
     try {
-      // Call onTTSRequest with original word, source lang, and *selected speed*
-      const ttsResult = await props.onTTSRequest(props.originalWord, props.sourceLang, speed);
+      // Call onTTSRequest with textToTranslate, sourceLang, and *selected speed*
+      const ttsResult = await props.onTTSRequest(props.textToTranslate, props.sourceLang || 'und', speed);
 
       if (ttsResult.audioDataUrl) {
         console.log(`[Widget] Received audioDataUrl for speed ${speed}x, attempting to play.`);
@@ -317,14 +331,14 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   const allDisabled = () => isPlaying() || isGenerating();
 
   const showPronunciation = () => {
-    // Example: Show Pinyin for Chinese variants
-    return props.targetLang.toLowerCase().startsWith('zh') && props.pronunciation;
+    // Pronunciation is for the original text (textToTranslate)
+    return props.sourceLang && props.sourceLang.toLowerCase().startsWith('zh') && props.pronunciation;
   };
 
   const showTTSButton = () => {
-      // Example: Enable TTS for specific languages
-      const supportedLangs = ['zh', 'en', 'es', 'fr', 'de', 'ja', 'ko']; // Add more as needed
-      return supportedLangs.some(lang => props.targetLang.toLowerCase().startsWith(lang));
+      // Enable TTS based on the sourceLang of the textToTranslate
+      const supportedLangs = ['zh', 'en', 'es', 'fr', 'de', 'ja', 'ko']; 
+      return props.sourceLang && supportedLangs.some(lang => props.sourceLang!.toLowerCase().startsWith(lang));
   };
 
   return (
@@ -343,37 +357,45 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
             {HIGHLIGHT_CSS}
         </Dynamic>
 
-        {/* Row 1: Pronunciation (Defaults to left-aligned) */}
+        {/* Row 1: Translated Text (Less Prominent) */}
+        <Show
+            when={!props.isLoading && props.translatedText}
+            fallback={
+                <div class="text-base text-muted-foreground/80 italic">
+                    {props.isLoading ? "Translating..." : " "} 
+                </div>
+            }
+        >
+            <div class="text-base text-muted-foreground/90 italic mb-1">
+                {props.translatedText}
+            </div>
+        </Show>
+
+        {/* Row 2: Text to Translate (Original Selected Text - More Prominent) */}
+        {/* This is the text that will be highlighted */}
+        <div class="text-2xl font-semibold text-foreground mb-2">
+             <For each={wordMap().length > 0 ? wordMap() : (props.textToTranslate || "").split(/(\s+)/).filter(Boolean).map((w, i) => ({ text: w, index: i, startTime: 0, endTime: 0 })) }>
+                {(word: WordInfo, _) => (
+                <span
+                    class="scarlett-word-span"
+                    classList={{ 'scarlett-word-highlight': currentHighlightIndex() === word.index }}
+                    data-word-index={word.index}
+                >
+                    {word.text.match(/\s+/) ? <>&nbsp;</> : word.text}
+                </span>
+                )}
+            </For>
+        </div>
+
+        {/* Row 3: Pronunciation for Original Text (If available) */}
         <Show when={showPronunciation()}>
-            <div class="text-base text-muted-foreground/90">
+            <div class="text-base text-muted-foreground/80 mb-2">
+            {/* This pronunciation is for the original textToTranslate */}
             {props.pronunciation}
             </div>
         </Show>
 
-        {/* Row 2: Displaying what was props.hoveredWord (the translation) here */}
-        <div class="text-neutral-400 text-lg italic"> 
-            {props.hoveredWord} {/* SWAPPED from originalWord */}
-        </div>
-
-        {/* Row 3: Displaying what was props.originalWord here (with highlight spans) */}
-        <div class="flex justify-between items-center gap-2">
-            <span class="text-2xl font-semibold text-foreground"> 
-                <For each={wordMap().length > 0 ? wordMap() : props.originalWord.split(/(\s+)/).filter(Boolean).map((w, i) => ({ text: w, index: i, startTime: 0, endTime: 0 })) }> 
-                  {(word: WordInfo, _) => (
-                    <span
-                       class="scarlett-word-span"
-                       classList={{ 'scarlett-word-highlight': currentHighlightIndex() === word.index }}
-                       data-word-index={word.index}
-                    >
-                      {/* Render space or word */}
-                      {word.text.match(/\s+/) ? <>&nbsp;</> : word.text}
-                    </span>
-                  )}
-                </For>
-            </span>
-        </div>
-
-        {/* Audio Control Area */}
+        {/* Row 4: Audio Control Area (TTS for original text) */}
         <Show when={showTTSButton()}>
           <div class="mt-3">
             <Show
@@ -396,7 +418,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                           size="lg"
                           onClick={handlePlayAgain}
                           disabled={allDisabled()}
-                          aria-label={isPlaying() ? "Playing audio..." : `Play audio again for ${props.hoveredWord}`}
+                          aria-label={isPlaying() ? "Playing audio..." : `Play audio again for ${props.textToTranslate}`}
                           class="flex-grow rounded-r-none" // Takes space, no right rounding
                       >
                           {isPlaying() ? "Playing..." : "Play Again"}

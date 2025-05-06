@@ -135,12 +135,13 @@ export default defineContentScript({
         // --- State Signals for the Widget ---
         // Using signals allows Solid's reactivity to update the component when data changes.
         const [isVisible, setIsVisible] = createSignal(false);
-        const [widgetProps, setWidgetProps] = createSignal<Omit<TranslatorWidgetProps, 'alignment' | 'onTTSRequest'>>({
-            hoveredWord: '',
-            originalWord: '',
+        const [widgetProps, setWidgetProps] = createSignal<Omit<TranslatorWidgetProps, 'alignment' | 'onTTSRequest' | 'onCloseRequest'>>({
+            textToTranslate: '',    // Corrected from originalWord, maps to TranslatorWidgetProps.textToTranslate
+            translatedText: '',     // Corrected from hoveredWord, maps to TranslatorWidgetProps.translatedText
             sourceLang: 'en',
             targetLang: 'en',
-            // Initialize other necessary props
+            isLoading: false,       // Initialize isLoading state
+            pronunciation: undefined, // Initialize pronunciation
         });
         const [alignmentData, setAlignmentData] = createSignal<AlignmentData | null>(null);
 
@@ -206,21 +207,21 @@ export default defineContentScript({
             console.log('[Scarlett CS] Received displayTranslationWidget:', message.data.translatedText);
             await hideWidget(); // Ensure any previous widget is removed
 
-            const { originalText, translatedText, sourceLang, targetLang, pronunciation, contextText } = message.data;
-            if (!translatedText) {
-                console.warn('[Scarlett CS] Received displayTranslationWidget with no translated text.');
+            // Destructure without contextText as it's not in DisplayTranslationPayload for this use case
+            const { originalText, translatedText, sourceLang, targetLang, pronunciation } = message.data;
+            if (!translatedText && !message.data.isLoading) { // Also check isLoading if we expect a loading state
+                console.warn('[Scarlett CS] Received displayTranslationWidget with no translated text and not in loading state.');
                 return;
             }
 
             // Update state signals BEFORE creating the UI
             setWidgetProps({
-                hoveredWord: translatedText,
-                originalWord: originalText,
-                translatedWord: translatedText,
+                textToTranslate: originalText || '', // Ensure textToTranslate is always a string
+                translatedText: translatedText || '', // Ensure translatedText is always a string
                 sourceLang: sourceLang,
                 targetLang: targetLang,
                 pronunciation: pronunciation || undefined,
-                contextSentence: contextText || undefined,
+                isLoading: message.data.isLoading || false, 
             });
             setAlignmentData(null); // Reset alignment for new widget
             setIsVisible(true);     // Set visibility
