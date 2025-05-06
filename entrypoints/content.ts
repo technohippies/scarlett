@@ -214,7 +214,7 @@ export default defineContentScript({
 
             // Update state signals BEFORE creating the UI
             setWidgetProps({
-                hoveredWord: originalText,
+                hoveredWord: translatedText,
                 originalWord: originalText,
                 translatedWord: translatedText,
                 sourceLang: sourceLang,

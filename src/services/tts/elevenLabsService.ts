@@ -5,6 +5,7 @@ export interface ElevenLabsVoiceSettings {
     similarity_boost?: number; // 0-1
     style?: number; // 0-1 for eleven_multilingual_v2, 0-0.3 for v1
     use_speaker_boost?: boolean;
+    speed?: number;
 }
 
 /**
@@ -15,6 +16,7 @@ export interface ElevenLabsVoiceSettings {
  * @param selectedModelId The ID of the model to use (e.g., 'eleven_multilingual_v2').
  * @param voiceId The ID of the voice to use. Defaults to DEFAULT_ELEVENLABS_VOICE_ID.
  * @param voiceSettings Optional voice settings for stability, similarity, etc.
+ * @param speed Optional speed parameter
  * @returns A Promise that resolves to an audio Blob if successful.
  * @throws An error if the API request fails.
  */
@@ -23,7 +25,8 @@ export async function generateElevenLabsSpeechStream(
     text: string,
     selectedModelId: string,
     voiceId: string = DEFAULT_ELEVENLABS_VOICE_ID,
-    voiceSettings?: ElevenLabsVoiceSettings
+    voiceSettings?: ElevenLabsVoiceSettings,
+    speed?: number
 ): Promise<Blob> {
     const apiUrl = `${ELEVENLABS_API_BASE_URL}/text-to-speech/${voiceId}/stream`;
 
@@ -38,11 +41,22 @@ export async function generateElevenLabsSpeechStream(
         model_id: selectedModelId,
     };
 
-    if (voiceSettings) {
-        body.voice_settings = voiceSettings;
+    let effectiveVoiceSettings: ElevenLabsVoiceSettings = { ...voiceSettings };
+
+    if (speed !== undefined && speed !== 1.0) {
+        if (speed >= 0.7 && speed <= 1.2) {
+            effectiveVoiceSettings.speed = speed;
+            console.log(`[ElevenLabsService] Applying custom speed: ${speed}`);
+        } else {
+            console.warn(`[ElevenLabsService] Requested speed ${speed} is outside valid range (0.7-1.2). Using default speed.`);
+        }
+    }
+    
+    if (Object.keys(effectiveVoiceSettings).length > 0) {
+        body.voice_settings = effectiveVoiceSettings;
     }
 
-    console.log(`[ElevenLabsService] Requesting TTS from: ${apiUrl} with model: ${selectedModelId} and voice: ${voiceId}`);
+    console.log(`[ElevenLabsService] Requesting TTS from: ${apiUrl} with model: ${selectedModelId}, voice: ${voiceId}, settings: ${JSON.stringify(body.voice_settings)}`);
 
     try {
         const response = await fetch(apiUrl, {

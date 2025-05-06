@@ -683,6 +683,7 @@ export function registerMessageHandlers(): void {
     // --- Handler for REQUEST_TTS_FROM_WIDGET ---
     messaging.onMessage('REQUEST_TTS_FROM_WIDGET', async (message) => {
         console.log('[Message Handlers] Received REQUEST_TTS_FROM_WIDGET:', message.data);
+        // Destructure speed along with text and lang
         const { text, lang, speed } = message.data; 
 
         try {
@@ -695,17 +696,19 @@ export function registerMessageHandlers(): void {
             }
 
             const apiKey = ttsConfig.apiKey;
-            // Use default model and voice IDs from constants as they are not in FunctionConfig for TTS yet
             const effectiveModelId = DEFAULT_ELEVENLABS_MODEL_ID;
             const effectiveVoiceId = DEFAULT_ELEVENLABS_VOICE_ID;
 
-            console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Generating audio via ElevenLabs. Text: "${text.substring(0,30)}...", Lang: ${lang}, Model: ${effectiveModelId}, Voice: ${effectiveVoiceId}`);
+            console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Generating audio via ElevenLabs. Text: "${text.substring(0,30)}...", Lang: ${lang}, Model: ${effectiveModelId}, Voice: ${effectiveVoiceId}, Speed: ${speed ?? 'default'}`);
 
+            // Pass the received speed to generateElevenLabsSpeechStream
             const audioBlob = await generateElevenLabsSpeechStream(
-                apiKey, // Only apiKey comes from stored ttsConfig
+                apiKey,
                 text,
-                effectiveModelId, // Use default constant
-                effectiveVoiceId  // Use default constant
+                effectiveModelId,
+                effectiveVoiceId,
+                undefined, // voiceSettings (can be added later if needed)
+                speed      // Pass the speed parameter here
             );
 
             if (audioBlob) {

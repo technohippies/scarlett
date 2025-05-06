@@ -168,13 +168,13 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
 
   // --- Handlers ---
   const handleGenerate = async () => {
-    // Log state *before* the early exit condition
     console.log(`[Widget handleGenerate] Entry. isGenerating: ${isGenerating()}, isPlaying: ${isPlaying()}`);
     if (isGenerating() || isPlaying()) {
       console.log('[Widget handleGenerate] Exiting early because already generating or playing.');
       return;
     }
-    console.log('[Widget] Requesting Audio via onTTSRequest...');
+    // Use originalWord and sourceLang for TTS request
+    console.log(`[Widget] Requesting Audio for originalText: "${props.originalWord}" in lang: ${props.sourceLang}`);
     setIsGenerating(true);
     setIsAudioReady(false);
     setCurrentAudio(null);
@@ -183,7 +183,8 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
     if (highlightInterval) clearInterval(highlightInterval);
     
     try {
-      const ttsResult = await props.onTTSRequest(props.hoveredWord, props.targetLang, 1.0);
+      // Send props.originalWord and props.sourceLang for TTS
+      const ttsResult = await props.onTTSRequest(props.originalWord, props.sourceLang, 1.0);
 
       if (ttsResult.audioDataUrl) {
         console.log('[Widget] Received audioDataUrl, attempting to play.');
@@ -244,16 +245,65 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
     }
   };
 
-  const handlePlaySpeed = (speed: number) => {
+  const handlePlaySpeed = async (speed: number) => {
+    console.log(`[Widget handlePlaySpeed] Entered. Requested speed: ${speed}x. isGenerating: ${isGenerating()}, isPlaying: ${isPlaying()}`);
     setIsPopoverOpen(false);
-    console.log(`[Widget] Play speed ${speed}x selected. (Currently only affects simulated playback if alignment data was present)`);
-    const audio = currentAudio();
-    if (audio && isAudioReady() && !isPlaying()) {
-        audio.playbackRate = speed;
-        handlePlayAgain();
-    } else if (audio && isPlaying()) {
-        console.log('[Widget] Setting playbackRate on already playing audio.');
-        audio.playbackRate = speed;
+    console.log(`[Widget] Requesting regeneration at speed: ${speed}x`);
+    
+    // Similar logic to handleGenerate, but using the specified speed
+    if (isGenerating() || isPlaying()) {
+      console.log('[Widget handlePlaySpeed] Ignoring request because already generating or playing.');
+      return; // Don't interrupt current generation/playback for speed change for now
+    }
+    
+    setIsGenerating(true);
+    setIsAudioReady(false);
+    setCurrentAudio(null);
+    setCurrentHighlightIndex(null);
+    setIsPlaying(false);
+    if (highlightInterval) clearInterval(highlightInterval);
+
+    try {
+      // Call onTTSRequest with original word, source lang, and *selected speed*
+      const ttsResult = await props.onTTSRequest(props.originalWord, props.sourceLang, speed);
+
+      if (ttsResult.audioDataUrl) {
+        console.log(`[Widget] Received audioDataUrl for speed ${speed}x, attempting to play.`);
+        const audio = new Audio(ttsResult.audioDataUrl);
+        setCurrentAudio(audio); // Store the new audio object
+
+        audio.oncanplaythrough = () => {
+          setIsAudioReady(true);
+          setIsPlaying(true);
+          console.log(`[Widget] Audio ready, playing after regeneration at ${speed}x...`);
+          audio.play().catch(e => {
+            console.error(`[Widget] Error playing audio post-regeneration at ${speed}x:`, e);
+            setIsPlaying(false);
+            setIsGenerating(false);
+            setCurrentAudio(null);
+          });
+        };
+        audio.onended = () => {
+          console.log(`[Widget] Audio playback finished after regeneration at ${speed}x.`);
+          setIsPlaying(false);
+          setIsGenerating(false);
+        };
+        audio.onerror = (e) => {
+          console.error(`[Widget] Error with audio object post-regeneration at ${speed}x:`, e);
+          setIsAudioReady(false);
+          setIsPlaying(false);
+          setIsGenerating(false);
+          setCurrentAudio(null);
+        };
+      } else if (ttsResult.error) {
+        console.error(`[Widget] TTS request failed for speed ${speed}x:`, ttsResult.error);
+        setIsGenerating(false);
+        setCurrentAudio(null);
+      }
+    } catch (error) {
+      console.error(`[Widget] Error in handlePlaySpeed calling onTTSRequest for speed ${speed}x:`, error);
+      setIsGenerating(false);
+      setCurrentAudio(null);
     }
   };
 
@@ -293,8 +343,9 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   };
 
   const handleRegenerate = () => {
+    // Regenerate always uses normal speed (calls handleGenerate)
     setIsPopoverOpen(false);
-    console.log('[Widget] Regenerating Audio');
+    console.log('[Widget] Regenerating Audio (at normal speed)');
     handleGenerate();
   };
 
@@ -411,17 +462,43 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                             <Show when={isPopoverOpen()}>
                                 <Popover.Content 
                                   class={POPOVER_CONTENT_CLASS}
-                                  onPointerDownOutside={(e) => e.preventDefault()}
                                   onOpenAutoFocus={(e) => e.preventDefault()}
                                 >
-                                    <div class="flex flex-col">
-                                        <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onClick={() => handlePlaySpeed(0.75)} disabled={allDisabled()}>
-                                            <Play weight="regular" class="mr-2 size-4" /> Play at 0.75x
+                                    <div class="flex flex-col" >
+                                        <Button 
+                                          variant="ghost" 
+                                          size="sm" 
+                                          class={POPOVER_ITEM_CLASS} 
+                                          onPointerDown={() => {
+                                            console.log('[Widget Popover Button PointerDown] Play at 0.85x'); 
+                                            handlePlaySpeed(0.85);
+                                          }}
+                                          disabled={allDisabled()}
+                                        >
+                                            <Play weight="regular" class="mr-2 size-4" /> Play at 0.85x
                                         </Button>
-                                        <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onClick={() => handlePlaySpeed(0.50)} disabled={allDisabled()}>
-                                            <Play weight="regular" class="mr-2 size-4" /> Play at 0.5x
+                                        <Button 
+                                          variant="ghost" 
+                                          size="sm" 
+                                          class={POPOVER_ITEM_CLASS} 
+                                          onPointerDown={() => {
+                                            console.log('[Widget Popover Button PointerDown] Play at 0.70x');
+                                            handlePlaySpeed(0.70);
+                                          }}
+                                          disabled={allDisabled()}
+                                        >
+                                            <Play weight="regular" class="mr-2 size-4" /> Play at 0.70x
                                         </Button>
-                                        <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onClick={handleRegenerate} disabled={allDisabled()}>
+                                        <Button 
+                                          variant="ghost" 
+                                          size="sm" 
+                                          class={POPOVER_ITEM_CLASS} 
+                                          onPointerDown={() => {
+                                            console.log('[Widget Popover Button PointerDown] Regenerate Audio');
+                                            handleRegenerate();
+                                          }}
+                                          disabled={allDisabled()}
+                                        >
                                             <ArrowClockwise weight="regular" class="mr-2 size-4" /> Regenerate Audio
                                         </Button>
                                     </div>
