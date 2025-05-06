@@ -2,7 +2,6 @@ import { Component, createSignal, For } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
 import type { Messages } from '../../types/i18n'; // Import Messages type
-import { ArrowLeft } from 'phosphor-solid'; // Import icon
 
 // Define props for the component
 interface LearningGoalProps {
