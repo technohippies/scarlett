@@ -289,7 +289,11 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   const showTTSFeature = () => {
       const supportedLangs = ['zh', 'en', 'es', 'fr', 'de', 'ja', 'ko'];
       const sourceLangVal = props.sourceLang ? props.sourceLang() : undefined;
-      return sourceLangVal && supportedLangs.some(lang => sourceLangVal!.toLowerCase().startsWith(lang));
+      // Show if the detected language is supported OR if it's still 'auto' (might become supported)
+      return sourceLangVal && ( 
+          sourceLangVal === 'auto' || 
+          supportedLangs.some(lang => sourceLangVal.toLowerCase().startsWith(lang)) 
+      );
   };
 
   return (
@@ -324,9 +328,9 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
             <Show when={showPronunciation() && !props.isLoading()}>{props.pronunciation? props.pronunciation() : ''}</Show>
         </div>
 
-        {/* Row 4: TTS Controls - Hidden if main translation is loading */}
-        <Show when={showTTSFeature() && !props.isLoading()}>
-          <div class="mt-auto pt-1"> {/* mt-auto pushes TTS controls to the bottom */}
+        {/* Row 4: TTS Controls - Render if feature available, disable buttons based on loading state */}
+        <Show when={showTTSFeature()}> 
+          <div class="mt-auto pt-1"> 
             <Show when={isGeneratingTTS()} fallback={
                 <Show when={isAudioReady()} fallback={
                     <Button variant="outline" size="lg" onClick={handleGenerate} class="w-full" disabled={isTTSBusy() || props.isLoading()}>Generate Audio</Button> }
