@@ -32,3 +32,16 @@ dist/
 
 # Storybook build output
 storybook-static/
+
+# Playwright reports and results
+playwright-report/
+test-results/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+!.env.template
+
+# Operating System files
+Thumbs.db

@@ -18,12 +18,23 @@ import { SettingsProvider, useSettings } from '../../src/context/SettingsContext
 import ProviderSelectionPanel, { type ProviderOption } from '../../src/features/models/ProviderSelectionPanel';
 import ModelSelectionPanel from '../../src/features/models/ModelSelectionPanel';
 import ConnectionTestPanel from '../../src/features/models/ConnectionTestPanel';
+// --- Import DeckSelectionPanel ---
+import DeckSelectionPanel, { type DeckInfo } from '../../src/features/decks/DeckSelectionPanel';
 // Import the constants
 import { REDIRECT_SERVICES, DEFAULT_REDIRECT_INSTANCES } from '../../src/shared/constants';
 // --- Import TtsProviderPanel and related types ---
 import { TtsProviderPanel, type TtsProviderOption as OnboardingTtsProviderOption } from '../../src/features/models/TtsProviderPanel';
 import { generateElevenLabsSpeechStream } from '../../src/services/tts/elevenLabsService';
 import { DEFAULT_ELEVENLABS_VOICE_ID, DEFAULT_ELEVENLABS_MODEL_ID } from '../../src/shared/constants'; // Assuming ELEVENLABS_TEST_TEXT might be moved here or defined locally
+
+// --- Import messaging types and function ---
+import { defineExtensionMessaging } from '@webext-core/messaging';
+import type { BackgroundProtocolMap } from '../../src/background/handlers/message-handlers'; // Import the protocol map
+
+// --- Define messaging for the frontend context --- 
+// Use the same protocol map as the background
+const { sendMessage: sendBackgroundMessage } = defineExtensionMessaging<BackgroundProtocolMap>();
+// We rename sendMessage to avoid conflicts if App.tsx used a variable named sendMessage elsewhere
 
 const ONBOARDING_ELEVENLABS_TEST_TEXT = "Hello from Scarlett! This is an onboarding test.";
 
@@ -82,7 +93,7 @@ const onboardingTtsProviderOptions: OnboardingTtsProviderOption[] = [
 ];
 
 // Simplified Step type for the new flow
-type Step = 'language' | 'learningGoal' | 'setupLLM' | 'setupEmbedding' | 'setupTTS' | 'redirects';
+type Step = 'language' | 'learningGoal' | 'deckSelection' | 'setupLLM' | 'setupEmbedding' | 'setupTTS' | 'redirects';
 
 // Helper function modified to return the best determined language code
 function getBestInitialLangCode(): string {
@@ -148,7 +159,7 @@ const fetchMessages = async (langCode: string): Promise<Messages> => {
 };
 
 // Keep steps definition for progress calculation
-const onboardingSteps: Step[] = ['language', 'learningGoal', 'setupLLM', 'setupEmbedding', 'setupTTS', 'redirects'];
+const onboardingSteps: Step[] = ['language', 'learningGoal', 'deckSelection', 'setupLLM', 'setupEmbedding', 'setupTTS', 'redirects'];
 
 const App: Component = () => {
 
@@ -214,6 +225,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   // Keep targetLangLabel for goal step display
   const [targetLangLabel, setTargetLangLabel] = createSignal<string>('');
   // Add signals for selections made in child components
+  const [selectedNativeLangValue, setSelectedNativeLangValue] = createSignal<string>(''); // Store selected native language
   const [selectedTargetLangValue, setSelectedTargetLangValue] = createSignal<string>('');
   const [selectedGoalId, setSelectedGoalId] = createSignal<string>('');
   const [uiLangCode, setUiLangCode] = createSignal<string>(getBestInitialLangCode());
@@ -221,11 +233,20 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   // Signal for dynamically filtered target languages
   const [filteredTargetLanguages, setFilteredTargetLanguages] = createSignal<LanguageOptionStub[]>([]);
 
+  // --- State for Deck Selection ---
+  // const [allAvailableDecks, setAllAvailableDecks] = createSignal<DeckInfo[]>([]); // Raw list from background
+  const [recommendedDecks, setRecommendedDecks] = createSignal<DeckInfo[]>([]); // Filtered list for the panel
+  const [isLoadingDecks, setIsLoadingDecks] = createSignal(false);
+  const [selectedDeckIdentifiers, setSelectedDeckIdentifiers] = createSignal<string[]>([]);
+
   const [messagesData] = createResource(uiLangCode, fetchMessages);
 
   // Effect to update filteredTargetLanguages based on uiLangCode (native language)
   createEffect(() => {
     const nativeLang = uiLangCode();
+    // Store native language when uiLangCode changes (it's our source of truth for native lang)
+    setSelectedNativeLangValue(nativeLang); 
+
     let targets: LanguageOptionStub[] = [];
     if (nativeLang === 'zh' || nativeLang === 'vi') {
       targets = masterTargetLanguagesList.filter(lang => lang.value === 'en');
@@ -345,22 +366,12 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     };
   };
 
-  // Handler for immediate native language change (Keep as is)
-  const handleNativeLanguageSelect = (newLangCode: string) => {
-    if (newLangCode !== uiLangCode()) {
-        console.log(`[App] handleNativeLanguageSelect: UI language changing from ${uiLangCode()} to ${newLangCode}`);
-        setUiLangCode(newLangCode); // Trigger resource reload immediately
-    } else {
-        console.log(`[App] handleNativeLanguageSelect: Selected language ${newLangCode} already active.`);
-    }
-  };
-
   // --- ADD BACK handlers inside OnboardingContent ---
   // Language Complete Handler (Update to use signals)
   const handleLanguageComplete = async () => {
-    const nativeLang = uiLangCode();
+    const nativeLang = selectedNativeLangValue(); // Use signal
     const targetValue = selectedTargetLangValue();
-    const targetLabel = targetLangLabel(); // This is already set by the change handler
+    const targetLabel = targetLangLabel();
 
     console.log('[App] Language Complete:', { targetValue, targetLabel, nativeLang });
 
@@ -402,10 +413,88 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     await userConfigurationStorage.setValue(updatedConfig);
     console.log('[App] Config after saving goal:', updatedConfig);
 
-    console.log('[App] Proceeding to LLM setup step.');
+    console.log('[App] Proceeding to Deck Selection step.');
+    setCurrentStep('deckSelection'); // <- Change to deckSelection
+  };
+
+  // --- Fetch and Filter Decks when DeckSelection step is active ---
+  createEffect(async () => {
+    if (currentStep() === 'deckSelection') {
+      setIsLoadingDecks(true);
+      setRecommendedDecks([]); // Clear previous recommendations
+      try {
+        // Fetch available decks (Using new sendBackgroundMessage)
+        console.log('[App deckSelection Effect] Attempting to send message fetchAvailableDeckFiles...');
+        const response = await sendBackgroundMessage('fetchAvailableDeckFiles', undefined); // Pass undefined as data
+        console.log('[App deckSelection Effect] Received response from fetchAvailableDeckFiles:', response);
+        
+        if (response && response.success && Array.isArray(response.decks)) {
+          // setAllAvailableDecks(response.decks);
+          const nativeLang = selectedNativeLangValue();
+          const targetLang = selectedTargetLangValue();
+
+          if (!nativeLang || !targetLang) {
+            console.warn('[App] Native or target language not selected. Cannot filter decks.');
+            setRecommendedDecks([]); // Or show all, or show an error
+          } else {
+            console.log(`[App] Filtering decks for native: ${nativeLang}, target: ${targetLang}`);
+            const filtered = response.decks.filter((deck: any) => {
+              // Ensure deck has sourceLanguage and targetLanguage properties
+              return deck.sourceLanguage === nativeLang && deck.targetLanguage === targetLang;
+            });
+            console.log(`[App] Found ${filtered.length} recommended decks:`, filtered);
+            setRecommendedDecks(filtered);
+          }
+        } else {
+          console.error('Failed to fetch available decks or invalid format:', response?.error);
+          // setAllAvailableDecks([]);
+          setRecommendedDecks([]);
+        }
+      } catch (err) {
+        console.error('Error fetching available decks:', err);
+        // setAllAvailableDecks([]);
+        setRecommendedDecks([]);
+      } finally {
+        setIsLoadingDecks(false);
+      }
+    }
+  });
+
+  // --- Handler for DeckSelectionPanel ---
+  const handleDeckToggleInOnboarding = async (deckIdentifier: string, isEnabled: boolean) => {
+    if (isEnabled) {
+      setSelectedDeckIdentifiers(prev => [...new Set([...prev, deckIdentifier])]);
+      try {
+          // Use await with sendBackgroundMessage
+          const response = await sendBackgroundMessage('addLearningDeck', { deckIdentifier });
+          if (response.success) {
+            console.log(`[App] Deck ${deckIdentifier} successfully added to learning queue.`);
+          } else {
+            console.error(`[App] Failed to add deck ${deckIdentifier}:`, response.error);
+            // Revert selection state on failure
+            setSelectedDeckIdentifiers(prev => prev.filter(id => id !== deckIdentifier)); 
+          }
+      } catch (err) {
+          console.error(`[App] Error messaging addLearningDeck for ${deckIdentifier}:`, err);
+          // Revert selection state on error
+          setSelectedDeckIdentifiers(prev => prev.filter(id => id !== deckIdentifier));
+      }
+    } else {
+      setSelectedDeckIdentifiers(prev => prev.filter(id => id !== deckIdentifier));
+      // TODO: Implement removeLearningDeck message if needed
+      console.log(`[App] Deck ${deckIdentifier} de-selected.`);
+    }
+  };
+
+  // --- Handler to proceed from Deck Selection ---
+  const handleDecksComplete = async () => {
+    console.log('[App] Deck Selection Complete. Selected identifiers:', selectedDeckIdentifiers());
+    // User selections are already processed by handleDeckToggleInOnboarding calling addLearningDeck.
+    // No specific config needs to be saved here for *which* decks were added to user_learning,
+    // as that's managed in the database directly.
+    // We just proceed to the next step.
     setCurrentStep('setupLLM');
   };
-  // --- END ADD BACK ---
 
   // --- Model Setup Completion Handlers (Keep as is) ---
   // Option A: Keep direct storage manipulation (simpler for now, might diverge from settings page)
@@ -567,6 +656,10 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     if (step === 'language' || step === 'learningGoal') {
       return i18n().get('onboardingContinue', 'Continue');
     }
+    // Add case for deckSelection
+    if (step === 'deckSelection') {
+      return i18n().get('onboardingContinue', 'Continue');
+    }
     if (step === 'setupLLM' || step === 'setupEmbedding') { 
       const llmOrEmbeddingConfig = step === 'setupLLM' ? settingsContext.config.llmConfig : settingsContext.config.embeddingConfig;
       if (!llmOrEmbeddingConfig?.providerId) return i18n().get('onboardingContinue', 'Continue'); 
@@ -611,7 +704,10 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       case 'language':
         return !selectedTargetLangValue(); 
       case 'learningGoal':
-        return !selectedGoalId(); 
+        return !selectedGoalId();
+      // Add case for deckSelection
+      case 'deckSelection':
+        return isLoadingDecks(); // Disabled while loading. Can add other conditions if needed.
       case 'setupLLM':
       case 'setupEmbedding': {
         const llmOrEmbeddingConfig = step === 'setupLLM' ? settingsContext.config.llmConfig : settingsContext.config.embeddingConfig;
@@ -654,6 +750,10 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         break;
       case 'learningGoal':
         handleLearningGoalComplete(); 
+        break;
+      // Add case for deckSelection
+      case 'deckSelection':
+        handleDecksComplete();
         break;
       case 'setupLLM':
         if (llmConfig && state && (state.testStatus() === 'idle' || state.testStatus() === 'error')) {
@@ -713,7 +813,15 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         return (
           <Language
             onTargetLangChange={(value: string, label: string) => { setSelectedTargetLangValue(value); setTargetLangLabel(label); }}
-            onNativeLangChange={handleNativeLanguageSelect}
+            onNativeLangChange={(newLangCode: string) => {
+              // uiLangCode is already our primary signal for native language
+              if (newLangCode !== uiLangCode()) {
+                  console.log(`[App] renderStep/onNativeLangChange: UI language changing from ${uiLangCode()} to ${newLangCode}`);
+                  setUiLangCode(newLangCode); 
+              }
+              // We also stored it in selectedNativeLangValue, ensure it's consistent or simplify later
+              setSelectedNativeLangValue(newLangCode);
+            }}
             iSpeakLabel={i18n().get('onboardingISpeak', 'I speak')}
             selectLanguagePlaceholder={i18n().get('onboardingSelectLanguage', 'Select language')}
             wantToLearnLabel={i18n().get('onboardingIWantToLearn', 'and I want to learn...')}
@@ -735,6 +843,25 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
             fallbackLabel={i18n().get('onboardingTargetLanguageFallback', 'your selected language')}
             messages={messagesData() || {}}
           />
+        );
+
+      // --- Add Deck Selection Step ---
+      case 'deckSelection':
+        return (
+          <div class="w-full max-w-lg">
+            <p class="text-xl md:text-2xl mb-2">
+              {i18n().get('onboardingDeckSelectionTitle', 'Choose Your Starter Decks')}
+            </p>
+            <p class="text-lg text-muted-foreground mb-6">
+              {i18n().get('onboardingDeckSelectionDescription', 'Select some decks to get started. We recommend these based on your languages and learning goal.')}
+            </p>
+            <DeckSelectionPanel
+              availableDecks={recommendedDecks} // Pass the filtered list
+              isLoading={isLoadingDecks}
+              onDeckToggle={handleDeckToggleInOnboarding}
+              initiallySelectedDeckIds={selectedDeckIdentifiers}
+            />
+          </div>
         );
 
       // --- REPLACE SetupFunction with Panels --- 

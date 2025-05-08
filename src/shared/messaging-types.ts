@@ -220,6 +220,8 @@ export interface LearningWordData {
  */
 export interface RequestActiveLearningWordsPayload {
   // No parameters needed for now
+  sourceLanguage: string;
+  targetLanguage: string;
 }
 
 /**

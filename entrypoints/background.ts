@@ -6,8 +6,8 @@ import { defineBackground } from '#imports';
 import { ensureDbInitialized } from '../src/services/db/init';
 import { seedInitialTags } from '../src/services/db/tags';
 import { setupContextMenu } from '../src/background/setup/context-menu-setup';
-import { registerMessageHandlers } from '../src/background/handlers/message-handlers';
-// import { loadDictionaries } from '../src/background/setup/dictionary-setup'; // Removed
+import { registerMessageHandlers, BackgroundProtocolMap } from '../src/background/handlers/message-handlers';
+import { defineExtensionMessaging, Logger } from '@webext-core/messaging';
 
 // Import handler registration functions
 import { registerContextMenuHandlers } from '../src/background/handlers/context-menu-handler';
@@ -176,9 +176,20 @@ export default defineBackground({
     // --- Synchronous Setup ---
     // Register listeners immediately when the worker starts.
     try {
+        // Define a custom logger
+        const customLogger: Logger = {
+          debug: (...args: any[]) => console.debug('[Messaging DEBUG]', ...args),
+          log: (...args: any[]) => console.log('[Messaging LOG]', ...args),
+          warn: (...args: any[]) => console.warn('[Messaging WARN]', ...args),
+          error: (...args: any[]) => console.error('[Messaging ERROR]', ...args),
+        };
+
+        // Initialize messaging with the custom logger
+        const messaging = defineExtensionMessaging<BackgroundProtocolMap>({ logger: customLogger });
+
         // 1. Register message listeners
         console.log('[Scarlett BG Entrypoint] Registering message handlers...');
-        registerMessageHandlers();
+        registerMessageHandlers(messaging);
         console.log('[Scarlett BG Entrypoint] Message handlers registered.');
 
         // 2. Register Context Menu Click Handler

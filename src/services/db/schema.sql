@@ -154,6 +154,43 @@ CREATE TABLE IF NOT EXISTS tags (
     updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Index for faster lookup of tags by name
+CREATE INDEX IF NOT EXISTS idx_tags_tag_name ON tags (tag_name);
+
+-- --- Deck Organization Tables ---
+
+-- Stores metadata about predefined or user-added decks
+CREATE TABLE IF NOT EXISTS decks (
+    deck_id SERIAL PRIMARY KEY,
+    deck_identifier TEXT UNIQUE NOT NULL, -- e.g., "programming_vi_en", used for referencing from code/API
+    name TEXT NOT NULL,
+    description TEXT NULL,
+    source_language TEXT NULL, -- Primary source language of the deck
+    target_language TEXT NULL, -- Primary target language of the deck
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Trigger to update updated_at timestamp for decks
+CREATE TRIGGER update_decks_modtime
+BEFORE UPDATE ON decks
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Links translations to the decks they belong to (Many-to-Many)
+CREATE TABLE IF NOT EXISTS translation_decks (
+    translation_id INTEGER NOT NULL REFERENCES lexeme_translations(translation_id) ON DELETE CASCADE,
+    deck_id INTEGER NOT NULL REFERENCES decks(deck_id) ON DELETE CASCADE,
+    PRIMARY KEY (translation_id, deck_id) -- Ensures a translation is linked to a specific deck only once
+);
+
+-- Index for faster lookup of translations by deck
+CREATE INDEX IF NOT EXISTS idx_translation_decks_deck_id ON translation_decks(deck_id);
+-- Index for faster lookup of decks by translation
+CREATE INDEX IF NOT EXISTS idx_translation_decks_translation_id ON translation_decks(translation_id);
+
+-- --- END Deck Organization Tables ---
+
 -- --- RAG / Page History Tables --- 
 
 -- Drop OLD visited_pages table if it exists to ensure clean migration

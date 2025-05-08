@@ -1,12 +1,28 @@
-import { defineExtensionMessaging } from '@webext-core/messaging';
-import { render } from 'solid-js/web';
-import { createSignal } from 'solid-js';
-import {
-    defineContentScript,
-    createShadowRootUi,
-    type ShadowRootContentScriptUiOptions,
-    type ShadowRootContentScriptUi,
+import { 
+    defineContentScript, 
+    createShadowRootUi, 
+    type ShadowRootContentScriptUiOptions, 
+    type ShadowRootContentScriptUi, 
 } from '#imports'; // Use WXT's auto-imports
+import { defineExtensionMessaging } from '@webext-core/messaging'; // Correct import for messaging
+import type { BackgroundProtocolMap } from '../src/background/handlers/message-handlers';
+
+// Features
+import LearningWordWidget from '../src/features/learning/LearningWordWidget';
+
+// Services & Types
+import { userConfigurationStorage } from '../src/services/storage/storage';
+import type { UserConfiguration } from '../src/services/storage/types';
+import type { LearningWordData, RequestActiveLearningWordsResponse } from '../src/shared/messaging-types';
+
+// Utils
+// import { getHighlightTargetElement } from './utils/page-analyzer'; // This was causing issues, comment out for now
+
+// Define message sender type based on WXT
+const messageSender = defineExtensionMessaging<BackgroundProtocolMap>();
+
+// --- Constants & IDs ---
+const LEARNING_HIGHLIGHT_STYLE_ID = 'scarlett-learning-highlight-styles';
 
 // --- Import Component and Types --- Use relative paths
 import TranslatorWidget from '../src/features/translator/TranslatorWidget';
@@ -17,16 +33,7 @@ import type {
     UpdateAlignmentPayload, // Payload from background with alignment
     ExtractMarkdownRequest, // Import new message type
     ExtractMarkdownResponse, // Import new message type
-    LearningWordData, 
-    RequestActiveLearningWordsResponse 
 } from '../src/shared/messaging-types.ts';
-// --- Import Background Protocol --- 
-import type { BackgroundProtocolMap } from '../src/background/handlers/message-handlers';
-// --- NEW: Import Learning Word Widget ---
-import LearningWordWidget from '../src/features/learning/LearningWordWidget';
-// Remove unused import
-// import type { LearningWordWidgetProps } from '../src/features/learning/LearningWordWidget';
-// --- END NEW ---
 
 // --- Messaging Setup --- 
 
@@ -42,9 +49,6 @@ interface ContentScriptProtocolMap {
 
 // Instance for LISTENING to messages FROM background (typed with CS protocol)
 const messageListener = defineExtensionMessaging<ContentScriptProtocolMap>();
-
-// Instance for SENDING messages TO background (typed with Background protocol)
-const messageSender = defineExtensionMessaging<BackgroundProtocolMap>();
 
 // --- Content Script Definition ---
 export default defineContentScript({
@@ -92,7 +96,6 @@ export default defineContentScript({
         };
         
         // --- CSS and Tooltip Setup for Learning Words (definitions remain the same) ---
-        const LEARNING_HIGHLIGHT_STYLE_ID = "scarlett-learning-highlight-styles";
         const LEARNING_HIGHLIGHT_CSS = `
           .scarlett-learning-highlight {
             background-color: rgba(255, 235, 59, 0.3); /* Light yellow */
@@ -404,7 +407,23 @@ export default defineContentScript({
             console.log('[Scarlett CS] Requesting active learning words from background...');
             try {
                 injectHighlightStyles(); 
-                const response = await messageSender.sendMessage('REQUEST_ACTIVE_LEARNING_WORDS', {}) as RequestActiveLearningWordsResponse;
+
+                // Get user's source and target languages
+                const userConfig: UserConfiguration | null = await userConfigurationStorage.getValue();
+                const sourceLanguage = userConfig?.nativeLanguage;
+                const targetLanguage = userConfig?.targetLanguage;
+
+                if (!sourceLanguage || !targetLanguage) {
+                    console.warn('[Scarlett CS] Native or target language not set in config. Skipping learning word highlighting.');
+                    return;
+                }
+
+                console.log(`[Scarlett CS] Fetching words for ${sourceLanguage} -> ${targetLanguage}`);
+                const response = await messageSender.sendMessage(
+                    'REQUEST_ACTIVE_LEARNING_WORDS', 
+                    { sourceLanguage, targetLanguage } // Pass the languages
+                ) as RequestActiveLearningWordsResponse;
+
                 if (response && response.success && response.words && response.words.length > 0) {
                     console.log(`[Scarlett CS] Received ${response.words.length} learning words. Starting highlighting...`);
                     highlightLearningWordsOnPage(response.words);

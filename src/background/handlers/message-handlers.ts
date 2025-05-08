@@ -53,47 +53,15 @@ import {
 } from '../../services/db/visited_pages';
 import type { PageVersionToEmbed } from '../../services/db/visited_pages';
 import { pageInfoProcessingTimestamps } from '../../services/storage/storage';
-import type { PGlite } from '@electric-sql/pglite';
+import type { PGlite, Transaction } from '@electric-sql/pglite';
 import { getSummarizationPrompt } from '../../services/llm/prompts/analysis';
 import { userConfigurationStorage } from '../../services/storage/storage';
 import type { FunctionConfig } from '../../services/storage/types';
 import { generateElevenLabsSpeechStream } from '../../services/tts/elevenLabsService';
 import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
-
-// Define the protocol map for messages handled by the background script
-export interface BackgroundProtocolMap {
-    getDueItems(data: GetDueItemsRequest): Promise<GetDueItemsResponse>;
-    getDistractorsForItem(data: GetDistractorsRequest): Promise<GetDistractorsResponse>;
-    submitReviewResult(data: SubmitReviewRequest): Promise<SubmitReviewResponse>;
-    cacheDistractors(data: CacheDistractorsRequest): Promise<CacheDistractorsResponse>;
-    generateLLMDistractors(data: GenerateLLMDistractorsRequest): Promise<GenerateLLMDistractorsResponse>;
-    getStudySummary(data: GetStudySummaryRequest): Promise<GetStudySummaryResponse>;
-    saveBookmark(data: { url: string; title?: string | null; tags?: string | null; selectedText?: string | null }): 
-        Promise<SaveBookmarkResponse>;
-    loadBookmarks(): Promise<LoadBookmarksResponse>;
-    'tag:list': () => Promise<TagListResponse>;
-    'tag:suggest': (data: { title: string; url: string; pageContent?: string | null }) => 
-        Promise<TagSuggestResponse>;
-    getPageInfo: () => Promise<GetPageInfoResponse>;
-    getSelectedText: () => Promise<GetSelectedTextResponse>;
-    processPageVisit: (data: { url: string; title: string; htmlContent: string }) => Promise<void>;
-    triggerBatchEmbedding(): Promise<{ 
-        success: boolean; 
-        finalizedCount?: number; 
-        duplicateCount?: number; 
-        errorCount?: number;
-        error?: string;
-    }>;
-    getPendingEmbeddingCount(): Promise<{ count: number }>;
-    generateTTS(data: GenerateTTSPayload): Promise<void>;
-    extractMarkdownFromHtml(data: ExtractMarkdownRequest): Promise<ExtractMarkdownResponse>;
-    REQUEST_TTS_FROM_WIDGET(data: { text: string; lang: string; speed?: number }): 
-        Promise<{ success: boolean; audioDataUrl?: string; error?: string }>;
-    REQUEST_ACTIVE_LEARNING_WORDS(data: RequestActiveLearningWordsPayload): Promise<RequestActiveLearningWordsResponse>;
-}
-
-// Initialize messaging for the background context
-const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
+import { browser } from 'wxt/browser'; // Import browser namespace
+// import type { LearningDirection, StudyItem } from '../../types/study';
+// import type { ITask } from 'pg-promise';
 
 // Define the threshold for reprocessing (e.g., 1 hour in milliseconds)
 const REPROCESS_INFO_THRESHOLD_MS = 1000;
@@ -129,11 +97,58 @@ async function dynamicChat(messages: ChatMessage[], config: FunctionConfig): Pro
     }
 }
 
+// Define and EXPORT DeckInfoForFiltering
+export interface DeckInfoForFiltering {
+  id: string; 
+  name: string;
+  description?: string;
+  cardCount: number;
+  sourceLanguage: string | null;
+  targetLanguage: string | null;
+}
+
+// Define and EXPORT BackgroundProtocolMap
+export interface BackgroundProtocolMap {
+    getDueItems(data: GetDueItemsRequest): Promise<GetDueItemsResponse>;
+    getDistractorsForItem(data: GetDistractorsRequest): Promise<GetDistractorsResponse>;
+    submitReviewResult(data: SubmitReviewRequest): Promise<SubmitReviewResponse>;
+    cacheDistractors(data: CacheDistractorsRequest): Promise<CacheDistractorsResponse>;
+    generateLLMDistractors(data: GenerateLLMDistractorsRequest): Promise<GenerateLLMDistractorsResponse>;
+    getStudySummary(data: GetStudySummaryRequest): Promise<GetStudySummaryResponse>;
+    saveBookmark(data: { url: string; title?: string | null; tags?: string | null; selectedText?: string | null }): 
+        Promise<SaveBookmarkResponse>;
+    loadBookmarks(): Promise<LoadBookmarksResponse>;
+    'tag:list': () => Promise<TagListResponse>;
+    'tag:suggest': (data: { title: string; url: string; pageContent?: string | null }) => 
+        Promise<TagSuggestResponse>;
+    getPageInfo: () => Promise<GetPageInfoResponse>;
+    getSelectedText: () => Promise<GetSelectedTextResponse>;
+    processPageVisit: (data: { url: string; title: string; htmlContent: string }) => Promise<void>;
+    triggerBatchEmbedding(): Promise<{ 
+        success: boolean; 
+        finalizedCount?: number; 
+        duplicateCount?: number; 
+        errorCount?: number;
+        error?: string;
+    }>;
+    getPendingEmbeddingCount(): Promise<{ count: number }>;
+    generateTTS(data: GenerateTTSPayload): Promise<void>;
+    extractMarkdownFromHtml(data: ExtractMarkdownRequest): Promise<ExtractMarkdownResponse>;
+    REQUEST_TTS_FROM_WIDGET(data: { text: string; lang: string; speed?: number }): 
+        Promise<{ success: boolean; audioDataUrl?: string; error?: string }>;
+    REQUEST_ACTIVE_LEARNING_WORDS(data: RequestActiveLearningWordsPayload): Promise<RequestActiveLearningWordsResponse>;
+    addLearningDeck(data: { deckIdentifier: string }): Promise<{ success: boolean, error?: string }>;
+    GET_LEARNING_WORDS_BY_TRANSLATION_IDS(data: { translationIds: number[] }): Promise<{ success: boolean; words?: any[]; error?: string }>;
+    REQUEST_LEARNING_WORDS_FOR_HIGHLIGHTING(): Promise<{ success: boolean; words?: any[]; error?: string }>;
+    fetchAvailableDeckFiles(): Promise<{ success: boolean; decks?: DeckInfoForFiltering[]; error?: string }>;
+}
+
 /**
  * Registers message listeners for background script operations (SRS, etc.).
+ * @param messaging The messaging instance from the main background script.
  */
-export function registerMessageHandlers(): void {
-    console.log('[Message Handlers] Registering background message listeners...');
+export function registerMessageHandlers(messaging: ReturnType<typeof defineExtensionMessaging<BackgroundProtocolMap>>): void {
+    console.log('[Message Handlers] Registering background message listeners using passed instance...');
 
     async function getSummaryFromLLM(text: string): Promise<string | null> {
         if (!text) return null;
@@ -252,10 +267,13 @@ export function registerMessageHandlers(): void {
         
         console.log(`[Message Handlers DEBUG] Received direction value: ${direction}`);
 
-        const sourceLang = direction === 'NATIVE_TO_EN' ? targetLang : 'en';
-        const effectiveTargetLang = direction === 'NATIVE_TO_EN' ? 'en' : targetLang;
+        // Fallback for LearningDirection if type '../../types/study' not available
+        const safeDirection: string = direction as string || 'EN_TO_NATIVE'; // Cast to string if type is missing
 
-        console.log(`[Message Handlers] Distractor generation direction: ${direction} (${sourceLang} -> ${effectiveTargetLang})`);
+        const sourceLang = safeDirection === 'NATIVE_TO_EN' ? targetLang : 'en';
+        const effectiveTargetLang = safeDirection === 'NATIVE_TO_EN' ? 'en' : targetLang;
+
+        console.log(`[Message Handlers] Distractor generation direction: ${safeDirection} (${sourceLang} -> ${effectiveTargetLang})`);
 
         let userLlmConfig: FunctionConfig | null = null; 
         try {
@@ -269,7 +287,7 @@ export function registerMessageHandlers(): void {
             }
 
             let prompt: string;
-            if (direction === 'NATIVE_TO_EN') {
+            if (safeDirection === 'NATIVE_TO_EN') {
                  prompt = getMCQGenerationPromptNativeToEn(sourceText, targetText, sourceLang, effectiveTargetLang); 
                  console.log(`[Message Handlers] Using NATIVE_TO_EN prompt generator.`);
             } else {
@@ -283,14 +301,20 @@ export function registerMessageHandlers(): void {
 
             if (!rawContent) throw new Error('LLM returned empty content.');
 
-            const jsonRegex = /```json\n([\s\S]*?)\n```/;
-            const match = rawContent.match(jsonRegex);
+            // Attempt to parse JSON, as parseJsonFromLLM from mcq-helpers is not available
             let parsedJson: any;
-            if (match && match[1]) {
-                 parsedJson = JSON.parse(match[1]);
-            } else {
-                 const cleanedContent = rawContent.replace(/^```json\s*|\s*```$/g, '').trim();
-                 parsedJson = JSON.parse(cleanedContent);
+            try {
+                const jsonRegex = /```json\n([\s\S]*?)\n```/;
+                const match = rawContent.match(jsonRegex);
+                if (match && match[1]) {
+                    parsedJson = JSON.parse(match[1]);
+                } else {
+                    const cleanedContent = rawContent.replace(/^```json\s*|\s*```$/g, '').trim();
+                    parsedJson = JSON.parse(cleanedContent);
+                }
+            } catch (parseError) {
+                console.error('[Message Handlers] Failed to parse JSON from LLM content:', rawContent, parseError);
+                throw new Error('Failed to parse JSON from LLM response.');
             }
 
             if (parsedJson && Array.isArray(parsedJson.options) && typeof parsedJson.correctOptionId === 'number') {
@@ -642,18 +666,94 @@ export function registerMessageHandlers(): void {
     });
 
     messaging.onMessage('REQUEST_ACTIVE_LEARNING_WORDS', async (message) => {
-        console.log('[Message Handlers] Received REQUEST_ACTIVE_LEARNING_WORDS request:', message.data);
+        const { sourceLanguage, targetLanguage } = message.data;
+        console.log(`[Message Handlers] Received REQUEST_ACTIVE_LEARNING_WORDS request:`, message.data);
         try {
-            const words = await getActiveLearningWordsFromDb();
+            const words = await getActiveLearningWordsFromDb(sourceLanguage, targetLanguage);
             console.log(`[Message Handlers] REQUEST_ACTIVE_LEARNING_WORDS: Found ${words.length} words.`);
             return { success: true, words: words };
-        } catch (error) {
-            console.error('[Message Handlers] Error handling REQUEST_ACTIVE_LEARNING_WORDS:', error);
-            return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch active learning words.' };
+        } catch (error: any) {
+            console.error('[Message Handlers] Error fetching active learning words:', error);
+            return { success: false, error: error.message || 'Failed to fetch active learning words.', words: [] };
         }
     });
 
-    console.log('[Message Handlers] Background message listeners registered.');
+    // Register the new handler
+    messaging.onMessage('addLearningDeck', handleAddLearningDeck);
+
+    // --- fetchAvailableDeckFiles Implementation ---
+    console.log('[Message Handlers Register] >>> BEFORE registering fetchAvailableDeckFiles handler.');
+    messaging.onMessage('fetchAvailableDeckFiles', async () => {
+        console.log('[Message Handlers] fetchAvailableDeckFiles HANDLER EXECUTED');
+        try {
+            const config = await userConfigurationStorage.getValue();
+            const nativeLang = config?.nativeLanguage;
+            const targetLang = config?.targetLanguage;
+
+            console.log(`[Message Handlers fetchAvailableDeckFiles] User languages - Native: ${nativeLang}, Target: ${targetLang}`);
+
+            if (!nativeLang || !targetLang) {
+                console.warn('[Message Handlers fetchAvailableDeckFiles] Native or target language missing in config.');
+                return { success: false, error: 'User languages not configured.', decks: [] };
+            }
+
+            const availableDecks: DeckInfoForFiltering[] = [];
+
+            // Define known decks and their paths
+            const knownDeckFiles = [
+                { identifier: 'programming_vi_en', path: 'decks/vi/programming_vi_en.json' },
+                { identifier: 'travel_vi_en', path: 'decks/vi/travel_vi_en.json' },
+                { identifier: 'common_en_zh', path: 'decks/en/common_en_zh.json' }
+                // Add more decks here as they are created
+            ];
+
+            for (const deckFile of knownDeckFiles) {
+                console.log(`[Message Handlers fetchAvailableDeckFiles] Checking deck: ${deckFile.identifier} at path ${deckFile.path}`);
+                try {
+                    const deckUrl = browser.runtime.getURL(deckFile.path as any);
+                    const response = await fetch(deckUrl);
+                    if (!response.ok) {
+                        console.warn(`[Message Handlers fetchAvailableDeckFiles] Failed to fetch ${deckFile.path} (status: ${response.status}). Skipping.`);
+                        continue; // Skip this deck if file not found or error
+                    }
+                    const deckData = await response.json();
+
+                    // Validate basic structure
+                    if (deckData && deckData.deckId && deckData.name && deckData.terms && Array.isArray(deckData.terms) && deckData.deckSourceLanguage && deckData.deckTargetLanguage) {
+                        // Check if this deck matches user's configured languages
+                        if (deckData.deckSourceLanguage === nativeLang && deckData.deckTargetLanguage === targetLang) {
+                            const deckInfo: DeckInfoForFiltering = {
+                                id: deckData.deckId,
+                                name: deckData.name, // Will be displayed in UI
+                                description: deckData.description,
+                                cardCount: deckData.terms.length,
+                                sourceLanguage: deckData.deckSourceLanguage,
+                                targetLanguage: deckData.deckTargetLanguage
+                            };
+                            availableDecks.push(deckInfo);
+                            console.log(`[Message Handlers fetchAvailableDeckFiles] Added matching deck: ${deckData.deckId}`);
+                        } else {
+                            console.log(`[Message Handlers fetchAvailableDeckFiles] Deck ${deckData.deckId} language pair (${deckData.deckSourceLanguage}->${deckData.deckTargetLanguage}) does not match user config (${nativeLang}->${targetLang}). Skipping.`);
+                        }
+                    } else {
+                        console.warn(`[Message Handlers fetchAvailableDeckFiles] Invalid format for deck: ${deckFile.path}`, deckData);
+                    }
+                } catch (fetchError) {
+                    console.error(`[Message Handlers fetchAvailableDeckFiles] Error fetching or parsing deck ${deckFile.path}:`, fetchError);
+                }
+            }
+
+            console.log(`[Message Handlers fetchAvailableDeckFiles] Returning ${availableDecks.length} decks matching user languages.`);
+            return { success: true, decks: availableDecks };
+
+        } catch (error) {
+            console.error('[Message Handlers fetchAvailableDeckFiles] Unexpected error:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'An unknown error occurred', decks: [] };
+        }
+    });
+    console.log('[Message Handlers Register] <<< AFTER registering fetchAvailableDeckFiles handler.');
+
+    console.log('[Message Handlers] Background message listeners registered using passed instance.');
 }
 
 async function blobToDataURL(blob: Blob): Promise<string> {
@@ -663,4 +763,180 @@ async function blobToDataURL(blob: Blob): Promise<string> {
         reader.onerror = reject;
         reader.readAsDataURL(blob);
     });
-} 
+}
+
+// Helper to parse deck identifier for path construction (simple example)
+function getDeckPathFromIdentifier(identifier: string): string | null {
+    // Assuming identifier format like "deckName_sourceLang_targetLang"
+    // and files are at "decks/sourceLang/identifier.json"
+    // e.g., "programming_vi_en" -> "decks/vi/programming_vi_en.json"
+    const parts = identifier.split('_');
+    if (parts.length < 2) { // Needs at least name_sourceLang
+        console.warn(`[getDeckPathFromIdentifier] Could not parse source language from identifier: ${identifier}`);
+        // Fallback or more robust parsing needed if format varies
+        // For now, let's try a direct approach if the example "programming_vi_en" is typical
+        if (identifier === 'programming_vi_en') {
+            return 'decks/vi/programming_vi_en.json';
+        }
+        // Add more specific cases or a more general parsing rule
+        return null; 
+    }
+    // This is a simplified example; robust parsing would be needed for various formats.
+    // For "programming_vi_en", parts[1] would be "vi".
+    const sourceLang = parts[parts.length - 2]; // Assumes sourceLang is second to last
+    return `decks/${sourceLang}/${identifier}.json`;
+}
+
+// --- Add Deck Handler ---
+async function handleAddLearningDeck(message: { data: { deckIdentifier: string } }): Promise<{ success: boolean, error?: string }> {
+    const { deckIdentifier } = message.data;
+    console.log(`[Message Handlers] Received addLearningDeck request for identifier: ${deckIdentifier}`);
+
+    try {
+        const db = await getDbInstance();
+        if (!db) {
+            console.error('[Message Handlers addLearningDeck] Database instance is null.');
+            return { success: false, error: 'Database not initialized.' };
+        }
+
+        // 1. Construct path and fetch deck data from JSON
+        const deckJsonPath = getDeckPathFromIdentifier(deckIdentifier);
+        if (!deckJsonPath) {
+            console.error(`[Message Handlers addLearningDeck] Could not determine JSON path for identifier: ${deckIdentifier}`);
+            return { success: false, error: `Could not determine JSON path for deck: ${deckIdentifier}` };
+        }
+        console.log(`[Message Handlers addLearningDeck] Attempting to fetch deck from JSON: ${deckJsonPath}`);
+        
+        let deckData;
+        try {
+            const deckUrl = browser.runtime.getURL(deckJsonPath as any); // Use 'as any' if WXT types are too strict
+            const response = await fetch(deckUrl);
+            if (!response.ok) {
+                throw new Error(`Failed to fetch ${deckJsonPath} (status: ${response.status}): ${response.statusText}`);
+            }
+            deckData = await response.json();
+            if (!deckData || !deckData.deckId || !deckData.terms || !Array.isArray(deckData.terms)) {
+                console.error(`[Message Handlers addLearningDeck] Invalid deck data format in ${deckJsonPath}:`, deckData);
+                return { success: false, error: `Invalid deck data format in ${deckJsonPath}` };
+            }
+            console.log(`[Message Handlers addLearningDeck] Successfully fetched and parsed deck JSON: ${deckData.deckId}`);
+        } catch (fetchError: any) {
+            console.error(`[Message Handlers addLearningDeck] Error fetching or parsing deck JSON ${deckJsonPath}:`, fetchError);
+            return { success: false, error: `Error fetching deck file: ${fetchError.message}` };
+        }
+
+        // Now, use the parsed deckData to populate DB tables
+        await (db as PGlite).transaction(async (t: Transaction) => {
+            // 2a. Insert/Update Deck Information in 'decks' table
+            const deckUpsertQuery = `
+                INSERT INTO decks (deck_identifier, name, description, source_language, target_language)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (deck_identifier) DO UPDATE SET
+                    name = EXCLUDED.name,
+                    description = EXCLUDED.description,
+                    source_language = EXCLUDED.source_language,
+                    target_language = EXCLUDED.target_language
+                RETURNING deck_id;
+            `;
+            const deckResult = await t.query<{ deck_id: number }>(deckUpsertQuery, [
+                deckData.deckId, // This is the identifier like "programming_vi_en"
+                deckData.name,
+                deckData.description,
+                deckData.deckSourceLanguage,
+                deckData.deckTargetLanguage
+            ]);
+            const deckId = deckResult.rows[0]?.deck_id;
+
+            if (!deckId) {
+                console.error(`[Message Handlers addLearningDeck] Failed to insert/update deck and get deck_id for: ${deckData.deckId}`);
+                throw new Error(`Failed to process deck: ${deckData.deckId}`);
+            }
+            console.log(`[Message Handlers addLearningDeck] Upserted deck '${deckData.deckId}', DB deck_id: ${deckId}`);
+
+            const deckSourceLang = deckData.deckSourceLanguage;
+            const deckTargetLang = deckData.deckTargetLanguage;
+            const translationIdsToLearn: number[] = [];
+
+            // Revised logic for steps 2b, 2c, according to existing schema (lexemes, lexeme_translations)
+            for (const term of deckData.terms) {
+                // 1. Upsert Source Lexeme
+                const sourceLexemeQuery = `
+                    INSERT INTO lexemes (text, language)
+                    VALUES ($1, $2)
+                    ON CONFLICT (text, language) DO UPDATE SET language = EXCLUDED.language -- বা No-op if language shouldn't change
+                    RETURNING lexeme_id;
+                `;
+                const sourceLexemeResult = await t.query<{ lexeme_id: number }>(sourceLexemeQuery, [term.source, deckSourceLang]);
+                const sourceLexemeId = sourceLexemeResult.rows[0]?.lexeme_id;
+
+                // 2. Upsert Target Lexeme
+                const targetLexemeQuery = `
+                    INSERT INTO lexemes (text, language)
+                    VALUES ($1, $2)
+                    ON CONFLICT (text, language) DO UPDATE SET language = EXCLUDED.language -- বা No-op
+                    RETURNING lexeme_id;
+                `;
+                const targetLexemeResult = await t.query<{ lexeme_id: number }>(targetLexemeQuery, [term.target, deckTargetLang]);
+                const targetLexemeId = targetLexemeResult.rows[0]?.lexeme_id;
+
+                if (!sourceLexemeId || !targetLexemeId) {
+                    console.warn(`[Message Handlers addLearningDeck] Failed to upsert source or target lexeme for term:`, term);
+                    continue; // Skip to next term
+                }
+
+                // 3. Upsert Lexeme Translation
+                // Your schema for lexeme_translations has UNIQUE (source_lexeme_id, target_lexeme_id)
+                // and a trigger for updated_at. variation_type can be set.
+                const lexemeTranslationUpsertQuery = `
+                    INSERT INTO lexeme_translations (source_lexeme_id, target_lexeme_id, variation_type)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (source_lexeme_id, target_lexeme_id) DO UPDATE SET
+                        variation_type = EXCLUDED.variation_type -- Or some other update logic if needed
+                        -- updated_at is handled by trigger
+                    RETURNING translation_id;
+                `;
+                const translationResult = await t.query<{ translation_id: number }>(lexemeTranslationUpsertQuery, [
+                    sourceLexemeId,
+                    targetLexemeId,
+                    'original' // Assuming these are original terms from the deck
+                ]);
+                const translationId = translationResult.rows[0]?.translation_id;
+
+                if (!translationId) {
+                    console.warn(`[Message Handlers addLearningDeck] Failed to upsert lexeme_translation for term:`, term);
+                    continue; // Skip to next term
+                }
+                translationIdsToLearn.push(translationId);
+
+                // 4. Link translation to deck in translation_decks
+                const linkQuery = `
+                    INSERT INTO translation_decks (deck_id, translation_id)
+                    VALUES ($1, $2)
+                    ON CONFLICT (deck_id, translation_id) DO NOTHING;
+                `;
+                await t.query(linkQuery, [deckId, translationId]);
+            }
+            console.log(`[Message Handlers addLearningDeck] Processed ${deckData.terms.length} terms, obtained ${translationIdsToLearn.length} valid translation_ids for deck_id: ${deckId}.`);
+
+            // 2d. Add to User's Learning Queue (using collected valid translation_ids)
+            if (translationIdsToLearn.length > 0) {
+                const insertUserLearningQuery = `
+                    INSERT INTO user_learning (translation_id, due, stability, difficulty, elapsed_days, scheduled_days, reps, lapses, state, last_review)
+                    VALUES ($1, CURRENT_TIMESTAMP, 0, 0, 0, 0, 0, 0, 0, NULL)
+                    ON CONFLICT (translation_id) DO NOTHING;
+                `;
+                for (const tId of translationIdsToLearn) {
+                    await t.query(insertUserLearningQuery, [tId]);
+                }
+                console.log(`[Message Handlers addLearningDeck] Ensured ${translationIdsToLearn.length} translations are in user_learning for deck ${deckIdentifier}.`);
+            } else {
+                console.warn(`[Message Handlers addLearningDeck] No valid translation_ids to add to user_learning for deck ${deckIdentifier}.`);
+            }
+        });
+
+        return { success: true };
+    } catch (error: any) {
+        console.error('[Message Handlers addLearningDeck] Error handling addLearningDeck:', error);
+        return { success: false, error: error.message || 'Failed to add learning deck.' };
+    }
+}

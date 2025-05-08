@@ -15,7 +15,9 @@
     "postinstall": "wxt prepare",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "chromatic": "npx chromatic --project-token=chpt_91b2a3b8b536944"
+    "chromatic": "npx chromatic --project-token=chpt_91b2a3b8b536944",
+    "e2e": "bunx playwright test",
+    "e2e:ui": "bunx playwright test --ui"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
@@ -38,6 +40,7 @@
   },
   "devDependencies": {
     "@kobalte/core": "^0.13.9",
+    "@playwright/test": "^1.52.0",
     "@storybook/addon-essentials": "^8.6.12",
     "@storybook/addon-interactions": "^8.6.12",
     "@storybook/addon-links": "^8.6.12",

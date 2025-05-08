@@ -200,24 +200,28 @@ export async function updateCachedDistractors(
  */
 export async function getActiveLearningWordsFromDb(
     // payload: RequestActiveLearningWordsPayload // Payload not used yet
+    sourceLanguage: string,
+    targetLanguage: string
 ): Promise<LearningWordData[]> {
-    console.log("[DB Learning] Fetching active learning words...");
+    console.log(`[DB Learning] Fetching active learning words for ${sourceLanguage} -> ${targetLanguage}...`);
     const db = await getDbInstance();
     try {
         const query = `
             SELECT
-                source_lexeme.text AS \"sourceText\",
-                target_lexeme.text AS \"translatedText\",
-                source_lexeme.language AS \"sourceLang\",
-                target_lexeme.language AS \"targetLang\"
+                source_lexeme.text AS "sourceText",
+                target_lexeme.text AS "translatedText",
+                source_lexeme.language AS "sourceLang",
+                target_lexeme.language AS "targetLang"
             FROM user_learning ul
             JOIN lexeme_translations lt ON ul.translation_id = lt.translation_id
             JOIN lexemes source_lexeme ON lt.source_lexeme_id = source_lexeme.lexeme_id
             JOIN lexemes target_lexeme ON lt.target_lexeme_id = target_lexeme.lexeme_id
-            WHERE ul.state IN (1, 2, 3);  -- Active learning states
+            WHERE ul.state IN (1, 2, 3) 
+            AND source_lexeme.language = $1
+            AND target_lexeme.language = $2;
         `;
-        const result = await db.query<LearningWordData>(query);
-        console.log(`[DB Learning] Found ${result.rows.length} active learning words.`);
+        const result = await db.query<LearningWordData>(query, [sourceLanguage, targetLanguage]);
+        console.log(`[DB Learning] Found ${result.rows.length} active learning words for ${sourceLanguage} -> ${targetLanguage}.`);
         return result.rows;
     } catch (error) {
         console.error("[DB Learning] Error fetching active learning words:", error);

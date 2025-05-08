@@ -1,0 +1,24 @@
+{
+  "deckId": "common_en_zh",
+  "name": "Common Terms (English -> Chinese)",
+  "description": "Basic common English terms and their Chinese (Mandarin) translations.",
+  "deckSourceLanguage": "en",
+  "deckTargetLanguage": "zh",
+  "terms": [
+    { "source": "hello", "target": "你好" },
+    { "source": "thank you", "target": "谢谢" },
+    { "source": "sorry", "target": "对不起" },
+    { "source": "goodbye", "target": "再见" },
+    { "source": "yes", "target": "是" },
+    { "source": "no", "target": "不" },
+    { "source": "water", "target": "水" },
+    { "source": "food", "target": "食物" },
+    { "source": "friend", "target": "朋友" },
+    { "source": "love", "target": "爱" },
+    { "source": "home", "target": "家" },
+    { "source": "today", "target": "今天" },
+    { "source": "tomorrow", "target": "明天" },
+    { "source": "good", "target": "好" },
+    { "source": "bad", "target": "坏" }
+  ]
+} 

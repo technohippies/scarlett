@@ -1,0 +1,29 @@
+{
+  "deckId": "programming_vi_en",
+  "name": "Programming Terms",
+  "description": "Common programming terms for Vietnamese speakers learning English.",
+  "deckSourceLanguage": "vi",
+  "deckTargetLanguage": "en",
+  "terms": [
+    { "source": "biến số", "target": "variable" },
+    { "source": "hàm", "target": "function" },
+    { "source": "vòng lặp", "target": "loop" },
+    { "source": "điều kiện", "target": "conditional" },
+    { "source": "mảng", "target": "array" },
+    { "source": "đối tượng", "target": "object" },
+    { "source": "lớp", "target": "class" },
+    { "source": "số nguyên", "target": "integer" },
+    { "source": "chuỗi", "target": "string" },
+    { "source": "logic", "target": "boolean" },
+    { "source": "tham số", "target": "parameter" },
+    { "source": "đối số", "target": "argument" },
+    { "source": "trả về", "target": "return" },
+    { "source": "nhập", "target": "import" },
+    { "source": "xuất", "target": "export" },
+    { "source": "cơ sở dữ liệu", "target": "database" },
+    { "source": "truy vấn", "target": "query" },
+    { "source": "chỉ mục", "target": "index" },
+    { "source": "thuật toán", "target": "algorithm" },
+    { "source": "lỗi", "target": "bug" }
+  ]
+} 
