@@ -2,7 +2,6 @@ import { ollamaChat } from '../../services/llm/providers/ollama/chat';
 import type { LLMConfig, ChatMessage } from '../../services/llm/types';
 import { addOrUpdateLexemeAndTranslation } from '../../services/db/learning';
 import { getDbInstance } from '../../services/db/init';
-import { browser } from 'wxt/browser';
 import { userConfigurationStorage } from '../../services/storage/storage';
 
 // Interface for the data needed by the pipeline function

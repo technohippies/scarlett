@@ -24,7 +24,8 @@ import type {
 import type { BackgroundProtocolMap } from '../src/background/handlers/message-handlers';
 // --- NEW: Import Learning Word Widget ---
 import LearningWordWidget from '../src/features/learning/LearningWordWidget';
-import type { LearningWordWidgetProps } from '../src/features/learning/LearningWordWidget';
+// Remove unused import
+// import type { LearningWordWidgetProps } from '../src/features/learning/LearningWordWidget';
 // --- END NEW ---
 
 // --- Messaging Setup --- 
@@ -157,16 +158,30 @@ export default defineContentScript({
             }
         };
 
-        const showLearningWordWidget = async (anchorElement: HTMLElement, wordData: LearningWordData) => {
-            if (currentLearningWordWidgetUi && currentLearningWordWidgetData?.sourceText === wordData.sourceText) {
+        const showLearningWordWidget = async (anchorElement: HTMLElement) => {
+            // Determine what to show in the widget based on the data attributes of the anchor
+            const pageWord = anchorElement.dataset.originalWordDisplay || '';
+            const counterpartWord = anchorElement.dataset.translatedWord || '';
+            const pageWordLang = anchorElement.dataset.sourceLang || '?'; // This sourceLang is relative to the found word on page
+            const counterpartWordLang = anchorElement.dataset.targetLang || '?';
+
+            if (currentLearningWordWidgetUi && currentLearningWordWidgetData?.sourceText === pageWord && currentLearningWordWidgetData?.translatedText === counterpartWord) {
+                 // Simple check to see if widget is already showing for this exact pair
                 return;
             }
             if (currentLearningWordWidgetUi) {
                 await hideLearningWordWidget();
             }
 
-            console.log('[Scarlett CS] Showing LearningWordWidget for:', wordData.sourceText);
-            currentLearningWordWidgetData = wordData;
+            console.log('[Scarlett CS] Showing LearningWordWidget for page word:', pageWord, `(${pageWordLang})`, '-> counterpart:', counterpartWord, `(${counterpartWordLang})`);
+            
+            // This data is for tracking what the widget is *currently for*, can be simplified
+            currentLearningWordWidgetData = { 
+                sourceText: pageWord, 
+                translatedText: counterpartWord,
+                sourceLang: pageWordLang,
+                targetLang: counterpartWordLang
+            };
 
             const rect = anchorElement.getBoundingClientRect();
             const topPos = window.scrollY + rect.bottom + 5;
@@ -201,11 +216,11 @@ export default defineContentScript({
                     try {
                         unmountSolid = render(() => 
                             LearningWordWidget({
-                                originalWord: wordData.sourceText,
-                                translatedWord: wordData.translatedText,
-                                sourceLang: wordData.sourceLang,
-                                targetLang: wordData.targetLang,
-                                onTTSRequest: handleLearningWordTTSRequest,
+                                originalWord: pageWord,         // Word that was on the page
+                                translatedWord: counterpartWord,  // Its counterpart
+                                sourceLang: pageWordLang,       // Language of the word on the page
+                                targetLang: counterpartWordLang,    // Language of its counterpart
+                                onTTSRequest: handleLearningWordTTSRequest, // This might need lang adjustment too
                                 onMouseEnter: () => {
                                     if (learningWidgetHideTimeoutId) clearTimeout(learningWidgetHideTimeoutId);
                                     learningWidgetHideTimeoutId = null;
@@ -270,23 +285,32 @@ export default defineContentScript({
                 return;
             }
 
-            const singleLearningWordsMap = new Map<string, LearningWordData>();
+            // Only create map for translated text (e.g., English words)
+            // const sourceTextMap = new Map<string, LearningWordData>();
+            const translatedTextMap = new Map<string, LearningWordData>();
+
             learningWords.forEach(wordData => {
-                if (wordData.sourceText && !wordData.sourceText.includes(' ')) {
-                    singleLearningWordsMap.set(wordData.sourceText.toLowerCase(), wordData);
+                // if (wordData.sourceText && !wordData.sourceText.includes(' ')) { // Only single words for now
+                //     sourceTextMap.set(wordData.sourceText.toLowerCase(), wordData);
+                // }
+                if (wordData.translatedText && !wordData.translatedText.includes(' ')) { // Only single words
+                    // Basic check: Assume translatedText is unique for simplicity. Might need refinement.
+                    translatedTextMap.set(wordData.translatedText.toLowerCase(), wordData);
                 }
             });
 
-            if (singleLearningWordsMap.size === 0) {
-                console.log('[Scarlett CS] No single learning words to replace/highlight.');
+            // if (sourceTextMap.size === 0 && translatedTextMap.size === 0) {
+            if (translatedTextMap.size === 0) {
+                console.log('[Scarlett CS] No single translated learning words (e.g., English) to search for highlighting.');
                 return;
             }
-            console.log('[Scarlett CS] Starting to replace/highlight learning words on page (scoped)...');
+            // console.log('[Scarlett CS] Starting bi-directional highlight. Source map size:', sourceTextMap.size, 'Translated map size:', translatedTextMap.size);
+            console.log('[Scarlett CS] Starting translated word highlight. Map size:', translatedTextMap.size);
 
             const targetElement = getHighlightTargetElement();
             
-            const replacementCounts = new Map<string, number>();
-            const MAX_REPLACEMENTS_PER_WORD = 1;
+            const replacementCounts = new Map<string, number>(); // Track replacements per unique original word (source or translated)
+            const MAX_REPLACEMENTS_PER_WORD = 1; // Limit how many times each unique underlying word is highlighted
 
             const walker = document.createTreeWalker(targetElement, NodeFilter.SHOW_TEXT, {
                 acceptNode: (node: Node) => {
@@ -330,24 +354,37 @@ export default defineContentScript({
 
                 for (const part of parts) {
                     const lowerCasePart = part.toLowerCase();
-                    const learningWordInfo = singleLearningWordsMap.get(lowerCasePart);
+                    let learningWordInfo: LearningWordData | undefined = undefined;
+                    // let foundByType: 'source' | 'translated' | null = null;
+                    let uniqueWordKeyForCounting = '';
 
-                    if (learningWordInfo) {
-                        const currentCount = replacementCounts.get(learningWordInfo.sourceText.toLowerCase()) || 0;
+                    // Only check the translatedTextMap (e.g., English words)
+                    if (translatedTextMap.has(lowerCasePart)) {
+                        learningWordInfo = translatedTextMap.get(lowerCasePart);
+                        // foundByType = 'translated';
+                        uniqueWordKeyForCounting = learningWordInfo!.translatedText.toLowerCase(); // Use original translated text for counting
+                    }
+
+                    // if (learningWordInfo && foundByType) {
+                    if (learningWordInfo) { // Only proceed if found in translated map
+                        const currentCount = replacementCounts.get(uniqueWordKeyForCounting) || 0;
 
                         if (currentCount < MAX_REPLACEMENTS_PER_WORD) {
                             const span = document.createElement('span');
                             span.className = 'scarlett-learning-highlight';
-                            span.textContent = learningWordInfo.translatedText; 
                             
-                            span.dataset.originalWordDisplay = part;
-                            span.dataset.translatedWord = learningWordInfo.translatedText;
-                            span.dataset.sourceLang = learningWordInfo.sourceLang;
-                            span.dataset.targetLang = learningWordInfo.targetLang;
-                            span.dataset.originalWord = learningWordInfo.sourceText;
+                            // Always display the source text (e.g., Japanese) when the translated text is found
+                            span.textContent = learningWordInfo.sourceText;
+                            span.dataset.originalWordDisplay = part; // The word found on page (translated English)
+                            span.dataset.translatedWord = learningWordInfo.sourceText; // Its counterpart (Japanese)
+                            // Set dataset langs relative to the found word (English -> Japanese)
+                            span.dataset.sourceLang = learningWordInfo.targetLang; // e.g., 'en'
+                            span.dataset.targetLang = learningWordInfo.sourceLang; // e.g., 'ja'
+                            span.dataset.originalWord = learningWordInfo.translatedText; // The "dictionary" source (the English word)
+                            
                             fragment.appendChild(span);
                             madeChangesToNode = true;
-                            replacementCounts.set(learningWordInfo.sourceText.toLowerCase(), currentCount + 1);
+                            replacementCounts.set(uniqueWordKeyForCounting, currentCount + 1);
                         } else {
                             fragment.appendChild(document.createTextNode(part));
                         }
@@ -656,16 +693,28 @@ export default defineContentScript({
                     learningWidgetHideTimeoutId = null;
                 }
                 
-                const sourceTextFromDataset = target.dataset.originalWord || '';
-                const wordData: LearningWordData = {
-                    sourceText: sourceTextFromDataset,
-                    translatedText: target.dataset.translatedWord || '',
-                    sourceLang: target.dataset.sourceLang || '?',
-                    targetLang: target.dataset.targetLang || '?'
-                };
+                // Remove unused variables
+                // const sourceTextFromDataset = target.dataset.originalWord || ''; // This is the "dictionary" source
+                // const wordIsFromSourceMap = target.dataset.originalWordDisplay === target.dataset.originalWord && target.dataset.translatedWord !== target.dataset.originalWord;
+                // const wordIsFromTranslatedMap = target.dataset.originalWordDisplay === target.dataset.translatedWord && target.dataset.originalWord !== target.dataset.originalWordDisplay;
 
-                if (wordData.sourceText && wordData.translatedText) {
-                    showLearningWordWidget(target, wordData);
+                // The data attributes on the span are now the primary source of truth for the widget
+                const displaySourceText = target.dataset.originalWordDisplay || '';
+                const displayTranslatedText = target.dataset.translatedWord || '';
+
+                // For showLearningWordWidget, we just pass the anchor element.
+                // The widget will read its own data from the anchor's dataset.
+                if (displaySourceText && displayTranslatedText) {
+                    // Construct a temporary LearningWordData for the showLearningWordWidget logic
+                    // This is slightly redundant as the widget itself will re-read from dataset,
+                    // but useful for the initial display logic and currentLearningWordWidgetData tracking.
+                    // const tempDataForWidget: LearningWordData = {
+                    //     sourceText: displaySourceText,     // Word as it appeared on the page
+                    //     translatedText: displayTranslatedText, // Its counterpart
+                    //     sourceLang: displaySourceLang,     // Language of word on page
+                    //     targetLang: displayTargetLang      // Language of its counterpart
+                    // };
+                    showLearningWordWidget(target); // Pass only the anchor element
                 }
             }
         });
