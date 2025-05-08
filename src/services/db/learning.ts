@@ -8,6 +8,9 @@ import type {
   CreateFlashcardInput,
   Tag
 } from './types';
+// --- NEW: Import types for Active Learning Words ---
+import type { LearningWordData } from '../../shared/messaging-types';
+// --- END NEW ---
 
 console.log('[DB Learning] Service loaded.');
 
@@ -189,6 +192,39 @@ export async function updateCachedDistractors(
 // - Getting due learning items
 // - Getting potential distractors for a target lexeme
 // - Updating SRS state after a review 
+
+// --- NEW: Function to get active learning words ---
+/**
+ * Retrieves words that the user is actively learning.
+ * Active learning states are typically 1 (Learning), 2 (Review), 3 (Relearning).
+ */
+export async function getActiveLearningWordsFromDb(
+    // payload: RequestActiveLearningWordsPayload // Payload not used yet
+): Promise<LearningWordData[]> {
+    console.log("[DB Learning] Fetching active learning words...");
+    const db = await getDbInstance();
+    try {
+        const query = `
+            SELECT
+                source_lexeme.text AS \"sourceText\",
+                target_lexeme.text AS \"translatedText\",
+                source_lexeme.language AS \"sourceLang\",
+                target_lexeme.language AS \"targetLang\"
+            FROM user_learning ul
+            JOIN lexeme_translations lt ON ul.translation_id = lt.translation_id
+            JOIN lexemes source_lexeme ON lt.source_lexeme_id = source_lexeme.lexeme_id
+            JOIN lexemes target_lexeme ON lt.target_lexeme_id = target_lexeme.lexeme_id
+            WHERE ul.state IN (1, 2, 3);  -- Active learning states
+        `;
+        const result = await db.query<LearningWordData>(query);
+        console.log(`[DB Learning] Found ${result.rows.length} active learning words.`);
+        return result.rows;
+    } catch (error) {
+        console.error("[DB Learning] Error fetching active learning words:", error);
+        throw error;
+    }
+}
+// --- END NEW Function ---
 
 // --- Bookmark Functions ---
 

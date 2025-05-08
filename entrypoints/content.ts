@@ -16,7 +16,9 @@ import type {
     DisplayTranslationPayload, // Expect payload from background for displaying
     UpdateAlignmentPayload, // Payload from background with alignment
     ExtractMarkdownRequest, // Import new message type
-    ExtractMarkdownResponse // Import new message type
+    ExtractMarkdownResponse, // Import new message type
+    LearningWordData, 
+    RequestActiveLearningWordsResponse 
 } from '../src/shared/messaging-types.ts';
 // --- Import Background Protocol --- 
 import type { BackgroundProtocolMap } from '../src/background/handlers/message-handlers';
@@ -84,6 +86,215 @@ export default defineContentScript({
             }
         };
         
+        // --- CSS and Tooltip Setup for Learning Words (definitions remain the same) ---
+        const LEARNING_HIGHLIGHT_STYLE_ID = "scarlett-learning-highlight-styles";
+        const LEARNING_HIGHLIGHT_CSS = `
+          .scarlett-learning-highlight {
+            background-color: rgba(255, 235, 59, 0.3); /* Light yellow */
+            border-bottom: 1px dashed rgba(255, 193, 7, 0.7); /* Amber dash */
+            cursor: help;
+            border-radius: 3px;
+            padding: 0 0.1em;
+            margin: 0 0.02em;
+          }
+          .scarlett-learning-tooltip {
+            position: absolute;
+            background-color: #2d3748; /* Tailwind gray-800 */
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px; /* Tailwind md */
+            font-size: 13px;
+            font-family: sans-serif;
+            z-index: 2147483647; /* Max z-index */
+            display: none;
+            pointer-events: none; /* Tooltip should not capture mouse events */
+            line-height: 1.4;
+            max-width: 300px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* Tailwind shadow-md */
+          }
+        `;
+
+        let learningTooltip: HTMLDivElement | null = null;
+
+        const injectHighlightStyles = () => {
+            if (document.getElementById(LEARNING_HIGHLIGHT_STYLE_ID)) return;
+            const styleElement = document.createElement('style');
+            styleElement.id = LEARNING_HIGHLIGHT_STYLE_ID;
+            styleElement.textContent = LEARNING_HIGHLIGHT_CSS;
+            document.head.appendChild(styleElement);
+
+            if (!learningTooltip) {
+                learningTooltip = document.createElement('div');
+                learningTooltip.className = 'scarlett-learning-tooltip';
+                document.body.appendChild(learningTooltip);
+            }
+        };
+
+        const showLearningTooltip = (event: MouseEvent, wordData: LearningWordData, originalWordText: string) => {
+            if (!learningTooltip || !event.target) return;
+            learningTooltip.innerHTML = `
+                <em>Original:</em> ${originalWordText} (${wordData.sourceLang})<br>
+                <strong>Replaced with:</strong> ${wordData.translatedText} (${wordData.targetLang})
+            `;
+            const rect = (event.target as HTMLElement).getBoundingClientRect();
+            learningTooltip.style.left = `${window.scrollX + rect.left}px`;
+            learningTooltip.style.top = `${window.scrollY + rect.bottom + 5}px`;
+            learningTooltip.style.display = 'block';
+        };
+
+        const hideLearningTooltip = () => {
+            if (learningTooltip) {
+                learningTooltip.style.display = 'none';
+            }
+        };
+
+        const getHighlightTargetElement = (): HTMLElement => {
+            const selectors = [
+                'article',
+                '.post-content',
+                '.entry-content',
+                '#main-content',
+                '#content',
+                'main',
+            ];
+            for (const selector of selectors) {
+                const element = document.querySelector(selector) as HTMLElement | null;
+                if (element && element.textContent && element.textContent.trim().length > 500) {
+                    console.log(`[Scarlett CS Highlight] Using target element: ${selector}`);
+                    return element;
+                }
+            }
+            console.log('[Scarlett CS Highlight] No specific main content element found, falling back to document.body.');
+            return document.body;
+        };
+
+        const highlightLearningWordsOnPage = (learningWords: LearningWordData[]) => {
+            if (learningWords.length === 0) {
+                console.log('[Scarlett CS] No learning words provided to replace/highlight.');
+                return;
+            }
+
+            const singleLearningWordsMap = new Map<string, LearningWordData>();
+            learningWords.forEach(wordData => {
+                if (wordData.sourceText && !wordData.sourceText.includes(' ')) {
+                    singleLearningWordsMap.set(wordData.sourceText.toLowerCase(), wordData);
+                }
+            });
+
+            if (singleLearningWordsMap.size === 0) {
+                console.log('[Scarlett CS] No single learning words to replace/highlight.');
+                return;
+            }
+            console.log('[Scarlett CS] Starting to replace/highlight learning words on page (scoped)...');
+
+            const targetElement = getHighlightTargetElement();
+            
+            // --- NEW: Keep track of replacement counts ---
+            const replacementCounts = new Map<string, number>();
+            const MAX_REPLACEMENTS_PER_WORD = 1; // Limit replacements per word
+
+            const walker = document.createTreeWalker(targetElement, NodeFilter.SHOW_TEXT, {
+                acceptNode: (node: Node) => {
+                    const parent = node.parentElement;
+                    if (parent) {
+                        const tagName = parent.tagName.toUpperCase();
+                        if (tagName === 'SCRIPT' || tagName === 'STYLE' || tagName === 'NOSCRIPT' || parent.isContentEditable) {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+                        if (parent.classList.contains('scarlett-learning-tooltip') || parent.classList.contains('scarlett-learning-highlight')) {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+                        let ancestor = parent;
+                        while(ancestor && ancestor !== document.body && ancestor !== targetElement ){
+                            if(ancestor.classList.contains('scarlett-learning-highlight')){
+                                return NodeFilter.FILTER_REJECT;
+                            }
+                            ancestor = ancestor.parentElement as HTMLElement;
+                        }
+                    }
+                    if (node.nodeValue && node.nodeValue.trim().length > 0) {
+                        return NodeFilter.FILTER_ACCEPT;
+                    }
+                    return NodeFilter.FILTER_REJECT;
+                }
+            });
+
+            const textNodesToModify: Text[] = [];
+            let currentNode;
+            while (currentNode = walker.nextNode()) {
+                textNodesToModify.push(currentNode as Text);
+            }
+
+            for (const textNode of textNodesToModify) {
+                const originalNodeText = textNode.nodeValue || '';
+                if (!originalNodeText.trim()) continue;
+
+                const parts = originalNodeText.split(/(\s+|[.,!?;:()"'\/<>[\]{}@#$%^&*~`+\-=|\\:]+)/g).filter(part => part.length > 0);
+                const fragment = document.createDocumentFragment();
+                let madeChangesToNode = false;
+
+                for (const part of parts) {
+                    const lowerCasePart = part.toLowerCase();
+                    const learningWordInfo = singleLearningWordsMap.get(lowerCasePart);
+
+                    if (learningWordInfo) {
+                        const currentCount = replacementCounts.get(learningWordInfo.sourceText.toLowerCase()) || 0;
+
+                        if (currentCount < MAX_REPLACEMENTS_PER_WORD) {
+                            const span = document.createElement('span');
+                            span.className = 'scarlett-learning-highlight';
+                            // --- REPLACE TEXT --- 
+                            span.textContent = learningWordInfo.translatedText; 
+                            
+                            // Store data for tooltip
+                            span.dataset.originalWordDisplay = part; // Store the actual text from page
+                            span.dataset.sourceLang = learningWordInfo.sourceLang;
+                            span.dataset.targetLang = learningWordInfo.targetLang;
+                            span.dataset.translatedWord = learningWordInfo.translatedText;
+
+                            // Pass original text (part) to tooltip function
+                            span.addEventListener('mouseenter', (e) => showLearningTooltip(e as MouseEvent, learningWordInfo, part));
+                            span.addEventListener('mouseleave', hideLearningTooltip);
+                            
+                            fragment.appendChild(span);
+                            madeChangesToNode = true;
+                            replacementCounts.set(learningWordInfo.sourceText.toLowerCase(), currentCount + 1);
+                        } else {
+                            // Max replacements reached for this word, append original text
+                            fragment.appendChild(document.createTextNode(part));
+                        }
+                    } else {
+                        // Not a learning word, append original text
+                        fragment.appendChild(document.createTextNode(part));
+                    }
+                }
+
+                if (madeChangesToNode && textNode.parentNode) {
+                    textNode.parentNode.replaceChild(fragment, textNode);
+                }
+            }
+            console.log('[Scarlett CS] Finished replacing/highlighting learning words.', replacementCounts);
+        };
+
+        const fetchAndHighlightLearningWords = async () => {
+            console.log('[Scarlett CS] Requesting active learning words from background...');
+            try {
+                injectHighlightStyles(); // Ensure styles and tooltip div are ready once
+
+                const response = await messageSender.sendMessage('REQUEST_ACTIVE_LEARNING_WORDS', {}) as RequestActiveLearningWordsResponse;
+                if (response && response.success && response.words && response.words.length > 0) {
+                    console.log(`[Scarlett CS] Received ${response.words.length} learning words. Starting highlighting...`);
+                    highlightLearningWordsOnPage(response.words);
+                } else if (response && !response.success) {
+                    console.error('[Scarlett CS] Failed to fetch learning words:', response.error);
+                } else {
+                    console.log('[Scarlett CS] No active learning words to highlight or empty response.');
+                }
+            } catch (error) {
+                console.error('[Scarlett CS] Error requesting/processing active learning words:', error);
+            }
+        };
+        
         // Helper function for content extraction (refactored from getPageContent handler)
         const extractMainContent = async (): Promise<string | null> => {
              try {
@@ -122,15 +333,13 @@ export default defineContentScript({
              }
         }
 
-        // Schedule processing on initial load (or when script is injected)
-        // Use requestIdleCallback or a small delay if DOMContentLoaded isn't reliable here
-        window.setTimeout(schedulePageProcessing, 500); // Schedule slightly after load
+        // --- Call highlighting logic promptly ---
+        window.requestIdleCallback(fetchAndHighlightLearningWords, { timeout: 1000 });
         
-        // Cancel processing if the user navigates away
+        // --- RAG-related page visit processing (retains its own delay) ---
+        window.setTimeout(schedulePageProcessing, 500); 
         window.addEventListener('beforeunload', cancelPageProcessing);
-        // TODO: Add more robust SPA navigation detection later if needed
-        // --- End Timer Logic ---
-
+        
         // --- State Signals for the Widget ---
         // Using signals allows Solid's reactivity to update the component when data changes.
         

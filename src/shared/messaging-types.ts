@@ -200,3 +200,35 @@ export interface AlignmentData {
     character_end_times_seconds: number[];
 }
 */
+
+// --- NEW: Active Learning Words Highlighting ---
+
+/**
+ * Data structure for a word the user is actively learning,
+ * including its text and primary translation.
+ */
+export interface LearningWordData {
+  sourceText: string;      // The word/phrase in the source language
+  translatedText: string;  // The primary translation in the target language
+  sourceLang: string;      // Source language code (e.g., 'en')
+  targetLang: string;      // Target language code (e.g., 'zh-CN')
+}
+
+/**
+ * Payload for the content script to request the list of active learning words
+ * from the background script.
+ */
+export interface RequestActiveLearningWordsPayload {
+  // No parameters needed for now
+}
+
+/**
+ * Response from the background script containing the list of active learning words.
+ */
+export interface RequestActiveLearningWordsResponse {
+  success: boolean;
+  words?: LearningWordData[];
+  error?: string;
+}
+
+// --- END NEW: Active Learning Words Highlighting ---
