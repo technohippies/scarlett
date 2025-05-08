@@ -370,11 +370,13 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     }
 
     const currentConfig = await userConfigurationStorage.getValue();
-    const updatedConfig = {
-      ...currentConfig,
+    const updatedConfig: UserConfiguration = {
+      ...(currentConfig || {}), // Ensure currentConfig is not null, provide empty object if it is
       nativeLanguage: nativeLang,
       targetLanguage: targetValue,
     };
+    // ADDED LOGGING BEFORE SETVALUE
+    console.log(`[App] About to save languages. currentConfig was: ${JSON.stringify(currentConfig, null, 2)}, updatedConfig is: ${JSON.stringify(updatedConfig, null, 2)}`);
     await userConfigurationStorage.setValue(updatedConfig);
     console.log('[App] Config after saving languages:', updatedConfig);
 
@@ -494,12 +496,15 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     // Use the passed redirectSettings accessor
     const currentRedirects = props.redirectSettings();
     const currentConfig = await userConfigurationStorage.getValue() || {};
+    // ADDED DETAILED LOG HERE
+    console.log(`[App handleRedirectsComplete] Value of currentConfig JUST BEFORE final save: ${JSON.stringify(currentConfig, null, 2)}`);
+
     const finalConfig = {
       ...currentConfig,
-      redirectSettings: currentRedirects, // Save the latest state
+      redirectSettings: currentRedirects,
       onboardingComplete: true,
     };
-    console.log('[App] Attempting to save final config:', finalConfig); // Added log
+    console.log('[App] Attempting to save final config:', finalConfig); // Existing log
     await userConfigurationStorage.setValue(finalConfig);
     console.log('[App] Final config save complete.'); // Added log
     // window.close(); // Close the onboarding tab - Replaced below

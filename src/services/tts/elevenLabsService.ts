@@ -17,6 +17,7 @@ export interface ElevenLabsVoiceSettings {
  * @param voiceId The ID of the voice to use. Defaults to DEFAULT_ELEVENLABS_VOICE_ID.
  * @param voiceSettings Optional voice settings for stability, similarity, etc.
  * @param speed Optional speed parameter
+ * @param lang Optional language parameter
  * @returns A Promise that resolves to an audio Blob if successful.
  * @throws An error if the API request fails.
  */
@@ -26,7 +27,8 @@ export async function generateElevenLabsSpeechStream(
     selectedModelId: string,
     voiceId: string = DEFAULT_ELEVENLABS_VOICE_ID,
     voiceSettings?: ElevenLabsVoiceSettings,
-    speed?: number
+    speed?: number,
+    lang?: string
 ): Promise<Blob> {
     const apiUrl = `${ELEVENLABS_API_BASE_URL}/text-to-speech/${voiceId}/stream`;
 
@@ -40,6 +42,12 @@ export async function generateElevenLabsSpeechStream(
         text: text,
         model_id: selectedModelId,
     };
+
+    // Add language_code to body if lang is provided and model is compatible
+    if (lang && (selectedModelId === 'eleven_flash_v2.5' || selectedModelId === 'eleven_turbo_v2.5')) {
+        body.language_code = lang.toLowerCase().startsWith('zh') ? 'zh' : lang; // Ensure general 'zh' for Chinese variants if applicable
+        console.log(`[ElevenLabsService] Enforcing language_code: ${body.language_code} for model ${selectedModelId}`);
+    }
 
     let effectiveVoiceSettings: ElevenLabsVoiceSettings = { ...voiceSettings };
 

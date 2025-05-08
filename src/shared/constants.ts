@@ -33,5 +33,5 @@ export const DEFAULT_REDIRECT_INSTANCES: Readonly<Record<string, string>> = {
 
 // --- ElevenLabs Constants ---
 export const ELEVENLABS_API_BASE_URL = 'https://api.elevenlabs.io/v1';
-export const DEFAULT_ELEVENLABS_VOICE_ID = 'TKLKhH2TsqDxRFefTFWk'; // User provided default voice ID 
+export const DEFAULT_ELEVENLABS_VOICE_ID = 'Vuo6zmtjWmlDbzqgIDos'; // User provided default voice ID 
 export const DEFAULT_ELEVENLABS_MODEL_ID = 'eleven_multilingual_v2'; // Default model for TTS 

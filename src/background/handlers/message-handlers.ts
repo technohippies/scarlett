@@ -589,6 +589,8 @@ export function registerMessageHandlers(): void {
         console.log('[Message Handlers] Received REQUEST_TTS_FROM_WIDGET:', message.data);
         const { text, lang, speed } = message.data; 
 
+        console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Processing parameters - Text: "${text.substring(0,10)}...", Lang: "${lang}", Speed: ${speed}`);
+
         try {
             const userConfig = await userConfigurationStorage.getValue();
             const ttsConfig = userConfig?.ttsConfig;
@@ -599,7 +601,13 @@ export function registerMessageHandlers(): void {
             }
 
             const apiKey = ttsConfig.apiKey;
-            const effectiveModelId = DEFAULT_ELEVENLABS_MODEL_ID;
+            // Determine model based on language
+            let effectiveModelId = DEFAULT_ELEVENLABS_MODEL_ID; // Default model
+            if (lang && lang.toLowerCase().startsWith('zh')) { // Or any other condition for Flash
+                effectiveModelId = 'eleven_flash_v2.5';
+                console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Using Flash model for lang: ${lang}`);
+            }
+            
             const effectiveVoiceId = DEFAULT_ELEVENLABS_VOICE_ID;
 
             console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Generating audio via ElevenLabs. Text: "${text.substring(0,30)}...", Lang: ${lang}, Model: ${effectiveModelId}, Voice: ${effectiveVoiceId}, Speed: ${speed ?? 'default'}`);
@@ -609,8 +617,9 @@ export function registerMessageHandlers(): void {
                 text,
                 effectiveModelId,
                 effectiveVoiceId,
-                undefined,
-                speed
+                undefined, // voiceSettings
+                speed,
+                lang // Pass the lang parameter
             );
 
             if (audioBlob) {

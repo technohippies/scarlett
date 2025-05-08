@@ -22,6 +22,10 @@ import type {
 } from '../src/shared/messaging-types.ts';
 // --- Import Background Protocol --- 
 import type { BackgroundProtocolMap } from '../src/background/handlers/message-handlers';
+// --- NEW: Import Learning Word Widget ---
+import LearningWordWidget from '../src/features/learning/LearningWordWidget';
+import type { LearningWordWidgetProps } from '../src/features/learning/LearningWordWidget';
+// --- END NEW ---
 
 // --- Messaging Setup --- 
 
@@ -97,24 +101,15 @@ export default defineContentScript({
             padding: 0 0.1em;
             margin: 0 0.02em;
           }
-          .scarlett-learning-tooltip {
-            position: absolute;
-            background-color: #2d3748; /* Tailwind gray-800 */
-            color: white;
-            padding: 8px 12px;
-            border-radius: 6px; /* Tailwind md */
-            font-size: 13px;
-            font-family: sans-serif;
-            z-index: 2147483647; /* Max z-index */
-            display: none;
-            pointer-events: none; /* Tooltip should not capture mouse events */
-            line-height: 1.4;
-            max-width: 300px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* Tailwind shadow-md */
-          }
         `;
 
-        let learningTooltip: HTMLDivElement | null = null;
+        // --- NEW: State for Learning Word Widget ---
+        let currentLearningWordWidgetUi: ShadowRootContentScriptUi<() => void | null> | null = null;
+        let currentLearningWordWidgetData: LearningWordData | null = null; // Track which word is displayed
+        let learningWidgetHideTimeoutId: number | null = null;
+        const LEARNING_WIDGET_HIDE_DELAY = 300; // ms
+        const LEARNING_WIDGET_NAME = 'scarlett-learning-word-widget';
+        // --- END NEW State ---
 
         const injectHighlightStyles = () => {
             if (document.getElementById(LEARNING_HIGHLIGHT_STYLE_ID)) return;
@@ -122,31 +117,132 @@ export default defineContentScript({
             styleElement.id = LEARNING_HIGHLIGHT_STYLE_ID;
             styleElement.textContent = LEARNING_HIGHLIGHT_CSS;
             document.head.appendChild(styleElement);
+        };
 
-            if (!learningTooltip) {
-                learningTooltip = document.createElement('div');
-                learningTooltip.className = 'scarlett-learning-tooltip';
-                document.body.appendChild(learningTooltip);
+        // --- NEW: Learning Word Widget Management ---
+        const hideLearningWordWidget = async () => {
+            if (learningWidgetHideTimeoutId) {
+                clearTimeout(learningWidgetHideTimeoutId);
+                learningWidgetHideTimeoutId = null;
+            }
+            const uiToRemove = currentLearningWordWidgetUi;
+            if (!uiToRemove) return;
+            
+            console.log('[Scarlett CS] Hiding LearningWordWidget for:', currentLearningWordWidgetData?.sourceText);
+            currentLearningWordWidgetUi = null;
+            currentLearningWordWidgetData = null;
+            
+            try {
+                await uiToRemove.remove();
+                console.log('[Scarlett CS] LearningWordWidget UI removed.');
+            } catch (error) {
+                console.error('[Scarlett CS] Error removing LearningWordWidget UI:', error);
+            }
+        };
+        
+        const handleLearningWordTTSRequest = async (text: string, lang: string): Promise<{ audioDataUrl?: string; error?: string }> => {
+            console.log(`[Scarlett CS Learning TTS] Request to BG: Text='${text.substring(0,30)}...', Lang='${lang}'`);
+            try {
+                // Using same message as TranslatorWidget for now, assuming background handles it based on text/lang
+                const response = await messageSender.sendMessage('REQUEST_TTS_FROM_WIDGET', { text, lang, speed: 1.0 }) as { success: boolean, audioDataUrl?: string, error?: string };
+                console.log('[Scarlett CS Learning TTS] Response from BG:', response);
+                if (response && response.success && response.audioDataUrl) {
+                    return { audioDataUrl: response.audioDataUrl }; 
+                } else {
+                    return { error: response?.error || 'Unknown TTS error from BG.' };
+                }
+            } catch (error) {
+                console.error('[Scarlett CS Learning TTS] Error sending/processing TTS request:', error);
+                return { error: error instanceof Error ? error.message : 'Failed TTS request.' };
             }
         };
 
-        const showLearningTooltip = (event: MouseEvent, wordData: LearningWordData, originalWordText: string) => {
-            if (!learningTooltip || !event.target) return;
-            learningTooltip.innerHTML = `
-                <em>Original:</em> ${originalWordText} (${wordData.sourceLang})<br>
-                <strong>Replaced with:</strong> ${wordData.translatedText} (${wordData.targetLang})
-            `;
-            const rect = (event.target as HTMLElement).getBoundingClientRect();
-            learningTooltip.style.left = `${window.scrollX + rect.left}px`;
-            learningTooltip.style.top = `${window.scrollY + rect.bottom + 5}px`;
-            learningTooltip.style.display = 'block';
-        };
+        const showLearningWordWidget = async (anchorElement: HTMLElement, wordData: LearningWordData) => {
+            if (currentLearningWordWidgetUi && currentLearningWordWidgetData?.sourceText === wordData.sourceText) {
+                return;
+            }
+            if (currentLearningWordWidgetUi) {
+                await hideLearningWordWidget();
+            }
 
-        const hideLearningTooltip = () => {
-            if (learningTooltip) {
-                learningTooltip.style.display = 'none';
+            console.log('[Scarlett CS] Showing LearningWordWidget for:', wordData.sourceText);
+            currentLearningWordWidgetData = wordData;
+
+            const rect = anchorElement.getBoundingClientRect();
+            const topPos = window.scrollY + rect.bottom + 5;
+            const leftPos = window.scrollX + rect.left; 
+
+            const options: ShadowRootContentScriptUiOptions<() => void> = {
+                name: LEARNING_WIDGET_NAME,
+                position: 'inline',
+                onMount: (container: HTMLElement): (() => void) => {
+                    container.style.position = 'absolute';
+                    container.style.top = `${topPos}px`;
+                    container.style.left = `${leftPos}px`;
+                    container.style.zIndex = '2147483647';
+                    container.style.width = '24rem';
+                    container.style.height = 'auto';
+                    container.style.maxHeight = 'max-content';
+                    container.style.borderRadius = '0.5rem';
+                    container.style.overflow = 'hidden';
+                    
+                    container.addEventListener('mouseenter', () => {
+                        if (learningWidgetHideTimeoutId) {
+                            clearTimeout(learningWidgetHideTimeoutId);
+                            learningWidgetHideTimeoutId = null;
+                        }
+                    });
+                    container.addEventListener('mouseleave', () => {
+                         if (learningWidgetHideTimeoutId) clearTimeout(learningWidgetHideTimeoutId);
+                         learningWidgetHideTimeoutId = window.setTimeout(hideLearningWordWidget, LEARNING_WIDGET_HIDE_DELAY);
+                    });
+                    
+                    let unmountSolid: (() => void) | null = null;
+                    try {
+                        unmountSolid = render(() => 
+                            LearningWordWidget({
+                                originalWord: wordData.sourceText,
+                                translatedWord: wordData.translatedText,
+                                sourceLang: wordData.sourceLang,
+                                targetLang: wordData.targetLang,
+                                onTTSRequest: handleLearningWordTTSRequest,
+                                onMouseEnter: () => {
+                                    if (learningWidgetHideTimeoutId) clearTimeout(learningWidgetHideTimeoutId);
+                                    learningWidgetHideTimeoutId = null;
+                                },
+                                onMouseLeave: () => {
+                                    if (learningWidgetHideTimeoutId) clearTimeout(learningWidgetHideTimeoutId);
+                                     learningWidgetHideTimeoutId = window.setTimeout(hideLearningWordWidget, LEARNING_WIDGET_HIDE_DELAY);
+                                }
+                            }), 
+                            container
+                        );
+                        return unmountSolid || (() => {});
+                    } catch (renderError) {
+                        console.error('[Scarlett CS] Error rendering LearningWordWidget:', renderError);
+                        container.textContent = "Error displaying word info.";
+                        return () => {};
+                    }
+                },
+                onRemove: (unmountSolid) => {
+                    if (unmountSolid) {
+                         try { unmountSolid(); } catch (e) { console.error('Error unmounting LW Widget:', e); }
+                    }
+                }
+            };
+
+            try {
+                const ui = await createShadowRootUi(ctx, options);
+                currentLearningWordWidgetUi = ui;
+                ui.mount();
+                console.log('[Scarlett CS] Mounted LearningWordWidget.');
+            } catch (error) {
+                console.error('[Scarlett CS] Error creating/mounting LearningWordWidget UI:', error);
+                currentLearningWordWidgetUi = null;
+                currentLearningWordWidgetData = null;
             }
         };
+        // --- END NEW Widget Management ---
 
         const getHighlightTargetElement = (): HTMLElement => {
             const selectors = [
@@ -189,9 +285,8 @@ export default defineContentScript({
 
             const targetElement = getHighlightTargetElement();
             
-            // --- NEW: Keep track of replacement counts ---
             const replacementCounts = new Map<string, number>();
-            const MAX_REPLACEMENTS_PER_WORD = 1; // Limit replacements per word
+            const MAX_REPLACEMENTS_PER_WORD = 1;
 
             const walker = document.createTreeWalker(targetElement, NodeFilter.SHOW_TEXT, {
                 acceptNode: (node: Node) => {
@@ -243,28 +338,20 @@ export default defineContentScript({
                         if (currentCount < MAX_REPLACEMENTS_PER_WORD) {
                             const span = document.createElement('span');
                             span.className = 'scarlett-learning-highlight';
-                            // --- REPLACE TEXT --- 
                             span.textContent = learningWordInfo.translatedText; 
                             
-                            // Store data for tooltip
-                            span.dataset.originalWordDisplay = part; // Store the actual text from page
+                            span.dataset.originalWordDisplay = part;
+                            span.dataset.translatedWord = learningWordInfo.translatedText;
                             span.dataset.sourceLang = learningWordInfo.sourceLang;
                             span.dataset.targetLang = learningWordInfo.targetLang;
-                            span.dataset.translatedWord = learningWordInfo.translatedText;
-
-                            // Pass original text (part) to tooltip function
-                            span.addEventListener('mouseenter', (e) => showLearningTooltip(e as MouseEvent, learningWordInfo, part));
-                            span.addEventListener('mouseleave', hideLearningTooltip);
-                            
+                            span.dataset.originalWord = learningWordInfo.sourceText;
                             fragment.appendChild(span);
                             madeChangesToNode = true;
                             replacementCounts.set(learningWordInfo.sourceText.toLowerCase(), currentCount + 1);
                         } else {
-                            // Max replacements reached for this word, append original text
                             fragment.appendChild(document.createTextNode(part));
                         }
                     } else {
-                        // Not a learning word, append original text
                         fragment.appendChild(document.createTextNode(part));
                     }
                 }
@@ -279,8 +366,7 @@ export default defineContentScript({
         const fetchAndHighlightLearningWords = async () => {
             console.log('[Scarlett CS] Requesting active learning words from background...');
             try {
-                injectHighlightStyles(); // Ensure styles and tooltip div are ready once
-
+                injectHighlightStyles(); 
                 const response = await messageSender.sendMessage('REQUEST_ACTIVE_LEARNING_WORDS', {}) as RequestActiveLearningWordsResponse;
                 if (response && response.success && response.words && response.words.length > 0) {
                     console.log(`[Scarlett CS] Received ${response.words.length} learning words. Starting highlighting...`);
@@ -295,7 +381,6 @@ export default defineContentScript({
             }
         };
         
-        // Helper function for content extraction (refactored from getPageContent handler)
         const extractMainContent = async (): Promise<string | null> => {
              try {
                  const selectors = [
@@ -333,17 +418,11 @@ export default defineContentScript({
              }
         }
 
-        // --- Call highlighting logic promptly ---
         window.requestIdleCallback(fetchAndHighlightLearningWords, { timeout: 1000 });
         
-        // --- RAG-related page visit processing (retains its own delay) ---
         window.setTimeout(schedulePageProcessing, 500); 
         window.addEventListener('beforeunload', cancelPageProcessing);
-        
-        // --- State Signals for the Widget ---
-        // Using signals allows Solid's reactivity to update the component when data changes.
-        
-        // This is the type for the DATA object held by the widgetProps signal
+
         interface WidgetData {
           textToTranslate: string;
           translatedText: string; 
@@ -364,11 +443,10 @@ export default defineContentScript({
         });
         const [alignmentData, setAlignmentData] = createSignal<AlignmentData | null>(null);
 
-        // --- Widget Management ---
         let currentWidgetUi: ShadowRootContentScriptUi<() => void | null> | null = null;
         let currentWidgetName: string | null = null;
         let globalClickListener: ((event: MouseEvent) => void) | null = null;
-        let currentTranslationOriginalText: string | null = null; // Track original text of current widget
+        let currentTranslationOriginalText: string | null = null;
 
         const hideWidget = async (options: {isPartOfUpdate?: boolean} = {}) => {
             console.log('[Scarlett CS hideWidget] Attempting to hide. currentWidgetUi present:', !!currentWidgetUi, 'Options:', options);
@@ -378,9 +456,7 @@ export default defineContentScript({
             const uiToRemove = currentWidgetUi;
             const widgetNameToClear = currentWidgetName;
 
-            // Reset tracking and Solid states
             currentWidgetUi = null;
-            // Only reset these if it's not part of an update cycle that will immediately set them again
             if (!options.isPartOfUpdate) {
                 currentWidgetName = null;
                 currentTranslationOriginalText = null; 
@@ -395,25 +471,20 @@ export default defineContentScript({
             }
             try {
                 console.log('[Scarlett CS hideWidget] Calling uiToRemove.remove() for', widgetNameToClear);
-                uiToRemove.remove(); // This removes the shadow DOM host
+                uiToRemove.remove();
                 console.log(`[Scarlett CS hideWidget] Widget UI removed (${widgetNameToClear}).`);
             } catch (error) {
                 console.error(`[Scarlett CS hideWidget] Error removing widget UI (${widgetNameToClear}):`, error);
             }
         };
 
-        // --- TTS Request Handler (Called from Widget) ---
         const handleTTSRequest = async (text: string, lang: string, speed: number): Promise<{ audioDataUrl?: string; error?: string, alignment?: AlignmentData | null }> => {
             console.log(`[Scarlett CS TTS] Request to BG: Text='${text.substring(0,30)}...', Lang='${lang}', Speed=${speed}`);
             try {
-                // The response type from this specific message might not include alignment directly.
-                // Let's assume it's { success: boolean, audioDataUrl?: string, error?: string }
                 const response = await messageSender.sendMessage('REQUEST_TTS_FROM_WIDGET', { text, lang, speed }) as { success: boolean, audioDataUrl?: string, error?: string };
                 console.log('[Scarlett CS TTS] Response from BG:', response);
                 if (response && response.success && response.audioDataUrl) {
-                    // Do NOT return ttsResult.alignment here as it's not part of this specific message's contract yet.
-                    // The widget will receive alignment via the updateWidgetAlignment message and props.alignment signal.
-                    return { audioDataUrl: response.audioDataUrl, alignment: null }; // Return null for alignment for now
+                    return { audioDataUrl: response.audioDataUrl, alignment: null };
                 } else {
                     return { error: response?.error || 'Unknown TTS error from BG.', alignment: null };
                 }
@@ -423,19 +494,16 @@ export default defineContentScript({
             }
         };
 
-        // --- Message Listener: Display Translation Widget ---
         messageListener.onMessage('displayTranslationWidget', async (message: { data: DisplayTranslationPayload }) => {
             const { originalText, translatedText, sourceLang, targetLang, pronunciation, isLoading } = message.data;
             console.log(`[Scarlett CS displayTranslationWidget] Received. isLoading: ${isLoading}, CurrentOrig: "${currentTranslationOriginalText ? currentTranslationOriginalText.substring(0,10): 'null'}", NewOrig: "${originalText ? originalText.substring(0,10): 'null'}"`);
             console.log(`[Scarlett CS displayTranslationWidget] currentWidgetUi present: ${!!currentWidgetUi}, isVisible(): ${isVisible()}`);
 
-            // If this message is for a *new* original text, or if no widget is currently active or visible
             if (currentTranslationOriginalText !== originalText || !currentWidgetUi || !isVisible()) {
                 console.log('[Scarlett CS displayTranslationWidget] New interaction or widget not fully active/different text. Will hide and recreate/show.');
                 await hideWidget(); 
                 currentTranslationOriginalText = originalText; 
 
-                // Set initial props for the new interaction
                 setWidgetProps({
                     textToTranslate: originalText || '',
                     translatedText: isLoading ? '' : (translatedText || ''),
@@ -444,7 +512,7 @@ export default defineContentScript({
                     pronunciation: isLoading ? undefined : (pronunciation || undefined),
                     isLoading: isLoading,
                 });
-                setAlignmentData(null); // Reset alignment for new widget
+                setAlignmentData(null);
                 setIsVisible(true);
                 console.log(`[Scarlett CS displayTranslationWidget] isVisible signal set to true. widgetPropsisLoading: ${widgetProps().isLoading}`);
 
@@ -469,14 +537,10 @@ export default defineContentScript({
                         console.log('[Scarlett CS onMount] Host styled. Rendering Solid component into SHADOW ROOT...');
                         
                         let unmountSolid: (() => void) | null = null;
-                        // Important: currentWidgetUi is defined from the outer scope and should be the new UI instance here
                         if (currentWidgetUi?.shadow) { 
                             try {
                                 unmountSolid = render(() => {
-                                    // const currentProps = widgetProps(); // No longer need to get the whole object here for logging
-                                    // console.log('[Scarlett CS onMount render] isLoading from currentProps:', currentProps.isLoading);
                                     return TranslatorWidget({
-                                        // Pass accessors for reactive props
                                         textToTranslate: () => widgetProps().textToTranslate,
                                         translatedText: () => widgetProps().translatedText,
                                         isLoading: () => widgetProps().isLoading,
@@ -509,13 +573,12 @@ export default defineContentScript({
                 };
                 console.log('[Scarlett CS displayTranslationWidget] Options prepared. Calling createShadowRootUi...');
                 try {
-                    // This creates the UI and currentWidgetUi will be set to this new instance
                     const ui = await createShadowRootUi(ctx, options);
                     console.log('[Scarlett CS displayTranslationWidget] createShadowRootUi SUCCEEDED. UI object:', ui);
-                    currentWidgetUi = ui; // Assign the newly created UI to currentWidgetUi
+                    currentWidgetUi = ui;
                     
                     console.log('[Scarlett CS displayTranslationWidget] About to call ui.mount(). This will trigger onMount. Current currentWidgetUi:', currentWidgetUi);
-                    ui.mount(); // This executes the onMount callback defined above
+                    ui.mount();
                     console.log(`[Scarlett CS displayTranslationWidget] Mounted ${widgetName}. currentWidgetUi after mount:`, currentWidgetUi);
                 } catch (createUiError) {
                     console.error("[Scarlett CS displayTranslationWidget] FAILED to createShadowRootUi or mount:", createUiError);
@@ -525,7 +588,6 @@ export default defineContentScript({
                     return; 
                 }
 
-                // Setup global click listener for the new widget
                 if (globalClickListener) document.removeEventListener('click', globalClickListener, { capture: true });
                 globalClickListener = (event: MouseEvent) => {
                     const hostElement = currentWidgetUi?.shadowHost; 
@@ -537,8 +599,6 @@ export default defineContentScript({
                 document.addEventListener('click', globalClickListener, { capture: true });
                 console.log('[Scarlett CS displayTranslationWidget] Global click listener ADDED.');
             } else {
-                // This block handles updating an EXISTING widget if the original text is the same
-                // and the widget is already visible and mounted.
                 console.log('[Scarlett CS displayTranslationWidget] Updating EXISTING widget with new props.');
                 setWidgetProps({
                     textToTranslate: originalText || '', 
@@ -547,10 +607,9 @@ export default defineContentScript({
                     pronunciation: pronunciation || undefined,
                     isLoading: isLoading, 
                 });
-                // Note: Alignment is updated via a separate 'updateWidgetAlignment' message and signal.
                 console.log(`[Scarlett CS displayTranslationWidget] Props updated for existing widget. isVisible(): ${isVisible()}, widgetPropsisLoading: ${widgetProps().isLoading}`);
             }
-        }); // End of displayTranslationWidget listener
+        });
 
         messageListener.onMessage('updateWidgetAlignment', (message: { data: UpdateAlignmentPayload }) => {
             console.log('[Scarlett CS updateWidgetAlignment] Received. isVisible():', isVisible(), "currentWidgetUi present:", !!currentWidgetUi);
@@ -589,6 +648,41 @@ export default defineContentScript({
             }
         });
 
+        document.body.addEventListener('mouseover', (event) => {
+            const target = event.target as HTMLElement;
+            if (target.classList.contains('scarlett-learning-highlight')) {
+                if (learningWidgetHideTimeoutId) {
+                    clearTimeout(learningWidgetHideTimeoutId);
+                    learningWidgetHideTimeoutId = null;
+                }
+                
+                const sourceTextFromDataset = target.dataset.originalWord || '';
+                const wordData: LearningWordData = {
+                    sourceText: sourceTextFromDataset,
+                    translatedText: target.dataset.translatedWord || '',
+                    sourceLang: target.dataset.sourceLang || '?',
+                    targetLang: target.dataset.targetLang || '?'
+                };
+
+                if (wordData.sourceText && wordData.translatedText) {
+                    showLearningWordWidget(target, wordData);
+                }
+            }
+        });
+
+        document.body.addEventListener('mouseout', (event) => {
+            const target = event.target as HTMLElement;
+            const relatedTarget = event.relatedTarget as Node | null;
+            
+            if (target.classList.contains('scarlett-learning-highlight')) {
+                const widgetHost = currentLearningWordWidgetUi?.shadowHost;
+                 if (!relatedTarget || (widgetHost && !widgetHost.contains(relatedTarget) && relatedTarget !== widgetHost)) {
+                    if (learningWidgetHideTimeoutId) clearTimeout(learningWidgetHideTimeoutId);
+                    learningWidgetHideTimeoutId = window.setTimeout(hideLearningWordWidget, LEARNING_WIDGET_HIDE_DELAY);
+                 }
+            }
+        });
+
         console.log('[Scarlett CS] Main function setup complete. Listening for messages.');
-    }, // End of main function
-}); // End of defineContentScript
+    },
+});

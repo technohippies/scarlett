@@ -31,12 +31,49 @@ async function handleContextMenuClick(info: browser.Menus.OnClickData, tab?: bro
 
       console.log(`[Context Menu Handler] Processing text: "${selectedText.substring(0, 50)}..." from ${sourceUrl}`);
 
+      // --- Fetch User Configuration (including native language) ---
+      let userNativeLanguage = 'en'; // Default to English
+      let llmConfigToUse: LLMConfig;
+
+      try {
+        const userConfig = await userConfigurationStorage.getValue();
+        if (userConfig?.nativeLanguage) {
+          userNativeLanguage = userConfig.nativeLanguage;
+        }
+        console.log(`[Context Menu Handler] User native language: ${userNativeLanguage}`);
+
+        const storedLlmConfig = userConfig?.llmConfig; 
+
+        if (storedLlmConfig && storedLlmConfig.providerId && storedLlmConfig.modelId) {
+          llmConfigToUse = {
+            provider: storedLlmConfig.providerId as LLMProviderId,
+            model: storedLlmConfig.modelId,
+            baseUrl: storedLlmConfig.baseUrl || 'http://localhost:11434',
+            apiKey: storedLlmConfig.apiKey || undefined,
+            stream: false,
+          };
+          console.log("[Context Menu Handler] Using LLM config from storage:", llmConfigToUse);
+        } else {
+          console.warn("[Context Menu Handler] LLM config not found or incomplete in storage. Using fallback mock config.");
+          llmConfigToUse = {
+            provider: 'ollama',
+            model: 'gemma2:9b', 
+            baseUrl: 'http://localhost:11434',
+            stream: false, 
+          };
+        }
+      } catch (error) {
+        console.error("[Context Menu Handler] Error fetching user/LLM config. Using fallbacks.", error);
+        userNativeLanguage = 'en'; // Fallback native language
+        llmConfigToUse = { provider: 'ollama', model: 'gemma2:9b', baseUrl: 'http://localhost:11434', stream: false };
+      }
+
       // --- Send Initial Message to Display Widget with Loading State ---
       const initialPayload: DisplayTranslationPayload = {
         originalText: selectedText,
         isLoading: true,
-        sourceLang: 'auto',
-        targetLang: 'en',
+        sourceLang: 'auto', // Will be detected by the pipeline
+        targetLang: userNativeLanguage, // Use fetched native language
       };
 
       if (typeof tabId === 'number') {
@@ -52,53 +89,28 @@ async function handleContextMenuClick(info: browser.Menus.OnClickData, tab?: bro
       // Store the selection before starting the potentially long pipeline
       setLastContextMenuSelection(selectedText);
 
-      // --- Fetch LLM Config from storage --- (Still TODO: fully integrate, but prepare)
-      let llmConfigToUse: LLMConfig;
       try {
-        const userConfig = await userConfigurationStorage.getValue();
-        const storedLlmConfig = userConfig?.llmConfig; // This is FunctionConfig | null
-
-        if (storedLlmConfig && storedLlmConfig.providerId && storedLlmConfig.modelId) {
-          // Map FunctionConfig to LLMConfig
-          llmConfigToUse = {
-            provider: storedLlmConfig.providerId as LLMProviderId,
-            model: storedLlmConfig.modelId,
-            baseUrl: storedLlmConfig.baseUrl || 'http://localhost:11434',
-            apiKey: storedLlmConfig.apiKey || undefined,   // Ensure undefined if null/empty (apiKey is optional)
-            stream: false, // Explicitly set stream as per pipeline expectation
-          };
-          console.log("[Context Menu Handler] Using LLM config from storage:", llmConfigToUse);
-        } else {
-          console.warn("[Context Menu Handler] LLM config not found or incomplete in storage. Using fallback mock config.");
-          llmConfigToUse = {
-            provider: 'ollama',
-            model: 'gemma2:9b', 
-            baseUrl: 'http://localhost:11434',
-            stream: false, 
-          };
-        }
-      } catch (error) {
-        console.error("[Context Menu Handler] Error fetching/mapping LLM config. Using fallback mock config.", error);
-        llmConfigToUse = { provider: 'ollama', model: 'gemma2:9b', baseUrl: 'http://localhost:11434', stream: false };
-      }
-
-      try {
-        // Call the analysis pipeline without sourceLang and targetLang
+        // Call the analysis pipeline, now passing the user's native language
+        // The pipeline should be updated to accept and use this for translation.
         const analysisResult = await processTextAnalysisPipeline({
             selectedText,
             sourceUrl,
-            llmConfig: llmConfigToUse // Use fetched or fallback config
+            llmConfig: llmConfigToUse, // Use fetched or fallback config
+            translateToLang: userNativeLanguage // Pass native language to pipeline
         });
         console.log('[Context Menu Handler] Pipeline completed successfully. Result:', analysisResult);
 
         // --- Send Final Message with Translation Results ---
+        // Ensure targetLang is the user's native language.
+        // analysisResult.translatedPhrase should be in this language.
+        // analysisResult.retrievedTargetLang from pipeline should also match userNativeLanguage.
         const finalPayload: DisplayTranslationPayload = {
           originalText: selectedText,
           translatedText: analysisResult.translatedPhrase,
           sourceLang: analysisResult.detectedSourceLang, 
-          targetLang: analysisResult.retrievedTargetLang, 
+          targetLang: userNativeLanguage, // Explicitly use native language
           isLoading: false, 
-          pronunciation: undefined,
+          pronunciation: analysisResult.pronunciation, // Assuming pipeline provides this
         };
         console.log('[Context Menu Handler] Sending final displayTranslationWidget to content script with payload:', finalPayload);
         

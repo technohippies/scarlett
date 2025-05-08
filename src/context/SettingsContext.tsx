@@ -117,7 +117,7 @@ const ELEVENLABS_TEST_TEXT = "Testing ElevenLabs text-to-speech integration.";
 // --- Provider Component ---
 export const SettingsProvider: ParentComponent = (props) => {
     // Resource to load initial settings from storage
-    const [loadedSettings] = createResource(async () => {
+    const [loadedSettings, { refetch }] = createResource(async () => {
         console.log("[SettingsContext] Attempting to load settings from storage...");
         const storedValue = await userConfigurationStorage.getValue();
         console.log("[SettingsContext] Value loaded from storage:", storedValue);
@@ -139,6 +139,27 @@ export const SettingsProvider: ParentComponent = (props) => {
     // Define the signal for the TTS test audio blob
     const [ttsTestAudio, setTtsTestAudio] = createSignal<Blob | null>(null);
 
+    // --- Watch for external storage changes --- 
+    createEffect(() => {
+        const unsubscribe = userConfigurationStorage.watch((newValue, oldValue) => {
+            console.log("[SettingsContext watch] Storage changed externally. Updating internal store.");
+            // Check if newValue is actually different to avoid infinite loops if watch triggers on own setValue
+            // A deep comparison might be needed if watch is overly sensitive
+            if (JSON.stringify(newValue) !== JSON.stringify(settingsStore)) {
+                // Update the internal Solid store with the new value from storage
+                setSettingsStore(produce(state => {
+                    Object.assign(state, newValue || initialConfig); // Ensure defaults if storage becomes null
+                }));
+                console.log("[SettingsContext watch] Internal store updated.");
+            } else {
+                console.log("[SettingsContext watch] Storage change detected, but new value matches internal store. Skipping update.");
+            }
+        });
+        // Cleanup the watcher when the component unmounts or effect re-runs
+        // onCleanup(unsubscribe); // Solid's cleanup mechanism
+    });
+    // --- End Watcher ---
+
     // Helper to get or initialize transient state for a function type
     const ensureTransientState = (funcType: FunctionName) => {
         if (!transientState[funcType]) {
@@ -159,11 +180,9 @@ export const SettingsProvider: ParentComponent = (props) => {
     createEffect(() => {
         if (!loadedSettings.loading && loadedSettings.state === 'ready' && loadedSettings()) {
             console.log("[SettingsContext] Settings resource is ready. Updating store state.");
-            // Explicitly type the loaded config
             const currentConfig = loadedSettings() as UserConfiguration;
-            // Use produce for potentially safer nested updates if needed, or direct set
             setSettingsStore(produce(state => {
-                Object.assign(state, currentConfig); // Update store with loaded config
+                Object.assign(state, currentConfig);
             }));
 
             // --- Fetch models for pre-configured providers (Optimized) --- 
@@ -258,13 +277,23 @@ export const SettingsProvider: ParentComponent = (props) => {
     // Helper to save settings (can be called by update actions)
     const saveCurrentSettings = async () => {
         try {
-            // Create a plain object copy for saving if store is complex proxy
-            const settingsToSave = JSON.parse(JSON.stringify(settingsStore));
-            await userConfigurationStorage.setValue(settingsToSave);
-            console.log("[SettingsContext] Settings saved to storage:", settingsToSave);
+            // 1. Get the LATEST value from storage directly
+            const latestStoredConfig = await userConfigurationStorage.getValue() || initialConfig;
+            
+            // 2. Get the current state from the Solid store
+            const currentStoreState = JSON.parse(JSON.stringify(settingsStore));
+
+            // 3. Merge the store state ONTO the latest stored config.
+            const configToSave: UserConfiguration = {
+                ...latestStoredConfig,
+                ...currentStoreState,
+            };
+
+            console.log(`[SettingsContext setValue] About to save from saveCurrentSettings. Full config: ${JSON.stringify(configToSave, null, 2)}`);
+            await userConfigurationStorage.setValue(configToSave);
+            console.log(`[SettingsContext setValue] Save complete from saveCurrentSettings. Config was: ${JSON.stringify(configToSave, null, 2)}`);
         } catch (error) {
             console.error("[SettingsContext] Failed to save settings:", error);
-            // Optional: Add user feedback about save failure
         }
     };
 
@@ -578,6 +607,7 @@ export const SettingsProvider: ParentComponent = (props) => {
         const newConfig = { ...currentConfig, redirectSettings: updatedRedirects };
 
         try {
+            console.log(`[SettingsContext setValue] About to save redirect setting for "${serviceName}". Full config: ${JSON.stringify(newConfig, null, 2)}`);
             await userConfigurationStorage.setValue(newConfig);
             // Update local context state AFTER successful storage update
             setSettingsStore(prev => ({ ...prev, redirectSettings: updatedRedirects }));

@@ -10,6 +10,7 @@ interface ProcessTextParams {
   selectedText: string;
   sourceUrl: string;
   llmConfig: LLMConfig;
+  translateToLang?: string; // Added: Optional parameter for target language
 }
 
 // Define the simplified result structure we expect now
@@ -18,6 +19,7 @@ interface SimpleAnalysisResult {
   translatedPhrase: string;
   detectedSourceLang: string;
   retrievedTargetLang: string;
+  pronunciation?: string; // Added: Optional pronunciation
 }
 
 /**
@@ -27,60 +29,64 @@ interface SimpleAnalysisResult {
 export async function processTextAnalysisPipeline({
     selectedText,
     sourceUrl,
-    llmConfig
+    llmConfig,
+    translateToLang 
 }: ProcessTextParams): Promise<SimpleAnalysisResult> {
-    console.log('--- RUNNING NEW analysis V2 Pipeline ---');
+    console.log('--- RUNNING NEW analysis V2 Pipeline (Settings-Driven) ---');
     console.log(`[Analysis Pipeline V2] Starting for: "${selectedText}"`);
 
-    // --- Stage 0a: Retrieve Target Language from Storage ---
-    let retrievedTargetLang = 'en'; // Default fallback
+    // --- Stage 0a: Get User Languages from Storage --- 
+    let userNativeLang = 'en'; // Default native
+    let userTargetLang = 'und'; // Default target (undetermined)
+
     try {
         const userConfig = await userConfigurationStorage.getValue();
-        if (userConfig && userConfig.targetLanguage) {
-            retrievedTargetLang = userConfig.targetLanguage;
-            console.log(`[Analysis Pipeline V2] Retrieved target language from storage: ${retrievedTargetLang}`);
-        } else {
-            console.warn(`[Analysis Pipeline V2] Target language not found in storage or config is null. Falling back to '${retrievedTargetLang}'.`);
+        if (userConfig?.nativeLanguage) {
+            userNativeLang = userConfig.nativeLanguage;
         }
+        if (userConfig?.targetLanguage) {
+            userTargetLang = userConfig.targetLanguage;
+        }
+        console.log(`[Analysis Pipeline V2] User settings: Native='${userNativeLang}', Target Learning='${userTargetLang}'`);
     } catch (error) {
-        console.error('[Analysis Pipeline V2] Error retrieving target language from storage:', error);
-        console.warn(`[Analysis Pipeline V2] Proceeding with fallback target language '${retrievedTargetLang}'.`);
+        console.error('[Analysis Pipeline V2] Error retrieving user languages from storage. Using defaults.', error);
     }
 
-    // --- Stage 0b: Language Detection for Source Text --- 
-    let detectedSourceLang = 'und'; // Default to undetermined
-    try {
-        const detectionResult = await browser.i18n.detectLanguage(selectedText);
-        if (detectionResult && detectionResult.languages && detectionResult.languages.length > 0) {
-            // Sort by percentage (highest first) and pick the top one
-            const sortedLanguages = detectionResult.languages.sort((a, b) => b.percentage - a.percentage);
-            detectedSourceLang = sortedLanguages[0].language;
-            const topPercentage = sortedLanguages[0].percentage;
-            console.log(`[Analysis Pipeline V2] Detected source language: ${detectedSourceLang} (Confidence: ${topPercentage}%)`);
-            if (topPercentage < 70) { // Arbitrary threshold for "reliable"
-                 console.warn(`[Analysis Pipeline V2] Language detection confidence is low (${topPercentage}%) for "${selectedText}".`);
-            }
-        } else {
-            console.warn(`[Analysis Pipeline V2] Language detection failed for "${selectedText}". Proceeding with 'und'.`);
-        }
-    } catch (error) {
-        console.error('[Analysis Pipeline V2] Error during language detection:', error);
-        // Continue with 'und', but log the error
+    // --- Stage 0b: Determine Final Translation Output Language --- 
+    // This should ALWAYS be the user's native language.
+    // Prioritize translateToLang if passed (e.g. from context menu which should be native lang), else use stored native lang.
+    const finalTranslationOutputLang = translateToLang || userNativeLang || 'en';
+    console.log(`[Analysis Pipeline V2] Final translation output language will be: ${finalTranslationOutputLang}`);
+
+    // --- Stage 0c: Determine Detected Source Language (Based on User Settings) ---
+    // Assumption: If the user selects text, it's most likely their target learning language.
+    // If target language is not set, or same as native, this logic might need refinement for other contexts.
+    let detectedSourceLang = userTargetLang;
+    if (detectedSourceLang === 'und' || detectedSourceLang === userNativeLang) {
+        // If target is undetermined, or same as native, we can't confidently assume source is target.
+        // For now, let's mark it as 'und' and let the LLM try. 
+        // A more advanced version might try to get page language here.
+        console.warn(`[Analysis Pipeline V2] User's target learning language is '${userTargetLang}'. Cannot confidently assume selected text is target. Marking source as 'und'.`);
+        detectedSourceLang = 'und'; 
     }
-    
-    // --- Prevent self-translation --- 
-    if (detectedSourceLang === retrievedTargetLang && detectedSourceLang !== 'und') {
-        console.log(`[Analysis Pipeline V2] Detected source language (${detectedSourceLang}) matches target language (${retrievedTargetLang}). Skipping translation.`);
-        return { originalPhrase: selectedText, translatedPhrase: selectedText, detectedSourceLang, retrievedTargetLang };
+    console.log(`[Analysis Pipeline V2] Assumed source language (based on user target lang): ${detectedSourceLang}`);
+
+    // --- Stage 0d: Prevent self-translation if source is confidently native language ---
+    if (detectedSourceLang === finalTranslationOutputLang && detectedSourceLang !== 'und') {
+        console.log(`[Analysis Pipeline V2] Assumed source language (${detectedSourceLang}) matches final translation output language (${finalTranslationOutputLang}). Skipping translation.`);
+        return { originalPhrase: selectedText, translatedPhrase: selectedText, detectedSourceLang, retrievedTargetLang: finalTranslationOutputLang, pronunciation: undefined };
     }
+    // A special check: if the detectedSourceLang ended up as 'und' because targetLang was 'und' or same as native,
+    // AND the finalTranslationOutputLang IS the native language, it implies we might be trying to translate native to native.
+    // However, the text could be a third language. If detectedSourceLang is 'und', let the LLM try.
 
     const db = await getDbInstance();
 
     // --- Stage 1: LLM Translation --- 
-    console.log(`[Analysis Pipeline V2] Requesting translation from ${detectedSourceLang} to ${retrievedTargetLang}...`);
+    console.log(`[Analysis Pipeline V2] Requesting LLM translation from assumed '${detectedSourceLang}' to '${finalTranslationOutputLang}'...`);
     let translatedPhrase = '';
     try {
-        const translationPrompt = `Translate the following ${detectedSourceLang} text accurately into ${retrievedTargetLang}:
+        const translationPrompt = `Translate the following ${detectedSourceLang} text accurately into ${finalTranslationOutputLang}:
 "${selectedText}"
 
 Respond ONLY with the translated text, nothing else.`;
@@ -122,7 +128,8 @@ Respond ONLY with the translated text, nothing else.`;
 
         if (!originalPhraseClean || !translatedPhraseClean) {
              console.warn('[Analysis Pipeline V2] Skipping DB storage due to empty text after cleaning:', { original: selectedText, translated: translatedPhrase });
-             return { originalPhrase: selectedText, translatedPhrase: translatedPhrase, detectedSourceLang, retrievedTargetLang };
+             const finalTranslated = translatedPhraseClean || (originalPhraseClean ? selectedText : ''); 
+             return { originalPhrase: selectedText, translatedPhrase: finalTranslated, detectedSourceLang, retrievedTargetLang: finalTranslationOutputLang, pronunciation: undefined };
         }
 
         console.log('--- RUNNING NEW processAndStorePhrase V2 (Inline) ---');
@@ -132,7 +139,7 @@ Respond ONLY with the translated text, nothing else.`;
             detectedSourceLang, 
             null,                       
             translatedPhraseClean,      
-            retrievedTargetLang, // Use retrieved target language
+            finalTranslationOutputLang, // Use the determined final output language for storage
             null,                      
             null,                       
             null,                       
@@ -142,7 +149,7 @@ Respond ONLY with the translated text, nothing else.`;
             selectedText,               
             null                        
         );
-        console.log(`[Analysis Pipeline V2] Stored translation: '${originalPhraseClean}' (${detectedSourceLang}) -> '${translatedPhraseClean}' (${retrievedTargetLang})`);
+        console.log(`[Analysis Pipeline V2] Stored translation: '${originalPhraseClean}' (${detectedSourceLang}) -> '${translatedPhraseClean}' (${finalTranslationOutputLang})`);
 
     } catch (error: any) {
         console.error('[Analysis Pipeline V2] Error during database storage:', error);
@@ -150,5 +157,6 @@ Respond ONLY with the translated text, nothing else.`;
         throw new Error(`Database Storage Error: ${errorMessage}`);
     }
 
-    return { originalPhrase: selectedText, translatedPhrase: translatedPhrase, detectedSourceLang, retrievedTargetLang };
+    // TODO: Implement actual pronunciation fetching if needed
+    return { originalPhrase: selectedText, translatedPhrase: translatedPhrase, detectedSourceLang, retrievedTargetLang: finalTranslationOutputLang, pronunciation: undefined };
 } 
