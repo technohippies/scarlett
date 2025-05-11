@@ -166,8 +166,8 @@ export async function getDistractors(
                 tgt_lex.language = $1
                 AND tgt_lex.lexeme_id != $2
                 -- Optional: Add filters based on SRS state? e.g., ul.state != 0 (not New)
-            ORDER BY
-                RANDOM()
+            -- ORDER BY
+            --    RANDOM() -- Removed to comply with SELECT DISTINCT and avoid PGlite issues
             LIMIT $3;
         `;
 

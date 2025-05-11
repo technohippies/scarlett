@@ -33,7 +33,7 @@ import {
 import { getActiveLearningWordsFromDb, updateCachedDistractors } from '../../services/db/learning';
 import { getDbInstance } from '../../services/db/init';
 import { ollamaChat } from '../../services/llm/providers/ollama/chat';
-import { getMCQGenerationPrompt, getMCQGenerationPromptNativeToEn } from '../../services/llm/prompts/exercises';
+import { getLLMDistractorsPrompt } from '../../services/llm/prompts/exercises';
 import type { LLMConfig, LLMChatResponse, LLMProviderId, ChatMessage } from '../../services/llm/types';
 import { handleSaveBookmark, handleLoadBookmarks } from './bookmark-handlers';
 import { handleTagList, handleTagSuggest } from './tag-handlers';
@@ -72,18 +72,24 @@ const EMBEDDING_SIMILARITY_THRESHOLD = 0.1;
 const TABLELAND_BASE_URL = 'https://testnets.tableland.network/api/v1/query?statement=';
 const TABLELAND_FLASHCARDS_TABLE_NAME = 'supercoach_flashcards_84532_111';
 // IMPORTANT: Replace this placeholder with the actual full name of your decks metadata table on Tableland
-const SUPERCOACH_DECKS_METADATA_TABLE_NAME_PLACEHOLDER = 'supercoach_deck_84532_110'; // e.g., 'yourprefix_decks_84532_yourdeckstableid'
+const SUPERCOACH_DECKS_METADATA_TABLE_NAME = 'supercoach_deck_84532_110'; // e.g., 'yourprefix_decks_84532_yourdeckstableid'
 // --- End Tableland Constants ---
 
-// Define known decks and their paths at a scope accessible to both handlers
-/* COMMENTING OUT - Replaced by Tableland fetching
-const KNOWN_DECK_FILES = [
-    { identifier: 'programming_vi_en', path: 'decks/vi/programming_vi_en.json' },
-    { identifier: 'travel_vi_en', path: 'decks/vi/travel_vi_en.json' },
-    { identifier: 'hsk1_zh_en', path: 'decks/en/hsk.json' }, 
-    { identifier: 'kaishi_ja_en', path: 'decks/en/kaishi.json' }
-];
-*/
+// Utility function to get full language name from code
+function getFullLanguageName(code: string): string {
+    switch (code.toLowerCase()) {
+        case 'en': return 'English';
+        case 'vi': return 'Vietnamese';
+        // Add other common languages as needed:
+        // case 'es': return 'Spanish';
+        // case 'fr': return 'French';
+        // case 'de': return 'German';
+        // case 'ja': return 'Japanese';
+        case 'ko': return 'Korean';
+        case 'zh': return 'Chinese';
+        default: return code; // Fallback to the code itself if no mapping is present
+    }
+}
 
 // Dynamic Chat Helper (Simplified to only handle confirmed non-streaming)
 async function dynamicChat(messages: ChatMessage[], config: FunctionConfig): Promise<LLMChatResponse | null> {
@@ -304,75 +310,77 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
 
     messaging.onMessage('generateLLMDistractors', async (message) => {
         console.log('[Message Handlers] Received generateLLMDistractors request:', message.data);
-        const { sourceText, targetText, targetLang, count, direction } = message.data;
+        const { sourceText, targetText, count, direction, correctAnswerForFiltering } = message.data;
         
-        console.log(`[Message Handlers DEBUG] Received direction value: ${direction}`);
+        const safeDirection: string = direction || 'EN_TO_NATIVE'; // Default direction
 
-        // Fallback for LearningDirection if type '../../types/study' not available
-        const safeDirection: string = direction as string || 'EN_TO_NATIVE'; // Cast to string if type is missing
-
-        const sourceLang = safeDirection === 'NATIVE_TO_EN' ? targetLang : 'en';
-        const effectiveTargetLang = safeDirection === 'NATIVE_TO_EN' ? 'en' : targetLang;
-
-        console.log(`[Message Handlers] Distractor generation direction: ${safeDirection} (${sourceLang} -> ${effectiveTargetLang})`);
-
-        let userLlmConfig: FunctionConfig | null = null; 
+        let userLlmConfig: FunctionConfig | null = null;
         try {
-            const settings = await userConfigurationStorage.getValue(); 
-            if (!settings || !settings.llmConfig) {
-                throw new Error('LLM configuration not found for distractor generation.');
+            const userSettings = await userConfigurationStorage.getValue();
+            if (!userSettings.llmConfig?.providerId || !userSettings.llmConfig.modelId) {
+                throw new Error("LLM provider or model not configured by user.");
             }
-            userLlmConfig = settings.llmConfig;
-            if (!userLlmConfig.providerId || !userLlmConfig.modelId || !userLlmConfig.baseUrl) {
-                 throw new Error('LLM configuration is incomplete for distractor generation.');
+            userLlmConfig = userSettings.llmConfig;
+
+            const userActualNativeLang = userSettings.nativeLanguage || 'en'; // Default to 'en' if not set
+            const userActualTargetLang = userSettings.targetLanguage || 'vi'; // Default to 'vi' if not set
+
+            let wordToTranslate: string;
+            let originalWordLanguageName: string;
+            let distractorsLanguageName: string;
+
+            if (safeDirection === 'EN_TO_NATIVE') {
+                wordToTranslate = targetText; // English word (from card's back_text)
+                originalWordLanguageName = getFullLanguageName(userActualTargetLang); // Should be 'English'
+                distractorsLanguageName = getFullLanguageName(userActualNativeLang);  // e.g., 'Vietnamese'
+                console.log(`[Message Handlers] EN_TO_NATIVE Prep: Word to translate: "${wordToTranslate}" (${originalWordLanguageName}). Distractors in: ${distractorsLanguageName}. Correct answer (for filtering): "${correctAnswerForFiltering}"`);
+            } else { // NATIVE_TO_EN
+                wordToTranslate = sourceText; // Native word (from card's front_text)
+                originalWordLanguageName = getFullLanguageName(userActualNativeLang);  // e.g., 'Vietnamese'
+                distractorsLanguageName = getFullLanguageName(userActualTargetLang); // Should be 'English'
+                console.log(`[Message Handlers] NATIVE_TO_EN Prep: Word to translate: "${wordToTranslate}" (${originalWordLanguageName}). Distractors in: ${distractorsLanguageName}. Correct answer (for filtering): "${correctAnswerForFiltering}"`);
             }
 
-            let prompt: string;
-            if (safeDirection === 'NATIVE_TO_EN') {
-                 prompt = getMCQGenerationPromptNativeToEn(sourceText, targetText, sourceLang, effectiveTargetLang); 
-                 console.log(`[Message Handlers] Using NATIVE_TO_EN prompt generator.`);
-            } else {
-                prompt = getMCQGenerationPrompt(sourceText, targetText, sourceLang, effectiveTargetLang);
-                 console.log(`[Message Handlers] Using EN_TO_NATIVE prompt generator.`);
-            }
-            
+            const prompt = getLLMDistractorsPrompt(wordToTranslate, originalWordLanguageName, distractorsLanguageName, count);
+
+            // LLM Call
             const llmResponse = await dynamicChat([{ role: 'user', content: prompt }], userLlmConfig);
-            
-            let rawContent = llmResponse?.choices?.[0]?.message?.content?.trim();
 
-            if (!rawContent) throw new Error('LLM returned empty content.');
+            // Safely access content, assuming dynamicChat returns a structure like { choices: [{ message: { content: string } }] }
+            const rawContentFromLlm = llmResponse?.choices?.[0]?.message?.content?.trim();
 
-            // Attempt to parse JSON, as parseJsonFromLLM from mcq-helpers is not available
-            let parsedJson: any;
-            try {
-                const jsonRegex = /```json\n([\s\S]*?)\n```/;
-                const match = rawContent.match(jsonRegex);
-                if (match && match[1]) {
-                    parsedJson = JSON.parse(match[1]);
-                } else {
-                    const cleanedContent = rawContent.replace(/^```json\s*|\s*```$/g, '').trim();
-                    parsedJson = JSON.parse(cleanedContent);
+            if (rawContentFromLlm) {
+                let rawContent = rawContentFromLlm;
+                console.log("[Message Handlers] Raw LLM content for distractors:", rawContent);
+
+                // Strip markdown fences if present
+                if (rawContent.startsWith('```json')) { // More general check for ```json
+                    rawContent = rawContent.substring(rawContent.indexOf('\n') + 1); // Skip the ```json line
+                    if (rawContent.endsWith('```')) {
+                        rawContent = rawContent.substring(0, rawContent.lastIndexOf('```')).trim();
+                    }
+                } else if (rawContent.startsWith('```')) { // Simpler ``` check
+                     rawContent = rawContent.substring(3, rawContent.length - 3).trim();
                 }
-            } catch (parseError) {
-                console.error('[Message Handlers] Failed to parse JSON from LLM content:', rawContent, parseError);
-                throw new Error('Failed to parse JSON from LLM response.');
-            }
 
-            if (parsedJson && Array.isArray(parsedJson.options) && typeof parsedJson.correctOptionId === 'number') {
-                const distractors = parsedJson.options
-                                        .filter((opt: any) => opt.id !== parsedJson.correctOptionId)
-                                        .map((opt: any) => opt.text);
-                console.log('[Message Handlers] Extracted distractors:', distractors);
-                if (distractors.length >= count) {
-                    return { distractors: distractors.slice(0, count) };
-                } else {
-                     console.warn('[Message Handlers] LLM returned fewer distractors than requested.');
-                     return { distractors };
+                try {
+                    const parsedJson = JSON.parse(rawContent);
+                    if (Array.isArray(parsedJson) && parsedJson.every(item => typeof item === 'string')) {
+                        console.log("[Message Handlers] Extracted distractors:", parsedJson);
+                        const finalDistractors = parsedJson.filter(d => d.toLowerCase() !== correctAnswerForFiltering.toLowerCase());
+                        return { distractors: finalDistractors.slice(0, count) }; 
+                    } else {
+                        throw new Error("LLM response is not a JSON array of strings.");
+                    }
+                } catch (e: any) {
+                    console.error("[Message Handlers] Failed to parse JSON array from LLM content:", rawContent, "Error:", e.message);
+                    throw new Error(`Failed to parse JSON array from LLM response: ${e.message}`);
                 }
             } else {
-                console.error('[Message Handlers] Failed to parse expected structure from LLM for distractors:', parsedJson);
-                throw new Error('Failed to parse distractors from LLM response');
+                console.error("[Message Handlers] LLM returned no content for distractors.");
+                throw new Error("LLM returned no content.");
             }
+
         } catch (error: any) {
             console.error('[Message Handlers] Error handling generateLLMDistractors:', error);
             if (userLlmConfig) {
@@ -750,7 +758,7 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
                     front_language,
                     back_language
                 FROM
-                    ${SUPERCOACH_DECKS_METADATA_TABLE_NAME_PLACEHOLDER}
+                    ${SUPERCOACH_DECKS_METADATA_TABLE_NAME}
                 WHERE
                     (front_language = '${nativeLang}' AND back_language = '${targetLang}')
                     OR (front_language = '${targetLang}' AND back_language = '${nativeLang}')
@@ -866,7 +874,7 @@ async function handleAddLearningDeck(message: { data: { deckIdentifier: string }
                 front_language,
                 back_language
             FROM
-                ${SUPERCOACH_DECKS_METADATA_TABLE_NAME_PLACEHOLDER}
+                ${SUPERCOACH_DECKS_METADATA_TABLE_NAME}
             WHERE
                 deck_slug = '${deckIdentifier}'
             LIMIT 1;

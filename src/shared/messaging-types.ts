@@ -82,7 +82,7 @@ export interface CacheDistractorsResponse {
 export interface GenerateLLMDistractorsRequest {
   sourceText: string;
   targetText: string;
-  targetLang: string;
+  correctAnswerForFiltering: string;
   count: number;
   direction: 'EN_TO_NATIVE' | 'NATIVE_TO_EN';
 }

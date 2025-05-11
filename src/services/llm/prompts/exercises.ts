@@ -8,29 +8,30 @@ export interface MCQExerciseData {
 }
 
 export function getMCQGenerationPrompt(
-  sourceText: string, // English text
-  targetText: string, // Native translation
-  sourceLang: string, // 'en'
-  targetLang: string // Native language code
+  exerciseSourceText: string, 
+  exerciseTargetText: string, 
+  exerciseSourceLanguageFullName: string, 
+  exerciseTargetLanguageFullName: string, 
+  userActualNativeLanguageFullName: string,
+  userActualTargetLanguageFullName: string
 ): string {
-  // Instruct the LLM to output JSON. This improves reliability.
-  return `You are an AI assistant creating language learning exercises. The user is learning ${targetLang} and their native language is ${sourceLang}.
-  They have translated the ${sourceLang} word "${sourceText}" as "${targetText}" in ${targetLang}.
+  return `You are an AI assistant creating language learning exercises. The user is learning ${userActualTargetLanguageFullName} and their native language is ${userActualNativeLanguageFullName}.
+  They have translated the ${exerciseSourceLanguageFullName} word "${exerciseSourceText}" as "${exerciseTargetText}" in ${exerciseTargetLanguageFullName}.
 
-  Generate a multiple-choice question (MCQ) to test if the user knows the ${targetLang} translation of "${sourceText}".
-  Include the correct answer ("${targetText}") and 3 plausible but incorrect options in ${targetLang}.
-  The 'text' for each option should contain ONLY the characters of the ${targetLang} language, without any additional annotations like pinyin, pronunciation guides, or translations.
+  Generate a multiple-choice question (MCQ) to test if the user knows the ${exerciseTargetLanguageFullName} translation of "${exerciseSourceText}".
+  Include the correct answer ("${exerciseTargetText}") and 3 plausible but incorrect options in ${exerciseTargetLanguageFullName}.
+  The 'text' for each option should contain ONLY the characters of the ${exerciseTargetLanguageFullName} language, without any additional annotations like pinyin, pronunciation guides, or translations.
 
   Respond ONLY with a valid JSON object adhering to this exact structure (include the 'question' field formatted as shown):
   {
-    "question": "Translate: ${sourceText}", // English prompt
+    "question": "Translate: ${exerciseSourceText}",
     "options": [
-      {"id": 0, "text": "Incorrect Option A in ${targetLang}"},
-      {"id": 1, "text": "Incorrect Option B in ${targetLang}"},
-      {"id": 2, "text": "${targetText}"}, // Correct Native Answer
-      {"id": 3, "text": "Incorrect Option C in ${targetLang}"} // Ensure options are unique
+      {"id": 0, "text": "A plausible incorrect ${exerciseTargetLanguageFullName} option"},
+      {"id": 1, "text": "Another different incorrect ${exerciseTargetLanguageFullName} option"},
+      {"id": 2, "text": "${exerciseTargetText}"},
+      {"id": 3, "text": "A third varied incorrect ${exerciseTargetLanguageFullName} option"}
     ],
-    "correctOptionId": 2 // The 'id' number corresponding to the correct answer "${targetText}"
+    "correctOptionId": 2
   }
 
   Do not include any text, explanations, or markdown formatting outside the JSON object.
@@ -40,41 +41,59 @@ export function getMCQGenerationPrompt(
 
 // NEW function for Native -> English direction
 export function getMCQGenerationPromptNativeToEn(
-    sourceText: string, // Native text (The prompt for the user)
-    targetText: string, // English translation (The correct answer)
-    sourceLang: string, // Native language code
-    targetLang: string // 'en'
+  exerciseSourceText: string, 
+  exerciseTargetText: string, 
+  exerciseSourceLanguageFullName: string, 
+  exerciseTargetLanguageFullName: string, 
+  userActualNativeLanguageFullName: string,
+  userActualTargetLanguageFullName: string
 ): string {
+  return `You are an AI assistant creating language learning exercises. The user is learning ${userActualTargetLanguageFullName} and their native language is ${userActualNativeLanguageFullName}.
+  The user needs to translate the ${exerciseSourceLanguageFullName} phrase "${exerciseSourceText}" into ${exerciseTargetLanguageFullName}.
+  The correct ${exerciseTargetLanguageFullName} translation is "${exerciseTargetText}".
 
-    // Basic validation
-    if (!sourceText || !targetText || !sourceLang || targetLang !== 'en') {
-        console.error("[getMCQGenerationPromptNativeToEn] Invalid arguments provided.");
-        // Return a default error prompt or handle appropriately
-        return "Error: Invalid parameters for Native-to-English prompt generation.";
-    }
-
-    return `You are an AI assistant creating language learning exercises. The user is learning ${targetLang} and their native language is ${sourceLang}.
-  The user needs to translate the ${sourceLang} phrase "${sourceText}" into ${targetLang}.
-  The correct ${targetLang} translation is "${targetText}".
-
-  Generate a multiple-choice question (MCQ) to test if the user knows the ${targetLang} translation of "${sourceText}".
-  Include the correct answer ("${targetText}") and 3 plausible but incorrect options in ${targetLang}.
-  The incorrect options should be grammatically correct ${targetLang} phrases that are semantically similar or related to the correct answer, making them challenging distractors.
-  The 'text' for each option should contain ONLY the characters of the ${targetLang} language.
+  Generate a multiple-choice question (MCQ) to test if the user knows the ${exerciseTargetLanguageFullName} translation of "${exerciseSourceText}".
+  Include the correct answer ("${exerciseTargetText}") and 3 plausible but incorrect options in ${exerciseTargetLanguageFullName}.
+  The 'text' for each option should contain ONLY the characters of the ${exerciseTargetLanguageFullName} language.
 
   Respond ONLY with a valid JSON object adhering to this exact structure (include the 'question' field formatted as shown):
   {
-    "question": "Translate: ${sourceText}", // Native prompt
+    "question": "Translate: ${exerciseSourceText}",
     "options": [
-      {"id": 0, "text": "Incorrect Option A in ${targetLang}"},
-      {"id": 1, "text": "Incorrect Option B in ${targetLang}"},
-      {"id": 2, "text": "${targetText}"}, // Correct English Answer
-      {"id": 3, "text": "Incorrect Option C in ${targetLang}"} // Ensure options are unique
+      {"id": 0, "text": "A plausible incorrect ${exerciseTargetLanguageFullName} option"},
+      {"id": 1, "text": "Another different incorrect ${exerciseTargetLanguageFullName} option"},
+      {"id": 2, "text": "${exerciseTargetText}"},
+      {"id": 3, "text": "A third varied incorrect ${exerciseTargetLanguageFullName} option"}
     ],
-    "correctOptionId": 2 // The 'id' number corresponding to the correct answer "${targetText}"
+    "correctOptionId": 2
   }
 
   Do not include any text, explanations, or markdown formatting outside the JSON object.
 
   JSON response:`;
+}
+
+export function getLLMDistractorsPrompt(
+  wordToTranslate: string,        // e.g., "class"
+  originalWordLanguageName: string, // e.g., "English"
+  distractorsLanguageName: string,  // e.g., "Vietnamese"
+  distractorCount: number = 3
+): string {
+  // More direct prompt, focusing on NOT providing the correct translation.
+  // It also gives a clear bad example of what NOT to do.
+  return `
+Your task: Generate ${distractorCount} unique ${distractorsLanguageName} words/phrases.
+These must be plausible but **incorrect** translations for the ${originalWordLanguageName} word: "${wordToTranslate}".
+(Good distractors may be related by spelling, sound, or meaning, but must not be the correct translation.)
+
+Output: A valid JSON array of ${distractorCount} ${distractorsLanguageName} strings. E.g., ["val1", "val2", "val3"].
+
+Example of good distractors (if creating English distractors for French "chat" [cat]):
+["chatting", "hat", "dog"]
+
+**Critical Rule:** You MUST NOT include the actual correct ${distractorsLanguageName} translation of "${wordToTranslate}".
+(e.g., If "CORRECT WORD" is the right translation, it must NOT be in your list.)
+
+Return only the JSON array:
+`.trim();
 }
