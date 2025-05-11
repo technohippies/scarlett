@@ -43,10 +43,24 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
   // Helper to split target language label (remains the same)
   const getLanguageParts = (label: string | undefined) => {
     if (!label) return { name: props.fallbackLabel, emoji: '' };
-    const parts = label.split(' ');
-    const emoji = parts[0] || ''; 
-    const name = parts.slice(1).join(' ') || label;
-    return { name, emoji };
+    const trimmedLabel = label.trim();
+    if (!trimmedLabel) return { name: props.fallbackLabel, emoji: '' };
+
+    const parts = trimmedLabel.split(' ');
+
+    if (parts.length > 1) {
+      const lastPart = parts[parts.length - 1];
+      // Heuristic: if the last part is short (e.g., typical emoji/flag length)
+      // AND it doesn't contain any English alphabet letters.
+      const containsLetters = /[a-zA-Z]/.test(lastPart);
+      if (!containsLetters && lastPart.length <= 2) {
+        const name = parts.slice(0, -1).join(' ');
+        return { name, emoji: lastPart };
+      }
+    }
+    // If not parsed as "Name Emoji" (e.g. single word, or last part looks like a word),
+    // then the whole label is the name, and there's no separate emoji.
+    return { name: trimmedLabel, emoji: '' };
   };
 
   return (
@@ -90,7 +104,7 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
                     props.onGoalChange(goalStub.id);
                   }}
                   class={cn(
-                    'h-32 aspect-square p-4 flex flex-col items-center justify-center space-y-2 text-base border',
+                    'h-32 p-4 flex flex-col items-center justify-center space-y-2 text-base border',
                     'cursor-pointer hover:bg-neutral-700 hover:border-neutral-600 focus:outline-none focus:ring-0',
                     selectedGoalId() === goalStub.id
                       ? 'bg-neutral-800 text-foreground border-neutral-700'
@@ -98,7 +112,7 @@ export const LearningGoal: Component<LearningGoalProps> = (props) => {
                   )}
                 >
                   <span class="text-2xl">{goalStub.emoji}</span>
-                  <span>{name}</span> 
+                  <span class="text-center break-words">{name}</span>
                 </Button>
               );
             }}

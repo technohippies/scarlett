@@ -3,10 +3,11 @@ import { Switch, SwitchControl, SwitchThumb } from '../../components/ui/switch';
 import { Card, CardTitle, CardDescription } from '../../components/ui/card';
 
 export interface DeckInfo {
-  id: string; // The unique deck_identifier from the DB/JSON
+  id: string; // The unique deck_identifier from the DB/JSON (e.g., welcometokaishi15k)
   name: string; // User-friendly name, without language codes for this view
   description?: string;
   cardCount: number;
+  pathIdentifier: string; // The identifier used for path construction (e.g., kaishi_ja_en)
   // Add other relevant fields like source/target lang if needed for display
 }
 
@@ -47,8 +48,8 @@ export const DeckSelectionPanel: Component<DeckSelectionPanelProps> = (props) =>
               </div>
               <Switch
                 class="flex items-center"
-                checked={props.initiallySelectedDeckIds ? props.initiallySelectedDeckIds().includes(deck.id) : false}
-                onChange={(isChecked: boolean) => props.onDeckToggle(deck.id, isChecked)}
+                checked={props.initiallySelectedDeckIds ? props.initiallySelectedDeckIds().includes(deck.pathIdentifier) : false}
+                onChange={(isChecked: boolean) => props.onDeckToggle(deck.pathIdentifier, isChecked)}
                 id={`deck-switch-${deck.id}`}
               >
                 <SwitchControl>

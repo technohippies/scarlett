@@ -59,7 +59,6 @@ import { userConfigurationStorage } from '../../services/storage/storage';
 import type { FunctionConfig } from '../../services/storage/types';
 import { generateElevenLabsSpeechStream } from '../../services/tts/elevenLabsService';
 import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
-import { browser } from 'wxt/browser'; // Import browser namespace
 // import type { LearningDirection, StudyItem } from '../../types/study';
 // import type { ITask } from 'pg-promise';
 
@@ -68,6 +67,23 @@ const REPROCESS_INFO_THRESHOLD_MS = 1000;
 
 // Define a similarity threshold (Cosine Distance)
 const EMBEDDING_SIMILARITY_THRESHOLD = 0.1;
+
+// --- Tableland Constants ---
+const TABLELAND_BASE_URL = 'https://testnets.tableland.network/api/v1/query?statement=';
+const TABLELAND_FLASHCARDS_TABLE_NAME = 'supercoach_flashcards_84532_111';
+// IMPORTANT: Replace this placeholder with the actual full name of your decks metadata table on Tableland
+const SUPERCOACH_DECKS_METADATA_TABLE_NAME_PLACEHOLDER = 'supercoach_deck_84532_110'; // e.g., 'yourprefix_decks_84532_yourdeckstableid'
+// --- End Tableland Constants ---
+
+// Define known decks and their paths at a scope accessible to both handlers
+/* COMMENTING OUT - Replaced by Tableland fetching
+const KNOWN_DECK_FILES = [
+    { identifier: 'programming_vi_en', path: 'decks/vi/programming_vi_en.json' },
+    { identifier: 'travel_vi_en', path: 'decks/vi/travel_vi_en.json' },
+    { identifier: 'hsk1_zh_en', path: 'decks/en/hsk.json' }, 
+    { identifier: 'kaishi_ja_en', path: 'decks/en/kaishi.json' }
+];
+*/
 
 // Dynamic Chat Helper (Simplified to only handle confirmed non-streaming)
 async function dynamicChat(messages: ChatMessage[], config: FunctionConfig): Promise<LLMChatResponse | null> {
@@ -97,6 +113,30 @@ async function dynamicChat(messages: ChatMessage[], config: FunctionConfig): Pro
     }
 }
 
+// --- Tableland Query Helper ---
+async function queryTableland(sql: string): Promise<any[]> {
+    const encodedSql = encodeURIComponent(sql);
+    const fetchUrl = `${TABLELAND_BASE_URL}${encodedSql}`;
+    console.log(`[queryTableland] Fetching from: ${fetchUrl}`);
+    try {
+        const response = await fetch(fetchUrl, {
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[queryTableland] Tableland query failed (status: ${response.status}) for SQL: ${sql}. Error: ${errorText}`);
+            throw new Error(`Tableland query failed: ${response.statusText} - ${errorText}`);
+        }
+        const data = await response.json();
+        console.log(`[queryTableland] Received ${data?.length ?? 0} items from Tableland for SQL: ${sql.substring(0,100)}...`);
+        return data;
+    } catch (error) {
+        console.error(`[queryTableland] Network or parsing error for SQL: ${sql}. Error:`, error);
+        throw error; // Re-throw to be caught by caller
+    }
+}
+// --- End Tableland Query Helper ---
+
 // Define and EXPORT DeckInfoForFiltering
 export interface DeckInfoForFiltering {
   id: string; 
@@ -105,6 +145,7 @@ export interface DeckInfoForFiltering {
   cardCount: number;
   sourceLanguage: string | null;
   targetLanguage: string | null;
+  pathIdentifier: string;
 }
 
 // Define and EXPORT BackgroundProtocolMap
@@ -684,7 +725,7 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
     // --- fetchAvailableDeckFiles Implementation ---
     console.log('[Message Handlers Register] >>> BEFORE registering fetchAvailableDeckFiles handler.');
     messaging.onMessage('fetchAvailableDeckFiles', async () => {
-        console.log('[Message Handlers] fetchAvailableDeckFiles HANDLER EXECUTED');
+        console.log('[Message Handlers] fetchAvailableDeckFiles HANDLER EXECUTED (Tableland version)');
         try {
             const config = await userConfigurationStorage.getValue();
             const nativeLang = config?.nativeLanguage;
@@ -697,53 +738,72 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
                 return { success: false, error: 'User languages not configured.', decks: [] };
             }
 
-            const availableDecks: DeckInfoForFiltering[] = [];
+            // Query 1: Get deck metadata matching user languages
+            // IMPORTANT: Ensure SUPERCOACH_DECKS_METADATA_TABLE_NAME_PLACEHOLDER is correctly set.
+            // Assuming 'id' is the primary key of the decks table, and 'deck_slug' is the unique human-readable ID.
+            const decksMetadataSql = `
+                SELECT
+                    id as tableland_deck_pk,
+                    deck_slug,
+                    name,
+                    description,
+                    front_language,
+                    back_language
+                FROM
+                    ${SUPERCOACH_DECKS_METADATA_TABLE_NAME_PLACEHOLDER}
+                WHERE
+                    (front_language = '${nativeLang}' AND back_language = '${targetLang}')
+                    OR (front_language = '${targetLang}' AND back_language = '${nativeLang}')
+            `;
+            const decksMetadata = await queryTableland(decksMetadataSql);
 
-            // Define known decks and their paths
-            const knownDeckFiles = [
-                { identifier: 'programming_vi_en', path: 'decks/vi/programming_vi_en.json' },
-                { identifier: 'travel_vi_en', path: 'decks/vi/travel_vi_en.json' },
-                { identifier: 'common_en_zh', path: 'decks/en/common_en_zh.json' }
-                // Add more decks here as they are created
-            ];
-
-            for (const deckFile of knownDeckFiles) {
-                console.log(`[Message Handlers fetchAvailableDeckFiles] Checking deck: ${deckFile.identifier} at path ${deckFile.path}`);
-                try {
-                    const deckUrl = browser.runtime.getURL(deckFile.path as any);
-                    const response = await fetch(deckUrl);
-                    if (!response.ok) {
-                        console.warn(`[Message Handlers fetchAvailableDeckFiles] Failed to fetch ${deckFile.path} (status: ${response.status}). Skipping.`);
-                        continue; // Skip this deck if file not found or error
-                    }
-                    const deckData = await response.json();
-
-                    // Validate basic structure
-                    if (deckData && deckData.deckId && deckData.name && deckData.terms && Array.isArray(deckData.terms) && deckData.deckSourceLanguage && deckData.deckTargetLanguage) {
-                        // Check if this deck matches user's configured languages
-                        if (deckData.deckSourceLanguage === nativeLang && deckData.deckTargetLanguage === targetLang) {
-                            const deckInfo: DeckInfoForFiltering = {
-                                id: deckData.deckId,
-                                name: deckData.name, // Will be displayed in UI
-                                description: deckData.description,
-                                cardCount: deckData.terms.length,
-                                sourceLanguage: deckData.deckSourceLanguage,
-                                targetLanguage: deckData.deckTargetLanguage
-                            };
-                            availableDecks.push(deckInfo);
-                            console.log(`[Message Handlers fetchAvailableDeckFiles] Added matching deck: ${deckData.deckId}`);
-                        } else {
-                            console.log(`[Message Handlers fetchAvailableDeckFiles] Deck ${deckData.deckId} language pair (${deckData.deckSourceLanguage}->${deckData.deckTargetLanguage}) does not match user config (${nativeLang}->${targetLang}). Skipping.`);
-                        }
-                    } else {
-                        console.warn(`[Message Handlers fetchAvailableDeckFiles] Invalid format for deck: ${deckFile.path}`, deckData);
-                    }
-                } catch (fetchError) {
-                    console.error(`[Message Handlers fetchAvailableDeckFiles] Error fetching or parsing deck ${deckFile.path}:`, fetchError);
-                }
+            if (!decksMetadata || decksMetadata.length === 0) {
+                console.log('[Message Handlers fetchAvailableDeckFiles] No decks found matching language criteria from Tableland.');
+                return { success: true, decks: [] };
             }
+            console.log(`[Message Handlers fetchAvailableDeckFiles] Found ${decksMetadata.length} deck(s) metadata from Tableland.`);
 
-            console.log(`[Message Handlers fetchAvailableDeckFiles] Returning ${availableDecks.length} decks matching user languages.`);
+            // Query 2: Get card counts for all decks
+            // deck_row_id in flashcards table should correspond to tableland_deck_pk (id) from decks metadata table
+            const cardCountsSql = `
+                SELECT
+                    deck_row_id,
+                    COUNT(*) as card_count
+                FROM
+                    ${TABLELAND_FLASHCARDS_TABLE_NAME}
+                GROUP BY
+                    deck_row_id
+            `;
+            const cardCountsData = await queryTableland(cardCountsSql);
+            const cardCountsMap = new Map<number, number>();
+            for (const row of cardCountsData) {
+                // Ensure deck_row_id and card_count are treated as numbers if they come as strings
+                cardCountsMap.set(Number(row.deck_row_id), Number(row.card_count));
+            }
+            console.log(`[Message Handlers fetchAvailableDeckFiles] Processed card counts for ${cardCountsMap.size} deck(s).`);
+
+
+            const availableDecks: DeckInfoForFiltering[] = decksMetadata.map(deck => {
+                const count = cardCountsMap.get(deck.tableland_deck_pk) || 0;
+                console.log(`[Message Handlers fetchAvailableDeckFiles] Deck: ${deck.deck_slug}, PK: ${deck.tableland_deck_pk}, Mapped Card Count: ${count}`);
+                return {
+                    id: deck.deck_slug, // Use deck_slug as the primary identifier for UI/internal logic
+                    name: deck.name,
+                    description: deck.description,
+                    cardCount: count,
+                    sourceLanguage: deck.front_language,
+                    targetLanguage: deck.back_language,
+                    pathIdentifier: deck.deck_slug // deck_slug is also the pathIdentifier
+                };
+            }).filter(deck => { // Additional filter if some decks somehow had 0 cards after join
+                if (deck.cardCount > 0) {
+                    return true;
+                }
+                console.warn(`[Message Handlers fetchAvailableDeckFiles] Filtering out deck ${deck.id} due to 0 card count post-processing.`);
+                return false;
+            });
+            
+            console.log(`[Message Handlers fetchAvailableDeckFiles] Returning ${availableDecks.length} decks after processing and filtering.`);
             return { success: true, decks: availableDecks };
 
         } catch (error) {
@@ -766,31 +826,28 @@ async function blobToDataURL(blob: Blob): Promise<string> {
 }
 
 // Helper to parse deck identifier for path construction (simple example)
+/* COMMENTING OUT - Replaced by Tableland fetching
 function getDeckPathFromIdentifier(identifier: string): string | null {
-    // Assuming identifier format like "deckName_sourceLang_targetLang"
-    // and files are at "decks/sourceLang/identifier.json"
-    // e.g., "programming_vi_en" -> "decks/vi/programming_vi_en.json"
+    const knownDeck = KNOWN_DECK_FILES.find(df => df.identifier === identifier);
+    if (knownDeck) {
+        return knownDeck.path;
+    }
+    console.warn(`[getDeckPathFromIdentifier] Identifier ${identifier} not found in KNOWN_DECK_FILES.`);
+    // Fallback logic (original, might be removed if not needed)
     const parts = identifier.split('_');
-    if (parts.length < 2) { // Needs at least name_sourceLang
-        console.warn(`[getDeckPathFromIdentifier] Could not parse source language from identifier: ${identifier}`);
-        // Fallback or more robust parsing needed if format varies
-        // For now, let's try a direct approach if the example "programming_vi_en" is typical
-        if (identifier === 'programming_vi_en') {
-            return 'decks/vi/programming_vi_en.json';
-        }
-        // Add more specific cases or a more general parsing rule
+    if (parts.length < 2) { 
+        console.warn(`[getDeckPathFromIdentifier] Could not parse source language from identifier via fallback: ${identifier}`);
         return null; 
     }
-    // This is a simplified example; robust parsing would be needed for various formats.
-    // For "programming_vi_en", parts[1] would be "vi".
-    const sourceLang = parts[parts.length - 2]; // Assumes sourceLang is second to last
-    return `decks/${sourceLang}/${identifier}.json`;
+    const sourceLang = parts[parts.length - 2]; 
+    return `decks/${sourceLang}/${identifier}.json`; // This fallback is likely incorrect for current structure
 }
+*/
 
 // --- Add Deck Handler ---
 async function handleAddLearningDeck(message: { data: { deckIdentifier: string } }): Promise<{ success: boolean, error?: string }> {
-    const { deckIdentifier } = message.data;
-    console.log(`[Message Handlers] Received addLearningDeck request for identifier: ${deckIdentifier}`);
+    const { deckIdentifier } = message.data; // This is the deck_slug (e.g., kaishi-1-5k-en-ja-1)
+    console.log(`[Message Handlers addLearningDeck] Received request for deck_slug: ${deckIdentifier} (Tableland version)`);
 
     try {
         const db = await getDbInstance();
@@ -799,33 +856,69 @@ async function handleAddLearningDeck(message: { data: { deckIdentifier: string }
             return { success: false, error: 'Database not initialized.' };
         }
 
-        // 1. Construct path and fetch deck data from JSON
-        const deckJsonPath = getDeckPathFromIdentifier(deckIdentifier);
-        if (!deckJsonPath) {
-            console.error(`[Message Handlers addLearningDeck] Could not determine JSON path for identifier: ${deckIdentifier}`);
-            return { success: false, error: `Could not determine JSON path for deck: ${deckIdentifier}` };
-        }
-        console.log(`[Message Handlers addLearningDeck] Attempting to fetch deck from JSON: ${deckJsonPath}`);
-        
-        let deckData;
-        try {
-            const deckUrl = browser.runtime.getURL(deckJsonPath as any); // Use 'as any' if WXT types are too strict
-            const response = await fetch(deckUrl);
-            if (!response.ok) {
-                throw new Error(`Failed to fetch ${deckJsonPath} (status: ${response.status}): ${response.statusText}`);
-            }
-            deckData = await response.json();
-            if (!deckData || !deckData.deckId || !deckData.terms || !Array.isArray(deckData.terms)) {
-                console.error(`[Message Handlers addLearningDeck] Invalid deck data format in ${deckJsonPath}:`, deckData);
-                return { success: false, error: `Invalid deck data format in ${deckJsonPath}` };
-            }
-            console.log(`[Message Handlers addLearningDeck] Successfully fetched and parsed deck JSON: ${deckData.deckId}`);
-        } catch (fetchError: any) {
-            console.error(`[Message Handlers addLearningDeck] Error fetching or parsing deck JSON ${deckJsonPath}:`, fetchError);
-            return { success: false, error: `Error fetching deck file: ${fetchError.message}` };
-        }
+        // 1. Fetch Deck Metadata from Tableland using deck_slug
+        // IMPORTANT: Ensure SUPERCOACH_DECKS_METADATA_TABLE_NAME_PLACEHOLDER is correctly set.
+        const deckMetadataSql = `
+            SELECT
+                id as tableland_deck_pk,
+                name,
+                description,
+                front_language,
+                back_language
+            FROM
+                ${SUPERCOACH_DECKS_METADATA_TABLE_NAME_PLACEHOLDER}
+            WHERE
+                deck_slug = '${deckIdentifier}'
+            LIMIT 1;
+        `;
+        const deckMetadataResult = await queryTableland(deckMetadataSql);
 
-        // Now, use the parsed deckData to populate DB tables
+        if (!deckMetadataResult || deckMetadataResult.length === 0) {
+            console.error(`[Message Handlers addLearningDeck] Could not find metadata for deck_slug: ${deckIdentifier} in Tableland.`);
+            return { success: false, error: `Deck with slug ${deckIdentifier} not found in Tableland.` };
+        }
+        const deckMetadata = deckMetadataResult[0];
+        const tablelandDeckPk = deckMetadata.tableland_deck_pk; // This is the 'id' from the decks metadata table
+        console.log(`[Message Handlers addLearningDeck] Fetched metadata for ${deckIdentifier}, Tableland PK: ${tablelandDeckPk}`);
+
+        // 2. Fetch Deck Terms (Flashcards) from Tableland
+        // deck_row_id in flashcards table should correspond to tableland_deck_pk (id) from decks metadata table
+        const deckTermsSql = `
+            SELECT
+                front_text,
+                back_text,
+                front_phonetic_guide,
+                back_phonetic_guide
+            FROM
+                ${TABLELAND_FLASHCARDS_TABLE_NAME}
+            WHERE
+                deck_row_id = ${tablelandDeckPk};
+        `;
+        const fetchedTerms = await queryTableland(deckTermsSql);
+
+        if (!fetchedTerms || fetchedTerms.length === 0) {
+            console.warn(`[Message Handlers addLearningDeck] No terms found in Tableland for deck_slug: ${deckIdentifier} (Tableland PK: ${tablelandDeckPk}). Proceeding to add deck info if not already present.`);
+            // Still might want to add the deck to the local 'decks' table even if it has no terms yet.
+        }
+        console.log(`[Message Handlers addLearningDeck] Fetched ${fetchedTerms.length} terms for ${deckIdentifier} from Tableland.`);
+        
+        // Prepare deckData structure similar to what was loaded from JSON
+        const deckData = {
+            deckId: deckIdentifier, // Using deck_slug as the primary identifier for local 'decks' table
+            name: deckMetadata.name,
+            description: deckMetadata.description,
+            deckSourceLanguage: deckMetadata.front_language,
+            deckTargetLanguage: deckMetadata.back_language,
+            terms: fetchedTerms.map((term: any) => ({
+                source: term.front_text,
+                target: term.back_text,
+                source_phonetic: term.front_phonetic_guide, // Assuming local schema might use these
+                target_phonetic: term.back_phonetic_guide
+                // Map other fields like 'notes', 'attributes' if needed
+            }))
+        };
+
+        // Now, use the parsed deckData to populate DB tables (existing logic)
         await (db as PGlite).transaction(async (t: Transaction) => {
             // 2a. Insert/Update Deck Information in 'decks' table
             const deckUpsertQuery = `
@@ -839,7 +932,7 @@ async function handleAddLearningDeck(message: { data: { deckIdentifier: string }
                 RETURNING deck_id;
             `;
             const deckResult = await t.query<{ deck_id: number }>(deckUpsertQuery, [
-                deckData.deckId, // This is the identifier like "programming_vi_en"
+                deckData.deckId, // This is the deck_slug
                 deckData.name,
                 deckData.description,
                 deckData.deckSourceLanguage,
@@ -937,6 +1030,10 @@ async function handleAddLearningDeck(message: { data: { deckIdentifier: string }
         return { success: true };
     } catch (error: any) {
         console.error('[Message Handlers addLearningDeck] Error handling addLearningDeck:', error);
+        // Add more specific error reporting if it's a Tableland query error vs. local DB error
+        if (error.message.startsWith('Tableland query failed')) {
+             return { success: false, error: `Failed to fetch deck data from Tableland: ${error.message}` };
+        }
         return { success: false, error: error.message || 'Failed to add learning deck.' };
     }
 }

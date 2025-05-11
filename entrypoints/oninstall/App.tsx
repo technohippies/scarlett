@@ -30,6 +30,7 @@ import { DEFAULT_ELEVENLABS_VOICE_ID, DEFAULT_ELEVENLABS_MODEL_ID } from '../../
 // --- Import messaging types and function ---
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import type { BackgroundProtocolMap } from '../../src/background/handlers/message-handlers'; // Import the protocol map
+import type { DeckInfoForFiltering } from '../../src/background/handlers/message-handlers'; // Corrected import path
 
 // --- Define messaging for the frontend context --- 
 // Use the same protocol map as the background
@@ -438,9 +439,11 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
             setRecommendedDecks([]); // Or show all, or show an error
           } else {
             console.log(`[App] Filtering decks for native: ${nativeLang}, target: ${targetLang}`);
-            const filtered = response.decks.filter((deck: any) => {
-              // Ensure deck has sourceLanguage and targetLanguage properties
-              return deck.sourceLanguage === nativeLang && deck.targetLanguage === targetLang;
+            const filtered = response.decks.filter((deck: DeckInfoForFiltering) => { // Use DeckInfoForFiltering type
+              // Check for both direct and reverse match
+              const directMatch = deck.sourceLanguage === nativeLang && deck.targetLanguage === targetLang;
+              const reverseMatch = deck.sourceLanguage === targetLang && deck.targetLanguage === nativeLang;
+              return directMatch || reverseMatch;
             });
             console.log(`[App] Found ${filtered.length} recommended decks:`, filtered);
             setRecommendedDecks(filtered);
@@ -853,7 +856,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
               {i18n().get('onboardingDeckSelectionTitle', 'Choose Your Starter Decks')}
             </p>
             <p class="text-lg text-muted-foreground mb-6">
-              {i18n().get('onboardingDeckSelectionDescription', 'Select some decks to get started. We recommend these based on your languages and learning goal.')}
+              {i18n().get('onboardingDeckSelectionDescription', 'Select some decks to start learning!')}
             </p>
             <DeckSelectionPanel
               availableDecks={recommendedDecks} // Pass the filtered list

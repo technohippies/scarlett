@@ -77,7 +77,7 @@ export const MCQ: Component<MCQProps> = (props) => {
             {(option) => (
               <Button
                 variant={selectedOptionId() === option.id ? "secondary" : "outline"}
-                class="w-full justify-start h-14 text-lg pl-4"
+                class={`w-full justify-start h-14 text-lg pl-4 ${selectedOptionId() === option.id ? 'border border-secondary' : ''}`}
                 onClick={() => handleOptionClick(option.id)}
                 disabled={showFeedback()}
               >
