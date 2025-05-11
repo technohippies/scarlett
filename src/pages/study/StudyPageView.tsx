@@ -19,7 +19,7 @@ export interface StudyPageViewProps {
 export const StudyPageView: Component<StudyPageViewProps> = (props) => {
   return (
     <div class="study-page-container flex flex-col font-sans bg-background min-h-screen">
-      <Header title="" onBackClick={props.onNavigateBack} />
+      <Header onBackClick={props.onNavigateBack} />
 
       <div class="flex-grow flex flex-col items-center p-8 overflow-y-auto">
         {/* --- Loading / Error for Item Fetching --- */}
