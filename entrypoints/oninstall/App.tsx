@@ -623,8 +623,11 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       case 'learningGoal':
         setCurrentStep('language');
         break;
-      case 'setupLLM':
+      case 'deckSelection':
         setCurrentStep('learningGoal');
+        break;
+      case 'setupLLM':
+        setCurrentStep('deckSelection');
         break;
       case 'setupEmbedding':
         setCurrentStep('setupLLM'); 
