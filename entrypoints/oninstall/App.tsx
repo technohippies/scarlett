@@ -853,16 +853,19 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         return (
           <div class="w-full max-w-lg">
             <p class="text-xl md:text-2xl mb-2">
-              {i18n().get('onboardingDeckSelectionTitle', 'Choose Your Starter Decks')}
+              {i18n().get('deckSelectionPanelTitle', "Add Flashcards to Learn")}
             </p>
             <p class="text-lg text-muted-foreground mb-6">
-              {i18n().get('onboardingDeckSelectionDescription', 'Select some decks to start learning!')}
+              {i18n().get('deckSelectionPanelDescription', "Like Anki web, you can create, use, and share our community's flashcards.")}
             </p>
             <DeckSelectionPanel
               availableDecks={recommendedDecks} // Pass the filtered list
               isLoading={isLoadingDecks}
               onDeckToggle={handleDeckToggleInOnboarding}
               initiallySelectedDeckIds={selectedDeckIdentifiers}
+              // Pass messages and necessary fallbacks to DeckSelectionPanel
+              messages={messagesData() || {}}
+              fallbackNoDecks={i18n().get('deckSelectionPanelNoDecks', "No recommended decks available for this learning goal.")}
             />
           </div>
         );

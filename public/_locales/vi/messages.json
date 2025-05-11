@@ -166,5 +166,14 @@
   },
   "embeddingPanelButtonEmbed": {
     "message": "Nhúng"
+  },
+  "deckSelectionPanelTitle": {
+    "message": "Thêm Flashcards để học"
+  },
+  "deckSelectionPanelDescription": {
+    "message": "Giống như Anki web, bạn có thể tạo, sử dụng và chia sẻ flashcards của cộng đồng chúng ta."
+  },
+  "deckSelectionPanelNoDecks": {
+    "message": "Không có bộ thẻ đề xuất nào cho mục tiêu học tập này."
   }
 }

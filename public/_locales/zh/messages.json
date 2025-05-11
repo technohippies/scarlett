@@ -169,5 +169,14 @@
   },
   "embeddingPanelButtonEmbed": {
     "message": "嵌入"
+  },
+  "deckSelectionPanelTitle": {
+    "message": "添加学习卡片"
+  },
+  "deckSelectionPanelDescription": {
+    "message": "像 Anki Web 一样，您可以创建、使用和分享我们社区的学习卡片。"
+  },
+  "deckSelectionPanelNoDecks": {
+    "message": "该学习目标暂无推荐的卡组。"
   }
 } 

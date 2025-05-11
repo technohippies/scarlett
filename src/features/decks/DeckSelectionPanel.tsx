@@ -1,6 +1,7 @@
 import { Component, For, Accessor, Show } from 'solid-js';
 import { Switch, SwitchControl, SwitchThumb } from '../../components/ui/switch';
 import { Card, CardTitle, CardDescription } from '../../components/ui/card';
+import type { Messages } from '../../types/i18n'; // Import Messages type
 
 export interface DeckInfo {
   id: string; // The unique deck_identifier from the DB/JSON (e.g., welcometokaishi15k)
@@ -14,9 +15,16 @@ export interface DeckInfo {
 export interface DeckSelectionPanelProps {
   availableDecks: Accessor<DeckInfo[]>;
   onDeckToggle: (deckIdentifier: string, isEnabled: boolean) => void;
-  initiallySelectedDeckIds?: Accessor<string[]>; 
-  isLoading?: Accessor<boolean>; 
+  initiallySelectedDeckIds?: Accessor<string[]>;
+  isLoading?: Accessor<boolean>;
+  messages?: Messages; // Add messages prop
+  fallbackNoDecks?: string; // Fallback for no decks message
 }
+
+// Helper function to get translated string or fallback
+const getLocalizedString = (messages: Messages | undefined, key: string, fallback: string | undefined): string => {
+  return messages?.[key]?.message || fallback || key; // Return key if no message and no fallback
+};
 
 export const DeckSelectionPanel: Component<DeckSelectionPanelProps> = (props) => {
 
@@ -24,6 +32,8 @@ export const DeckSelectionPanel: Component<DeckSelectionPanelProps> = (props) =>
   const formatDeckName = (name: string): string => {
     return name.replace(/\s*\([^)]*->[^)]*\)\s*$/, '').trim();
   };
+
+  const noDecksMessage = () => getLocalizedString(props.messages, 'deckSelectionPanelNoDecks', props.fallbackNoDecks || "No recommended decks available for this learning goal.");
 
   return (
     <div class="w-full max-w-lg space-y-4">
@@ -60,7 +70,7 @@ export const DeckSelectionPanel: Component<DeckSelectionPanelProps> = (props) =>
           )}
         </For>
         <Show when={!props.isLoading && props.availableDecks()?.length === 0}>
-            <p class="text-muted-foreground text-center py-4">No recommended decks available for this learning goal.</p>
+            <p class="text-muted-foreground text-center py-4">{noDecksMessage()}</p>
         </Show>
       </Show>
     </div>
