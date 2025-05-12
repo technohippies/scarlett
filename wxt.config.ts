@@ -9,6 +9,7 @@ export default defineConfig({
   modules: [
     '@wxt-dev/module-solid',
     '@wxt-dev/unocss', // Add this
+    '@wxt-dev/auto-icons', // Keep this module listed
   ],
   vite: () => ({ // Keep vite as a function
     plugins: [
@@ -35,12 +36,6 @@ export default defineConfig({
     // Define the browser action (popup) (can be omitted if defined in entrypoints above)
     action: {
       default_popup: "popup.html", // Points to the entrypoint
-      default_icon: { // Define the icon sizes here
-        16: "/icon/16.png",
-        32: "/icon/32.png",
-        48: "/icon/48.png",
-        128: "/icon/128.png"
-      },
       default_title: "Scarlett Supercoach"
     },
     permissions: [
