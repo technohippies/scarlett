@@ -16,8 +16,8 @@ export async function setupContextMenu(): Promise<void> {
 
       await browser.contextMenus.create({
         id: CONTEXT_MENU_ID,
-        title: "Process Selection with Scarlett", // Updated title
-        contexts: ["selection"], // Only makes sense for selection
+        title: "Translate with Scarlett", 
+        contexts: ["selection"], 
       });
       console.log('[Context Menu Setup] Context menu created successfully.');
     } catch (menuError) {

@@ -263,145 +263,218 @@ export default defineContentScript({
         // --- END NEW Widget Management ---
 
         const getHighlightTargetElement = (): HTMLElement => {
+            // --- RETAINED: More specific content selectors ---
             const selectors = [
-                'article',
-                '.post-content',
-                '.entry-content',
-                '#main-content',
-                '#content',
-                'main',
+                'article',              // General article tag
+                '.mw-parser-output',    // Wikipedia main content area
+                '.post-content',        // Common blog post content class
+                '.entry-content',       // Another common blog content class
+                '.article-body',        // Common news article body class
+                '#main-content',        // Common main content ID
+                '#content',             // Common content ID
+                'main',                 // General main tag
+                '.page-content',        // Another possible content class
+                '.prose',               // Tailwind prose class often used for articles
             ];
+            // --- END RETAINED ---
             for (const selector of selectors) {
                 const element = document.querySelector(selector) as HTMLElement | null;
-                if (element && element.textContent && element.textContent.trim().length > 500) {
+                // --- ADDED: Check for reasonable text length ---
+                if (element && element.textContent && element.textContent.trim().length > 500) { 
                     console.log(`[Scarlett CS Highlight] Using target element: ${selector}`);
                     return element;
                 }
+                 // --- END ADDED ---
             }
             console.log('[Scarlett CS Highlight] No specific main content element found, falling back to document.body.');
             return document.body;
         };
 
+        // --- REFACTORED: Two-pass highlighting ---
+        interface ReplacementInfo {
+            node: Text;
+            start: number;
+            end: number;
+            wordInfo: LearningWordData;
+            foundAs: 'source' | 'translated';
+            originalPart: string; // Store the exact text found (case preserved)
+        }
+
         const highlightLearningWordsOnPage = (learningWords: LearningWordData[]) => {
-            if (learningWords.length === 0) {
-                console.log('[Scarlett CS] No learning words provided to replace/highlight.');
+            if (!learningWords || learningWords.length === 0) {
+                console.log('[Scarlett CS] No learning words provided for highlighting.');
                 return;
             }
 
-            // Only create map for translated text (e.g., English words)
-            // const sourceTextMap = new Map<string, LearningWordData>();
+            const sourceTextMap = new Map<string, LearningWordData>();
             const translatedTextMap = new Map<string, LearningWordData>();
+            const replacementsMade = new Map<string, number>(); // Track counts per word
 
-            learningWords.forEach(wordData => {
-                // if (wordData.sourceText && !wordData.sourceText.includes(' ')) { // Only single words for now
-                //     sourceTextMap.set(wordData.sourceText.toLowerCase(), wordData);
-                // }
-                if (wordData.translatedText && !wordData.translatedText.includes(' ')) { // Only single words
-                    // Basic check: Assume translatedText is unique for simplicity. Might need refinement.
-                    translatedTextMap.set(wordData.translatedText.toLowerCase(), wordData);
+            learningWords.forEach(word => {
+                sourceTextMap.set(word.sourceText.toLowerCase(), word);
+                if (word.translatedText) {
+                    translatedTextMap.set(word.translatedText.toLowerCase(), word);
                 }
             });
 
-            // if (sourceTextMap.size === 0 && translatedTextMap.size === 0) {
-            if (translatedTextMap.size === 0) {
-                console.log('[Scarlett CS] No single translated learning words (e.g., English) to search for highlighting.');
-                return;
-            }
-            // console.log('[Scarlett CS] Starting bi-directional highlight. Source map size:', sourceTextMap.size, 'Translated map size:', translatedTextMap.size);
-            console.log('[Scarlett CS] Starting translated word highlight. Map size:', translatedTextMap.size);
+            console.log('[Scarlett CS] Starting highlight. Source map size:', sourceTextMap.size, 'Translated map size:', translatedTextMap.size);
 
             const targetElement = getHighlightTargetElement();
-            
-            const replacementCounts = new Map<string, number>(); // Track replacements per unique original word (source or translated)
-            const MAX_REPLACEMENTS_PER_WORD = 1; // Limit how many times each unique underlying word is highlighted
+            console.log('[Scarlett CS Highlight] Using target element:', targetElement.tagName + (targetElement.id ? `#${targetElement.id}` : '') + (targetElement.className ? `.${targetElement.className.split(' ').join('.')}`: ''));
 
-            const walker = document.createTreeWalker(targetElement, NodeFilter.SHOW_TEXT, {
-                acceptNode: (node: Node) => {
-                    const parent = node.parentElement;
-                    if (parent) {
-                        const tagName = parent.tagName.toUpperCase();
-                        if (tagName === 'SCRIPT' || tagName === 'STYLE' || tagName === 'NOSCRIPT' || parent.isContentEditable) {
+            const walker = document.createTreeWalker(
+                targetElement,
+                NodeFilter.SHOW_TEXT,
+                {
+                    acceptNode: (node: Node) => {
+                        // Skip nodes within script/style/already highlighted elements
+                        if (node.parentElement?.closest('script, style, .scarlett-learning-highlight, .scarlett-translator-widget, .scarlett-lw-widget') || !node.nodeValue?.trim()) {
                             return NodeFilter.FILTER_REJECT;
                         }
-                        if (parent.classList.contains('scarlett-learning-tooltip') || parent.classList.contains('scarlett-learning-highlight')) {
-                            return NodeFilter.FILTER_REJECT;
-                        }
-                        let ancestor = parent;
-                        while(ancestor && ancestor !== document.body && ancestor !== targetElement ){
-                            if(ancestor.classList.contains('scarlett-learning-highlight')){
-                                return NodeFilter.FILTER_REJECT;
-                            }
-                            ancestor = ancestor.parentElement as HTMLElement;
-                        }
-                    }
-                    if (node.nodeValue && node.nodeValue.trim().length > 0) {
                         return NodeFilter.FILTER_ACCEPT;
                     }
-                    return NodeFilter.FILTER_REJECT;
+                },
+                // false // Types seem wrong here, TS expects NodeFilter | null, not boolean
+            );
+
+            const replacementsToMake: ReplacementInfo[] = [];
+            const wordRegex = /(\b[a-zA-Z'-]+(?:\s+[a-zA-Z'-]+)*\b)|([\u4e00-\u9fff]+)|([^\s\w]+)/g; // More robust regex for words and CJK characters + punctuation
+
+
+            // --- Pass 1: Collect replacements ---
+            let currentNode: Node | null;
+            while (currentNode = walker.nextNode()) {
+                const textNode = currentNode as Text;
+                const textContent = textNode.nodeValue || '';
+                let match;
+                let currentIndex = 0; // Keep track of position within the nodeValue
+
+                 // Reset regex lastIndex for each new node
+                wordRegex.lastIndex = 0; 
+
+                while ((match = wordRegex.exec(textContent)) !== null) {
+                    const part = match[0]; // The matched text (word, CJK, or punctuation)
+                    const start = match.index;
+                    const end = start + part.length;
+                    const lowerCasePart = part.toLowerCase();
+
+                    let wordInfo: LearningWordData | undefined;
+                    let foundAs: 'source' | 'translated' | null = null;
+
+                    if (sourceTextMap.has(lowerCasePart)) {
+                        wordInfo = sourceTextMap.get(lowerCasePart);
+                        foundAs = 'source';
+                    } else if (translatedTextMap.has(lowerCasePart)) { // Also check for translated words if needed
+                        wordInfo = translatedTextMap.get(lowerCasePart);
+                        foundAs = 'translated';
+                    }
+
+                    if (wordInfo && foundAs) {
+                        replacementsToMake.push({
+                            node: textNode,
+                            start: start,
+                            end: end,
+                            wordInfo: wordInfo,
+                            foundAs: foundAs,
+                            originalPart: part // Store the original case
+                        });
+                    }
+                }
+            }
+
+            // --- Pass 2: Apply replacements in reverse ---
+            console.log(`[Scarlett CS Highlight] Found ${replacementsToMake.length} potential highlight locations.`);
+            // Sort in reverse order of start index within the *same node* primarily,
+            // then by node order (though node order shouldn't matter much if indices are correct)
+            replacementsToMake.sort((a, b) => {
+                 if (a.node === b.node) {
+                    return b.start - a.start; // Reverse order within the same node
+                 }
+                 // For different nodes, DOM order comparison is complex.
+                 // Reverse start order is generally safe enough if nodes aren't nested weirdly.
+                 // A more robust comparison (compareDocumentPosition) might be needed if issues persist.
+                 const position = a.node.compareDocumentPosition(b.node);
+                 if (position & Node.DOCUMENT_POSITION_FOLLOWING) {
+                     return 1; // a follows b
+                 } else if (position & Node.DOCUMENT_POSITION_PRECEDING) {
+                     return -1; // a precedes b
+                 }
+                 return 0; // Same node (should be handled above, but fallback)
+            }).reverse(); // Apply replacements from end of document backwards
+
+
+            // Now apply the changes
+            replacementsToMake.forEach(replacement => {
+                const { node, start, end, wordInfo, foundAs, originalPart } = replacement;
+
+                // Check if node still exists and has a parent (it might have been removed/replaced)
+                if (!node.parentNode || !document.contains(node)) {
+                    console.warn('[Scarlett CS Highlight] Skipping replacement as node is no longer in DOM:', node.nodeValue?.substring(0, 30));
+                    return;
+                }
+                // Also check if the expected text is still there
+                 if (node.nodeValue?.substring(start, end) !== originalPart) {
+                    console.warn(`[Scarlett CS Highlight] Skipping replacement as text content mismatch. Expected: "${originalPart}", Found: "${node.nodeValue?.substring(start, end)}" at [${start}-${end}] in node:`, node.nodeValue?.substring(0, 50));
+                    return;
+                 }
+
+
+                try {
+                    const range = document.createRange();
+                    range.setStart(node, start);
+                    range.setEnd(node, end);
+
+                    const span = document.createElement('span');
+                    span.className = 'scarlett-learning-highlight';
+
+                    // Store original word (what was actually on the page)
+                    span.dataset.originalWordDisplay = originalPart;
+
+                    if (foundAs === 'source') {
+                        // Found source word (e.g., "tea"), display translated (e.g., "茶")
+                        span.textContent = wordInfo.translatedText || originalPart; // Fallback to original if no translation
+                        span.dataset.translatedWord = wordInfo.translatedText || '';
+                        span.dataset.sourceLang = wordInfo.sourceLang;
+                        span.dataset.targetLang = wordInfo.targetLang;
+                        span.dataset.originalWord = wordInfo.sourceText; // The 'dictionary' word
+                    } else { // foundAs === 'translated'
+                        // Found target word (e.g., "茶"), display source (e.g., "tea")
+                        span.textContent = wordInfo.sourceText;
+                        span.dataset.translatedWord = wordInfo.translatedText || ''; // Store original translated word
+                        span.dataset.sourceLang = wordInfo.sourceLang;
+                        span.dataset.targetLang = wordInfo.targetLang;
+                        span.dataset.originalWord = wordInfo.translatedText || ''; // The 'dictionary' word (which was the target lang)
+                    }
+
+                    // Add event listeners directly here if needed, or rely on delegation
+                    span.addEventListener('click', (event) => {
+                        event.stopPropagation(); // Prevent page clicks if any
+                        showLearningWordWidget(span);
+                    });
+                     span.addEventListener('mouseenter', () => {
+                        // Optional: Could pre-fetch TTS or show minimal tooltip
+                    });
+                     span.addEventListener('mouseleave', () => {
+                        // Optional: Hide minimal tooltip if shown
+                    });
+
+
+                    range.deleteContents(); // Remove the original text
+                    range.insertNode(span); // Insert the styled span
+
+                    // Update count
+                    const lowerCaseOriginal = wordInfo.sourceText.toLowerCase(); // Count based on dictionary word
+                    replacementsMade.set(lowerCaseOriginal, (replacementsMade.get(lowerCaseOriginal) || 0) + 1);
+
+                } catch (error) {
+                    console.error('[Scarlett CS Highlight] Error applying replacement:', error, 'for word:', originalPart, 'Node:', node);
                 }
             });
 
-            const textNodesToModify: Text[] = [];
-            let currentNode;
-            while (currentNode = walker.nextNode()) {
-                textNodesToModify.push(currentNode as Text);
-            }
 
-            for (const textNode of textNodesToModify) {
-                const originalNodeText = textNode.nodeValue || '';
-                if (!originalNodeText.trim()) continue;
-
-                const parts = originalNodeText.split(/(\s+|[.,!?;:()"'\/<>[\]{}@#$%^&*~`+\-=|\\:]+)/g).filter(part => part.length > 0);
-                const fragment = document.createDocumentFragment();
-                let madeChangesToNode = false;
-
-                for (const part of parts) {
-                    const lowerCasePart = part.toLowerCase();
-                    let learningWordInfo: LearningWordData | undefined = undefined;
-                    // let foundByType: 'source' | 'translated' | null = null;
-                    let uniqueWordKeyForCounting = '';
-
-                    // Only check the translatedTextMap (e.g., English words)
-                    if (translatedTextMap.has(lowerCasePart)) {
-                        learningWordInfo = translatedTextMap.get(lowerCasePart);
-                        // foundByType = 'translated';
-                        uniqueWordKeyForCounting = learningWordInfo!.translatedText.toLowerCase(); // Use original translated text for counting
-                    }
-
-                    // if (learningWordInfo && foundByType) {
-                    if (learningWordInfo) { // Only proceed if found in translated map
-                        const currentCount = replacementCounts.get(uniqueWordKeyForCounting) || 0;
-
-                        if (currentCount < MAX_REPLACEMENTS_PER_WORD) {
-                            const span = document.createElement('span');
-                            span.className = 'scarlett-learning-highlight';
-                            
-                            // Always display the source text (e.g., Japanese) when the translated text is found
-                            span.textContent = learningWordInfo.sourceText;
-                            span.dataset.originalWordDisplay = part; // The word found on page (translated English)
-                            span.dataset.translatedWord = learningWordInfo.sourceText; // Its counterpart (Japanese)
-                            // Set dataset langs relative to the found word (English -> Japanese)
-                            span.dataset.sourceLang = learningWordInfo.targetLang; // e.g., 'en'
-                            span.dataset.targetLang = learningWordInfo.sourceLang; // e.g., 'ja'
-                            span.dataset.originalWord = learningWordInfo.translatedText; // The "dictionary" source (the English word)
-                            
-                            fragment.appendChild(span);
-                            madeChangesToNode = true;
-                            replacementCounts.set(uniqueWordKeyForCounting, currentCount + 1);
-                        } else {
-                            fragment.appendChild(document.createTextNode(part));
-                        }
-                    } else {
-                        fragment.appendChild(document.createTextNode(part));
-                    }
-                }
-
-                if (madeChangesToNode && textNode.parentNode) {
-                    textNode.parentNode.replaceChild(fragment, textNode);
-                }
-            }
-            console.log('[Scarlett CS] Finished replacing/highlighting learning words.', replacementCounts);
+            console.log('[Scarlett CS] Finished replacing/highlighting learning words.', replacementsMade);
         };
+        // --- END REFACTORED ---
 
         const fetchAndHighlightLearningWords = async () => {
             console.log('[Scarlett CS] Requesting active learning words from background...');
