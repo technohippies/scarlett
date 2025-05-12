@@ -21,9 +21,6 @@ export default {
     isAlreadyBookmarked: { control: 'boolean' },
     initialBookmarkExists: { control: 'boolean' },
     initialTags: { control: 'object' }, // Use object control for array
-    suggestedTags: { control: 'object' },
-    isSuggestingTags: { control: 'boolean' },
-    tagSuggestionError: { control: 'text' },
     initialSelectedText: { control: 'text' },
     // Actions - map them to Storybook actions
     onTagsChange: { action: 'tagsChanged' },
@@ -40,9 +37,6 @@ export default {
     isAlreadyBookmarked: false,
     initialBookmarkExists: false,
     initialTags: ['#example', '#solidjs'],
-    suggestedTags: [],
-    isSuggestingTags: false,
-    tagSuggestionError: null,
     initialSelectedText: 'This is some example text selected from the page.',
     // Use Storybook's action handler
     onTagsChange: action('tagsChanged'),
@@ -71,15 +65,6 @@ export const AlreadyBookmarked = {
     initialBookmarkExists: true, // Match the button logic
     status: 'This page is already bookmarked.',
     initialTags: ['#example', '#solidjs', '#saved'],
-  },
-};
-
-// Story with tag suggestions loading
-export const SuggestingTags = {
-  args: {
-    isSuggestingTags: true,
-    initialTags: [], // Start with no tags
-    status: 'Suggesting tags...',
   },
 };
 
@@ -143,7 +128,8 @@ export const InteractiveTagMerging = {
           }}
           style={{ "margin-top": "10px" }}
         >
-          Simulate Suggestion Load
+          {/* Button removed as suggestions are gone */}
+          {/* Simulate Suggestion Load */}
         </Button>
       </div>
     );
@@ -151,6 +137,5 @@ export const InteractiveTagMerging = {
   args: {
     // Override default args specific to this interactive story
     initialTags: ['#initial'],
-    suggestedTags: [], // Suggestions will be triggered by button
   },
 };

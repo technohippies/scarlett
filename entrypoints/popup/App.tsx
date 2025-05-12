@@ -1,8 +1,8 @@
 import { Component, createSignal, createEffect, Show } from 'solid-js';
 import { BookmarkTool } from '../../src/features/bookmark/BookmarkTool';
 import { defineExtensionMessaging } from '@webext-core/messaging';
-import type { Bookmark, Tag } from '../../src/services/db/types';
-import type { TagSuggestResponse, SaveBookmarkResponse } from '../../src/shared/messaging-types';
+import type { Bookmark } from '../../src/services/db/types';
+import type { SaveBookmarkResponse } from '../../src/shared/messaging-types';
 import type { InitialData } from './main';
 import { Spinner } from '../../src/components/ui/spinner';
 
@@ -33,13 +33,6 @@ const App: Component<AppProps> = (props) => {
   const [selectedTags, setSelectedTags] = createSignal<string[]>([]);
   const [currentSelectedText, setCurrentSelectedText] = createSignal(initialSelectedText());
 
-  // State for tag suggestions
-  const [suggestedTags, setSuggestedTags] = createSignal<string[]>([]);
-  const [isSuggestingTags, setIsSuggestingTags] = createSignal(false);
-  const [tagSuggestionError, setTagSuggestionError] = createSignal<string | null>(null);
-  // Add signal to track suggestion attempt
-  const [suggestionsAttempted, setSuggestionsAttempted] = createSignal(false);
-
   // --- Effects ---
 
   // Effect to check if the page is already bookmarked initially or after saving
@@ -54,59 +47,6 @@ const App: Component<AppProps> = (props) => {
         const existingBookmark = bookmarks().find(bm => bm.url === currentUrl);
         if (existingBookmark?.tags) {
           setSelectedTags(existingBookmark.tags.split(',').map((t: string) => t.trim()).filter(Boolean));
-        }
-      }
-    }
-  });
-
-  // Effect to trigger tag suggestions
-  createEffect(async () => {
-    const title = pageTitle();
-    const url = pageUrl();
-    const contextContent = currentSelectedText();
-
-    // Add !suggestionsAttempted() to condition
-    if (title && url && !isSuggestingTags() && suggestedTags().length === 0 && !isAlreadyBookmarked() && !suggestionsAttempted()) {
-      console.log('[Popup App Effect] Triggering tag suggestions (first attempt)...');
-      // Set attempt flag immediately
-      setSuggestionsAttempted(true);
-      setIsSuggestingTags(true);
-      setTagSuggestionError(null);
-      setStatusIsError(false);
-      setStatus('Suggesting tags...'); // Give user feedback
-
-      try {
-        const response = await messaging.sendMessage('tag:suggest', {
-          title: title,
-          url: url,
-          pageContent: contextContent
-        });
-        const typedResponse = response as TagSuggestResponse;
-        console.log('[Popup App Effect] Received tag:suggest response:', typedResponse);
-
-        if (typedResponse?.success && typedResponse.suggestions) {
-          setSuggestedTags(typedResponse.suggestions);
-          // Automatically merge suggestions into selected tags
-          setSelectedTags(current => Array.from(new Set([...current, ...(typedResponse.suggestions ?? [])])));
-          setStatus(''); // Clear status
-        } else {
-          const errMsg = typedResponse?.error || 'Failed to get tag suggestions.';
-          console.error('[Popup App Effect] Tag suggestion failed:', errMsg);
-          setTagSuggestionError(errMsg);
-          setStatus(`Suggestion Error: ${errMsg.substring(0, 100)}`); // Show truncated error
-          setStatusIsError(true);
-        }
-      } catch (error: any) {
-        console.error('[Popup App Effect] Error sending tag:suggest message:', error);
-        const errMsg = error.message || 'Unknown error during tag suggestion.';
-        setTagSuggestionError(errMsg);
-        setStatus(`Suggestion Error: ${errMsg.substring(0, 100)}`);
-        setStatusIsError(true);
-      } finally {
-        setIsSuggestingTags(false);
-        // Clear status if it was just 'Suggesting tags...' and no error occurred
-        if (status() === 'Suggesting tags...' && !statusIsError()) {
-          setStatus('');
         }
       }
     }
@@ -228,9 +168,6 @@ const App: Component<AppProps> = (props) => {
           statusIsError={statusIsError()}
           isAlreadyBookmarked={isAlreadyBookmarked()}
           initialTags={selectedTags()}
-          suggestedTags={suggestedTags()}
-          isSuggestingTags={isSuggestingTags()}
-          tagSuggestionError={tagSuggestionError()}
           onTagsChange={handleSelectedTagsChange}
           initialSelectedText={initialSelectedText()}
           onSelectedTextChange={handleSelectedTextChange}

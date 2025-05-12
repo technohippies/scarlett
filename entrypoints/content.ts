@@ -33,6 +33,7 @@ import type {
     UpdateAlignmentPayload, // Payload from background with alignment
     ExtractMarkdownRequest, // Import new message type
     ExtractMarkdownResponse, // Import new message type
+    GetPageContentResponse, // <-- Import the response type
 } from '../src/shared/messaging-types.ts';
 
 // --- Messaging Setup --- 
@@ -45,6 +46,7 @@ interface ContentScriptProtocolMap {
     hideTranslationWidget(): void;
     requestSelectedText(): { success: boolean; text?: string | null }; // Response sent back
     extractMarkdownFromHtml(data: ExtractMarkdownRequest): Promise<ExtractMarkdownResponse>; // Add new handler
+    getPageContent(): Promise<GetPageContentResponse>; // Added this line
 }
 
 // Instance for LISTENING to messages FROM background (typed with CS protocol)
@@ -755,25 +757,56 @@ export default defineContentScript({
              await hideWidget();
         });
         
-        messageListener.onMessage('requestSelectedText', (_): { success: boolean; text?: string | null } => {
-            console.log('[Scarlett CS requestSelectedText] Received.');
+        messageListener.onMessage('requestSelectedText', () => {
+            console.log('[Scarlett CS] Received requestSelectedText request.');
             try {
-                const selection = window.getSelection();
-                const selectedText = selection ? selection.toString().trim() : null;
+                const selectedText = window.getSelection()?.toString();
+                console.log(`[Scarlett CS requestSelectedText] Selected text: "${selectedText?.substring(0, 50)}..."`);
                 return { success: true, text: selectedText };
-            } catch (error: any) {
-                return { success: false, text: null };
+            } catch (error) {
+                 console.error('[Scarlett CS requestSelectedText] Error getting selected text:', error);
+                 return { 
+                     success: false, 
+                     error: error instanceof Error ? error.message : 'Unknown error getting selected text.' 
+                 };
+            }
+        });
+        
+        messageListener.onMessage('extractMarkdownFromHtml', async ({ data }) => {
+            console.log(`[Scarlett CS] Received extractMarkdownFromHtml request (Base URL: ${data.baseUrl})`);
+            try {
+                // Provide window.location.href as fallback for baseUrl
+                const { markdown, title } = await extractReadableMarkdown(data.htmlContent, data.baseUrl || window.location.href);
+                console.log(`[Scarlett CS extractMarkdownFromHtml] Extraction complete. Markdown length: ${markdown?.length}, Title: ${title}`);
+                return { success: true, markdown: markdown || '', title: title || '' };
+            } catch (error) {
+                console.error('[Scarlett CS extractMarkdownFromHtml] Error extracting markdown:', error);
+                return { 
+                    success: false, 
+                    error: error instanceof Error ? error.message : 'Unknown error extracting markdown.',
+                    markdown: '',
+                    title: ''
+                };
             }
         });
 
-        messageListener.onMessage('extractMarkdownFromHtml', async (message): Promise<ExtractMarkdownResponse> => {
-            const { htmlContent, baseUrl } = message.data;
-            console.log('[Scarlett CS extractMarkdown] Received.');
+        messageListener.onMessage('getPageContent', async () => {
+            console.log('[Scarlett CS] Received getPageContent request.');
             try {
-                const result = await extractReadableMarkdown(htmlContent, baseUrl || ''); 
-                return { success: true, markdown: result.markdown, title: result.title };
-            } catch (error: any) {
-                return { success: false, error: error.message || 'Markdown extraction failed.'};
+                const htmlContent = document.documentElement.outerHTML;
+                if (!htmlContent) {
+                     console.warn('[Scarlett CS getPageContent] document.documentElement.outerHTML was empty.');
+                     return { success: false, error: 'Could not retrieve page HTML.' };
+                }
+                console.log(`[Scarlett CS getPageContent] Returning HTML content (length: ${htmlContent.length})`);
+                // Ensure structure matches GetPageContentResponse
+                return { success: true, htmlContent: htmlContent }; 
+            } catch (error) {
+                console.error('[Scarlett CS getPageContent] Error getting page HTML:', error);
+                return { 
+                    success: false, 
+                    error: error instanceof Error ? error.message : 'Unknown error retrieving page HTML.' 
+                };
             }
         });
 
