@@ -86,7 +86,7 @@ export interface UserConfiguration {
     janModel?: string;
     embeddingModelProvider?: LLMProviderId | 'none'; // Changed EmbeddingProviderType to LLMProviderId
     embeddingModelName?: string; // e.g., 'text-embedding-ada-002' for OpenAI, or local model name
-    lastMoodEntryDate?: string; // YYYY-MM-DD
+    lastMoodEntryDate?: string | null; // YYYY-MM-DD -- Allow null
 
     // Added missing properties
     redirectSettings?: RedirectSettings;

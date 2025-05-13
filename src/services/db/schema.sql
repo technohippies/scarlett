@@ -212,6 +212,17 @@ CREATE INDEX IF NOT EXISTS idx_translation_decks_translation_id ON translation_d
 
 -- --- END Deck Organization Tables ---
 
+-- --- Mood Entry Table ---
+CREATE TABLE IF NOT EXISTS mood_entries (
+    id SERIAL PRIMARY KEY,
+    mood TEXT NOT NULL,
+    entry_date TEXT NOT NULL, -- Format YYYY-MM-DD
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- Changed DATETIME to TIMESTAMP
+    UNIQUE(entry_date) -- Optional: If only one mood entry per day is allowed.
+);
+CREATE INDEX IF NOT EXISTS idx_mood_entries_entry_date ON mood_entries(entry_date);
+-- --- END Mood Entry Table ---
+
 -- --- RAG / Page History Tables --- 
 
 -- Drop OLD visited_pages table if it exists to ensure clean migration
@@ -263,9 +274,11 @@ CREATE INDEX IF NOT EXISTS idx_page_versions_summary_hash ON page_versions (summ
 
 -- --- END RAG / Page History Tables ---
 
--- NEW: Table for storing daily mood selections
+-- NEW: Table for storing daily mood selections (COMMENTED OUT as mood_entries is being used)
+/*
 CREATE TABLE IF NOT EXISTS daily_moods (
     date TEXT PRIMARY KEY NOT NULL,      -- Date in YYYY-MM-DD format
     mood TEXT NOT NULL CHECK(mood IN ('happy', 'slightly-happy', 'neutral', 'slightly-frowning', 'sad')),
     selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP -- When the mood was selected
 );
+*/

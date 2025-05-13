@@ -46,7 +46,7 @@ export const MoodSelector: Component<MoodSelectorProps> = (props) => {
   // We need to ensure lottie files are in the public folder, e.g., public/lottie/happy.json
 
   return (
-    <div class={`flex items-center space-x-4 p-4 bg-gray-100 rounded-md ${props.class ?? ''}`}>
+    <div class={`flex items-center space-x-2 p-4 bg-gray-100 rounded-md ${props.class ?? ''}`}>
       <For each={moodOptions}>
         {(option) => {
           const isSelected = () => selectedMood() === option.mood;
@@ -61,12 +61,18 @@ export const MoodSelector: Component<MoodSelectorProps> = (props) => {
               aria-label={`Select ${option.label} Mood`}
               aria-pressed={isSelected()}
               class={`
-                p-2 rounded-full transition-transform duration-150 ease-in-out flex items-center justify-center
+                p-2 rounded-full transition-transform duration-150 ease-in-out flex items-center justify-center flex-shrink-0
                 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500
                 ${isSelected() ? 'ring-2 ring-blue-600 ring-offset-1 bg-blue-100' : 'bg-gray-50'}
                 ${props.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
               `}
-              style={{ width: '80px', height: '80px' }}
+              style={{
+                width: '60px',
+                height: '60px',
+                'border-radius': '50%',
+                overflow: 'hidden',
+                'box-sizing': 'border-box',
+              }}
             >
               <Player
                 lottieRef={(ref: AnimationItem) => (lottiePlayerRef = ref)} // Store ref if needed for direct control

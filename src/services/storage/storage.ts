@@ -30,6 +30,7 @@ export const defaultUserConfiguration: UserConfiguration = {
   ttsConfig: null,
   redirectSettings: buildDefaultRedirectSettings(), // Use the helper function
   focusSettings: {}, // Changed to empty object as categories are removed from panel
+  lastMoodEntryDate: null, // Add the missing property
 };
 
 /**

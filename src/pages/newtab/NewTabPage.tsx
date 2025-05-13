@@ -1,13 +1,23 @@
-import { Component, createResource, createSignal, Accessor } from 'solid-js';
+import { Component, createResource, createSignal } from 'solid-js';
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import NewTabPageView from './NewTabPageView';
 import type { StudySummary } from '../../services/srs/types';
 import type { BackgroundProtocolMap } from '../../background/handlers/message-handlers';
 import type { Messages } from '../../types/i18n'; // Import Messages type
 import { useSettings } from '../../context/SettingsContext'; // <-- Import useSettings
-import { Eye, EyeSlash } from 'phosphor-solid'; // <-- Import icons
+import { Show, createEffect } from 'solid-js';
+import { MoodSelector, type Mood } from '../../features/mood/MoodSelector';
+import { addMoodEntry } from '../../services/db/mood';
 
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
+
+const getCurrentDateYYYYMMDD = (): string => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = (today.getMonth() + 1).toString().padStart(2, '0');
+  const day = today.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 interface NewTabPageProps {
   onNavigateToBookmarks: () => void;
@@ -19,6 +29,41 @@ interface NewTabPageProps {
 
 const NewTabPage: Component<NewTabPageProps> = (props) => {
   console.log('[NewTabPage] Component rendering');
+
+  const settings = useSettings();
+
+  const [showMoodSelector, setShowMoodSelector] = createSignal(false);
+
+  createEffect(() => {
+    const todayStr = getCurrentDateYYYYMMDD();
+    const lastMoodDate = settings.config.lastMoodEntryDate;
+    const settingsAreLoaded = !settings.loadStatus().startsWith('pending');
+    console.log(`[NewTabPage MoodEffect] Today: ${todayStr}, LastMoodEntry: ${lastMoodDate}, SettingsLoaded: ${settingsAreLoaded}, Onboarding: ${settings.config.onboardingComplete}`);
+    if (lastMoodDate !== todayStr && settingsAreLoaded) {
+      setShowMoodSelector(true);
+      console.log('[NewTabPage MoodEffect] setShowMoodSelector(true)');
+    } else {
+      setShowMoodSelector(false);
+      console.log(`[NewTabPage MoodEffect] setShowMoodSelector(false) - Reason: lastMoodDate matches: ${lastMoodDate === todayStr}, settings not loaded: ${!settingsAreLoaded}`);
+    }
+  });
+
+  const handleMoodSelect = async (mood: Mood | null) => {
+    if (mood) {
+      const todayStr = getCurrentDateYYYYMMDD();
+      console.log(`[NewTabPage handleMoodSelect] Mood selected: ${mood} for date: ${todayStr}`);
+      try {
+        await addMoodEntry(mood, todayStr);
+        await settings.updateUserConfiguration({ lastMoodEntryDate: todayStr });
+        console.log(`[NewTabPage handleMoodSelect] Mood entry for ${todayStr}: ${mood} saved, and lastMoodEntryDate updated.`);
+        // setShowMoodSelector(false); // Effect will hide it automatically
+      } catch (error) {
+        console.error("[NewTabPage handleMoodSelect] Error saving mood entry:", error);
+      }
+    } else {
+      console.log('[NewTabPage handleMoodSelect] Mood selection cancelled (mood is null).');
+    }
+  };
 
   const i18n = () => {
     const msgs = props.messages;
@@ -97,31 +142,45 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
   };
 
   // --- Focus Mode --- 
-  const settings = useSettings();
-  const isFocusModeActive = () => settings.config.isFocusModeActive ?? false;
+  const isFocusModeActive = () => settings.config.enableFocusMode ?? false;
   const handleToggleFocusMode = () => {
     const currentStatus = isFocusModeActive();
     console.log(`[NewTabPage] Toggling Focus Mode from ${currentStatus} to ${!currentStatus}`);
-    settings.updateUserConfiguration({ isFocusModeActive: !currentStatus });
+    settings.updateUserConfiguration({ enableFocusMode: !currentStatus });
   };
   // --- End Focus Mode ---
 
   return (
-    <NewTabPageView 
-      summary={summaryData}
-      summaryLoading={() => summaryData.loading || props.messagesLoading} // Combine loading states
-      pendingEmbeddingCount={() => embeddingCountData()?.count ?? 0}
-      isEmbedding={isEmbedding}
-      embedStatusMessage={embedStatusMessage}
-      onEmbedClick={handleEmbedClick}
-      onNavigateToBookmarks={props.onNavigateToBookmarks}
-      onNavigateToStudy={props.onNavigateToStudy}
-      onNavigateToSettings={props.onNavigateToSettings}
-      messages={props.messages} // Pass messages down to the view
-      // No messagesLoading prop for NewTabPageView, it's handled here
-      isFocusModeActive={isFocusModeActive} // <-- Pass new prop
-      onToggleFocusMode={handleToggleFocusMode} // <-- Pass new prop
-    />
+    <>
+      {/* Mood Selector Section - Using fixed positioning for overlay centering (no extra bg/blur) */}
+      <Show when={showMoodSelector()}>
+        <div class="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Removed bg-black/50 backdrop-blur-sm */}
+          <section class="w-full max-w-md p-6 bg-card rounded-xl shadow-lg mx-4">
+            <h2 class="text-xl font-semibold text-center text-card-foreground mb-5">
+              {i18n().get('newTabPageMoodPrompt', 'How are you feeling today?')}
+            </h2>
+            <MoodSelector onSelect={handleMoodSelect} class="justify-center" />
+          </section>
+        </div>
+      </Show>
+
+      <NewTabPageView 
+        summary={summaryData}
+        summaryLoading={() => summaryData.loading || props.messagesLoading} // Combine loading states
+        pendingEmbeddingCount={() => embeddingCountData()?.count ?? 0}
+        isEmbedding={isEmbedding}
+        embedStatusMessage={embedStatusMessage}
+        onEmbedClick={handleEmbedClick}
+        onNavigateToBookmarks={props.onNavigateToBookmarks}
+        onNavigateToStudy={props.onNavigateToStudy}
+        onNavigateToSettings={props.onNavigateToSettings}
+        messages={props.messages} // Pass messages down to the view
+        // No messagesLoading prop for NewTabPageView, it's handled here
+        isFocusModeActive={isFocusModeActive} // <-- Pass new prop
+        onToggleFocusMode={handleToggleFocusMode} // <-- Pass new prop
+      />
+    </>
   );
 };
 
