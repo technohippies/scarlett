@@ -152,6 +152,10 @@
   "newTabPageButtonSettings": {
     "message": "Settings"
   },
+  "newTabPageMoodPrompt": {
+    "message": "How are you feeling today?",
+    "description": "Prompt for the daily mood selector on the new tab page."
+  },
   "flashcardPanelLabelNew": {
     "message": "New"
   },

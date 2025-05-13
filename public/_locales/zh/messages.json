@@ -152,6 +152,10 @@
   "newTabPageButtonSettings": {
     "message": "设置"
   },
+  "newTabPageMoodPrompt": {
+    "message": "今天感觉怎么样？",
+    "description": "新标签页上每日心情选择器的提示。"
+  },
   "flashcardPanelLabelNew": {
     "message": "新"
   },

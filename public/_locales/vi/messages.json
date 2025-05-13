@@ -149,6 +149,10 @@
   "newTabPageButtonSettings": {
     "message": "Cài đặt"
   },
+  "newTabPageMoodPrompt": {
+    "message": "Hôm nay bạn cảm thấy thế nào?",
+    "description": "Lời nhắc cho bộ chọn tâm trạng hàng ngày trên trang tab mới."
+  },
   "flashcardPanelLabelNew": {
     "message": "Mới"
   },
