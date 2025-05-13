@@ -8,7 +8,7 @@ import { seedInitialTags } from '../src/services/db/tags';
 import { setupContextMenu } from '../src/background/setup/context-menu-setup';
 import { registerMessageHandlers, BackgroundProtocolMap } from '../src/background/handlers/message-handlers';
 import { defineExtensionMessaging, Logger } from '@webext-core/messaging';
-import { checkAndResetStreakIfNeeded } from '../src/services/db/streaks_db';
+import { checkAndResetStreakIfNeeded } from '../src/services/db/streaks';
 
 // Import handler registration functions
 import { registerContextMenuHandlers } from '../src/background/handlers/context-menu-handler';

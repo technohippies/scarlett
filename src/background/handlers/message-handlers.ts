@@ -34,6 +34,7 @@ import type {
     RecordStudyActivityTodayRequest,
     RecordStudyActivityTodayResponse
 } from '../../shared/messaging-types';
+import { Grade } from 'ts-fsrs';
 import {
     getDueLearningItems,
     getDistractors,
@@ -62,7 +63,7 @@ import {
     countPagesNeedingEmbedding, 
     calculateHash,
     updatePageVersionSummaryAndCleanup,
-    getSummaryEmbeddingForVersion
+    getSummaryEmbeddingForVersion as _getSummaryEmbeddingForVersion
 } from '../../services/db/visited_pages';
 import type { PageVersionToEmbed } from '../../services/db/visited_pages';
 import { pageInfoProcessingTimestamps } from '../../services/storage/storage';
@@ -71,25 +72,22 @@ import { getSummarizationPrompt } from '../../services/llm/prompts/analysis';
 import { userConfigurationStorage } from '../../services/storage/storage';
 import type { FunctionConfig } from '../../services/storage/types';
 import { generateElevenLabsSpeechStream } from '../../services/tts/elevenLabsService';
-import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
+import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID as _DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
 import {
     getOrInitDailyStudyStats,
     incrementNewItemsStudiedToday
-} from '../../services/db/study_session_db';
+} from '../../services/db/study_session';
 import {
     getStudyStreakData,
     processDailyGoalCompletion,
     checkAndResetStreakIfNeeded,
     recordStudyActivityToday
-} from '../../services/db/streaks_db';
+} from '../../services/db/streaks';
 // import type { LearningDirection, StudyItem } from '../../types/study';
 // import type { ITask } from 'pg-promise';
 
 // Define the threshold for reprocessing (e.g., 1 hour in milliseconds)
 const REPROCESS_INFO_THRESHOLD_MS = 1000;
-
-// Define a similarity threshold (Cosine Distance)
-const EMBEDDING_SIMILARITY_THRESHOLD = 0.1;
 
 // --- Tableland Constants ---
 const TABLELAND_BASE_URL = 'https://testnets.tableland.network/api/v1/query?statement=';
@@ -229,24 +227,68 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         if (!text) return null;
         console.log('[Message Handlers getSummaryFromLLM] Requesting summary from LLM...');
         
-        let userLlmConfig: FunctionConfig | null = null; 
+        let llmFunctionConfig: FunctionConfig | null = null; 
         try {
             const settings = await userConfigurationStorage.getValue(); 
-            if (!settings || !settings.llmConfig) {
-                console.error('[Message Handlers getSummaryFromLLM] LLM configuration not found in user settings. Cannot generate summary.');
+            if (!settings) {
+                console.error('[Message Handlers getSummaryFromLLM] User settings not found. Cannot generate summary.');
                 return null; 
             }
-            userLlmConfig = settings.llmConfig;
 
-            if (!userLlmConfig.providerId || !userLlmConfig.modelId || !userLlmConfig.baseUrl) {
-                 console.error('[Message Handlers getSummaryFromLLM] LLM configuration is incomplete:', userLlmConfig);
+            // Construct FunctionConfig from individual settings
+            if (settings.selectedLlmProvider && settings.selectedLlmProvider !== 'none') {
+                llmFunctionConfig = {
+                    providerId: settings.selectedLlmProvider,
+                    // Model and BaseUrl depend on the provider
+                    modelId: '', // Placeholder, to be filled based on provider
+                    baseUrl: '', // Placeholder, to be filled based on provider
+                    apiKey: undefined, // Placeholder, if applicable
+                };
+
+                switch (settings.selectedLlmProvider) {
+                    case 'ollama':
+                        if (settings.ollamaModel && settings.ollamaBaseUrl) {
+                            llmFunctionConfig.modelId = settings.ollamaModel;
+                            llmFunctionConfig.baseUrl = settings.ollamaBaseUrl;
+                        } else {
+                            console.error('[Message Handlers getSummaryFromLLM] Ollama configuration incomplete.');
+                            llmFunctionConfig = null; // Invalidate config
+                        }
+                        break;
+                    case 'lmstudio':
+                        if (settings.lmStudioModel && settings.lmStudioBaseUrl) {
+                            llmFunctionConfig.modelId = settings.lmStudioModel;
+                            llmFunctionConfig.baseUrl = settings.lmStudioBaseUrl;
+                        } else {
+                            console.error('[Message Handlers getSummaryFromLLM] LMStudio configuration incomplete.');
+                            llmFunctionConfig = null; // Invalidate config
+                        }
+                        break;
+                    case 'jan':
+                        if (settings.janModel && settings.janBaseUrl) {
+                            llmFunctionConfig.modelId = settings.janModel;
+                            llmFunctionConfig.baseUrl = settings.janBaseUrl;
+                        } else {
+                            console.error('[Message Handlers getSummaryFromLLM] Jan configuration incomplete.');
+                            llmFunctionConfig = null; // Invalidate config
+                        }
+                        break;
+                    // Add cases for other providers if they exist (e.g., OpenAI with apiKey)
+                    default:
+                        console.error(`[Message Handlers getSummaryFromLLM] Unsupported LLM provider: ${settings.selectedLlmProvider}`);
+                        llmFunctionConfig = null; // Invalidate config
+                }
+            }
+
+            if (!llmFunctionConfig) {
+                 console.error('[Message Handlers getSummaryFromLLM] LLM configuration is missing, incomplete, or unsupported.');
                  return null;
             }
 
             const prompt = getSummarizationPrompt(text);
-            console.log(`[Message Handlers getSummaryFromLLM] Using LLM config: Provider=${userLlmConfig.providerId}, Model=${userLlmConfig.modelId}, BaseUrl=${userLlmConfig.baseUrl}`);
+            console.log(`[Message Handlers getSummaryFromLLM] Using LLM config: Provider=${llmFunctionConfig.providerId}, Model=${llmFunctionConfig.modelId}, BaseUrl=${llmFunctionConfig.baseUrl}`);
             
-            const response = await dynamicChat([{ role: 'user', content: prompt }], userLlmConfig);
+            const response = await dynamicChat([{ role: 'user', content: prompt }], llmFunctionConfig);
             
             const summary = response?.choices?.[0]?.message?.content?.trim();
             if (!summary) {
@@ -257,8 +299,8 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
             return summary;
         } catch (error) {
             console.error('[Message Handlers getSummaryFromLLM] Error getting summary from LLM:', error);
-            if (userLlmConfig) {
-                 console.error(`[Message Handlers getSummaryFromLLM] Failed using config: Provider=${userLlmConfig.providerId}, Model=${userLlmConfig.modelId}, BaseUrl=${userLlmConfig.baseUrl}`);
+            if (llmFunctionConfig) {
+                 console.error(`[Message Handlers getSummaryFromLLM] Failed using config: Provider=${llmFunctionConfig.providerId}, Model=${llmFunctionConfig.modelId}, BaseUrl=${llmFunctionConfig.baseUrl}`);
             }
             return null;
         }
@@ -332,7 +374,8 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
             }
              console.log(`[Message Handlers] Submitting review grade ${grade} for variation type: ${variationType}`);
              
-            await updateSRSState(learningId, grade, new Date(), incorrectChoiceText);
+            // Explicitly cast grade to Grade type from ts-fsrs if they are compatible
+            await updateSRSState(learningId, grade as Grade, new Date(), incorrectChoiceText);
             return { success: true };
         } catch (error: any) {
             console.error('[Message Handlers] Error handling submitReviewResult:', error);
@@ -353,84 +396,118 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         }
     });
 
-    messaging.onMessage('generateLLMDistractors', async (message) => {
+    messaging.onMessage('generateLLMDistractors', async (message): Promise<GenerateLLMDistractorsResponse> => {
         console.log('[Message Handlers] Received generateLLMDistractors request:', message.data);
-        const { sourceText, targetText, count, direction, correctAnswerForFiltering } = message.data;
+        // Use fields from GenerateLLMDistractorsRequest
+        const { sourceText, targetText, count = 3, direction, correctAnswerForFiltering } = message.data;
         
         const safeDirection: string = direction || 'EN_TO_NATIVE'; // Default direction
 
-        let userLlmConfig: FunctionConfig | null = null;
+        let llmFunctionConfig: FunctionConfig | null = null;
         try {
-            const userSettings = await userConfigurationStorage.getValue();
-            if (!userSettings.llmConfig?.providerId || !userSettings.llmConfig.modelId) {
-                throw new Error("LLM provider or model not configured by user.");
+            const settings = await userConfigurationStorage.getValue();
+            if (!settings) {
+                console.error('[Message Handlers generateLLMDistractors] User settings not found.');
+                return { distractors: [], error: 'User settings not found.' };
             }
-            userLlmConfig = userSettings.llmConfig;
 
-            const userActualNativeLang = userSettings.nativeLanguage || 'en'; // Default to 'en' if not set
-            const userActualTargetLang = userSettings.targetLanguage || 'vi'; // Default to 'vi' if not set
+            // Construct FunctionConfig from individual settings
+            if (settings.selectedLlmProvider && settings.selectedLlmProvider !== 'none') {
+                llmFunctionConfig = {
+                    providerId: settings.selectedLlmProvider,
+                    modelId: '', 
+                    baseUrl: '', 
+                    apiKey: undefined, 
+                };
+                switch (settings.selectedLlmProvider) {
+                    case 'ollama':
+                        if (settings.ollamaModel && settings.ollamaBaseUrl) {
+                            llmFunctionConfig.modelId = settings.ollamaModel;
+                            llmFunctionConfig.baseUrl = settings.ollamaBaseUrl;
+                        } else {
+                            console.error('[Message Handlers generateLLMDistractors] Ollama configuration incomplete.');
+                            llmFunctionConfig = null;
+                        }
+                        break;
+                    case 'lmstudio':
+                        if (settings.lmStudioModel && settings.lmStudioBaseUrl) {
+                            llmFunctionConfig.modelId = settings.lmStudioModel;
+                            llmFunctionConfig.baseUrl = settings.lmStudioBaseUrl;
+                        } else {
+                            console.error('[Message Handlers generateLLMDistractors] LMStudio configuration incomplete.');
+                            llmFunctionConfig = null;
+                        }
+                        break;
+                    case 'jan':
+                        if (settings.janModel && settings.janBaseUrl) {
+                            llmFunctionConfig.modelId = settings.janModel;
+                            llmFunctionConfig.baseUrl = settings.janBaseUrl;
+                        } else {
+                            console.error('[Message Handlers generateLLMDistractors] Jan configuration incomplete.');
+                            llmFunctionConfig = null;
+                        }
+                        break;
+                    default:
+                        console.error(`[Message Handlers generateLLMDistractors] Unsupported LLM provider: ${settings.selectedLlmProvider}`);
+                        llmFunctionConfig = null;
+                }
+            }
+
+            if (!llmFunctionConfig) {
+                const errorMsg = 'LLM configuration is missing, incomplete, or unsupported.';
+                console.error(`[Message Handlers generateLLMDistractors] ${errorMsg}`);
+                return { distractors: [], error: errorMsg };
+            }
+
+            const userActualNativeLang = settings.nativeLanguage || 'en';
+            const userActualTargetLang = settings.targetLanguage || 'vi'; 
 
             let wordToTranslate: string;
             let originalWordLanguageName: string;
             let distractorsLanguageName: string;
 
             if (safeDirection === 'EN_TO_NATIVE') {
-                wordToTranslate = targetText; // English word (from card's back_text)
-                originalWordLanguageName = getFullLanguageName(userActualTargetLang); // Should be 'English'
-                distractorsLanguageName = getFullLanguageName(userActualNativeLang);  // e.g., 'Vietnamese'
-                console.log(`[Message Handlers] EN_TO_NATIVE Prep: Word to translate: "${wordToTranslate}" (${originalWordLanguageName}). Distractors in: ${distractorsLanguageName}. Correct answer (for filtering): "${correctAnswerForFiltering}"`);
+                wordToTranslate = targetText; 
+                originalWordLanguageName = getFullLanguageName(userActualTargetLang); 
+                distractorsLanguageName = getFullLanguageName(userActualNativeLang);
             } else { // NATIVE_TO_EN
-                wordToTranslate = sourceText; // Native word (from card's front_text)
-                originalWordLanguageName = getFullLanguageName(userActualNativeLang);  // e.g., 'Vietnamese'
-                distractorsLanguageName = getFullLanguageName(userActualTargetLang); // Should be 'English'
-                console.log(`[Message Handlers] NATIVE_TO_EN Prep: Word to translate: "${wordToTranslate}" (${originalWordLanguageName}). Distractors in: ${distractorsLanguageName}. Correct answer (for filtering): "${correctAnswerForFiltering}"`);
+                wordToTranslate = sourceText; 
+                originalWordLanguageName = getFullLanguageName(userActualNativeLang);
+                distractorsLanguageName = getFullLanguageName(userActualTargetLang);
             }
-
+            console.log(`[Message Handlers generateLLMDistractors Prep] Word: "${wordToTranslate}" (${originalWordLanguageName}). Distractors in: ${distractorsLanguageName}. Correct answer (filter): "${correctAnswerForFiltering}"`);
+            
+            // Corrected call to getLLMDistractorsPrompt
             const prompt = getLLMDistractorsPrompt(wordToTranslate, originalWordLanguageName, distractorsLanguageName, count);
+            const response = await dynamicChat([{ role: 'user', content: prompt }], llmFunctionConfig);
 
-            // LLM Call
-            const llmResponse = await dynamicChat([{ role: 'user', content: prompt }], userLlmConfig);
-
-            // Safely access content, assuming dynamicChat returns a structure like { choices: [{ message: { content: string } }] }
-            const rawContentFromLlm = llmResponse?.choices?.[0]?.message?.content?.trim();
-
-            if (rawContentFromLlm) {
-                let rawContent = rawContentFromLlm;
+            if (response && response.choices && response.choices.length > 0 && response.choices[0].message?.content) {
+                let rawContent = response.choices[0].message.content;
                 console.log("[Message Handlers] Raw LLM content for distractors:", rawContent);
 
-                // Strip markdown fences if present
-                if (rawContent.startsWith('```json')) { // More general check for ```json
-                    rawContent = rawContent.substring(rawContent.indexOf('\n') + 1); // Skip the ```json line
-                    if (rawContent.endsWith('```')) {
-                        rawContent = rawContent.substring(0, rawContent.lastIndexOf('```')).trim();
-                    }
-                } else if (rawContent.startsWith('```')) { // Simpler ``` check
-                     rawContent = rawContent.substring(3, rawContent.length - 3).trim();
-                }
-
+                rawContent = rawContent.replace(/^```json\s*|```$/g, '').trim();
                 try {
                     const parsedJson = JSON.parse(rawContent);
                     if (Array.isArray(parsedJson) && parsedJson.every(item => typeof item === 'string')) {
                         console.log("[Message Handlers] Extracted distractors:", parsedJson);
                         const finalDistractors = parsedJson.filter(d => d.toLowerCase() !== correctAnswerForFiltering.toLowerCase());
-                        return { distractors: finalDistractors.slice(0, count) }; 
+                        return { distractors: finalDistractors.slice(0, count) };
                     } else {
                         throw new Error("LLM response is not a JSON array of strings.");
                     }
-                } catch (e: any) {
-                    console.error("[Message Handlers] Failed to parse JSON array from LLM content:", rawContent, "Error:", e.message);
-                    throw new Error(`Failed to parse JSON array from LLM response: ${e.message}`);
+                } catch (parseError) {
+                    console.error("[Message Handlers generateLLMDistractors] Error parsing LLM response:", parseError, "Raw content:", rawContent);
+                    return { distractors: [], error: `Failed to parse LLM response: ${(parseError as Error).message}` };
                 }
             } else {
-                console.error("[Message Handlers] LLM returned no content for distractors.");
-                throw new Error("LLM returned no content.");
+                console.error("[Message Handlers generateLLMDistractors] No content in LLM response or invalid response structure.");
+                return { distractors: [], error: "No content in LLM response or invalid response structure." };
             }
-
         } catch (error: any) {
             console.error('[Message Handlers] Error handling generateLLMDistractors:', error);
-            if (userLlmConfig) {
-                console.error(`[Message Handlers generateLLMDistractors] Failed using config: Provider=${userLlmConfig.providerId}, Model=${userLlmConfig.modelId}, BaseUrl=${userLlmConfig.baseUrl}`);
-           }
+            if (llmFunctionConfig) {
+                console.error(`[Message Handlers generateLLMDistractors] Failed using config: Provider=${llmFunctionConfig.providerId}, Model=${llmFunctionConfig.modelId}, BaseUrl=${llmFunctionConfig.baseUrl}`);
+            }
             return { distractors: [], error: error.message || 'Failed to generate distractors.' };
         }
     });
@@ -540,150 +617,128 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
     });
 
     messaging.onMessage('triggerBatchEmbedding', async () => {
-        console.log('[Message Handlers] Received triggerBatchEmbedding request (with dynamic embedding).');
+        console.log('[Message Handlers] Received triggerBatchEmbedding request.');
+        // Declare variables outside the try block to ensure they are in scope for the catch block
+        let embeddingFunctionConfig: FunctionConfig | null = null;
         let finalizedCount = 0;
         let duplicateCount = 0;
-        let errorCount = 0;
-        let db: PGlite | null = null;
-        let candidates: PageVersionToEmbed[] = [];
-        let userEmbeddingConfig: FunctionConfig | null = null;
+        let errorCount = 0; 
+        let pagesToEmbed: PageVersionToEmbed[] = []; 
+        let skippedDuplicatesCount = 0; 
 
         try {
-            const settings = await userConfigurationStorage.getValue(); 
-            if (!settings || !settings.embeddingConfig) {
-                console.error('[Message Handlers triggerBatchEmbedding] Embedding configuration not found in user settings. Aborting batch.');
-                return { success: false, finalizedCount, duplicateCount, errorCount: 0, error: 'Embedding configuration not found.' }; 
+            const settings = await userConfigurationStorage.getValue();
+            if (!settings) {
+                console.error('[Message Handlers triggerBatchEmbedding] User settings not found.');
+                return { success: false, error: 'User settings not found.' };
             }
-            userEmbeddingConfig = settings.embeddingConfig;
-            if (!userEmbeddingConfig.providerId || !userEmbeddingConfig.modelId || !userEmbeddingConfig.baseUrl) {
-                 console.error('[Message Handlers triggerBatchEmbedding] Embedding configuration is incomplete:', userEmbeddingConfig);
-                 return { success: false, finalizedCount, duplicateCount, errorCount: 0, error: 'Embedding configuration incomplete.' }; 
+
+            // Assign to embeddingFunctionConfig declared outside
+            if (settings.embeddingModelProvider && settings.embeddingModelProvider !== 'none') {
+                embeddingFunctionConfig = {
+                    providerId: settings.embeddingModelProvider,
+                    modelId: settings.embeddingModelName || '', 
+                    baseUrl: undefined, 
+                    apiKey: undefined, 
+                };
+                switch (settings.embeddingModelProvider) {
+                    case 'ollama':
+                        embeddingFunctionConfig.baseUrl = settings.ollamaBaseUrl;
+                        break;
+                    case 'lmstudio':
+                        embeddingFunctionConfig.baseUrl = settings.lmStudioBaseUrl;
+                         break;
+                }
             }
-            console.log('[Message Handlers triggerBatchEmbedding] Using embedding config:', userEmbeddingConfig);
 
-            db = await getDbInstance(); 
-            candidates = await getPagesNeedingEmbedding(20); 
+            if (!embeddingFunctionConfig || !embeddingFunctionConfig.modelId) {
+                const errorMsg = 'Embedding model or provider not configured by user, or configuration is incomplete.';
+                console.error(`[Message Handlers triggerBatchEmbedding] ${errorMsg}`);
+                return { success: false, error: errorMsg };
+            }
 
-            if (candidates.length === 0) {
+            // Call getDbInstance for its potential side effects (e.g., ensuring DB is ready)
+            // The db variable itself was not used directly in this scope.
+            await getDbInstance(); 
+            // Assign to pagesToEmbed declared outside
+            pagesToEmbed = await getPagesNeedingEmbedding();
+
+            if (pagesToEmbed.length === 0) {
                 console.log('[Message Handlers triggerBatchEmbedding] No page versions found needing embedding.');
                 return { success: true, finalizedCount: 0, duplicateCount: 0, errorCount: 0 };
             }
 
-            console.log(`[Message Handlers triggerBatchEmbedding] Found ${candidates.length} candidate versions to process.`);
+            console.log(`[Message Handlers triggerBatchEmbedding] Found ${pagesToEmbed.length} candidate versions to process.`);
 
-            for (const candidate of candidates) {
-                console.log(`[Message Handlers triggerBatchEmbedding] Processing candidate version_id: ${candidate.version_id} for URL: ${candidate.url}`);
+            for (const page of pagesToEmbed) {
+                console.log(`[Message Handlers triggerBatchEmbedding] Processing candidate version_id: ${page.version_id} for URL: ${page.url}`);
                 try {
-                    const latestEmbedded = await findLatestEmbeddedVersion(candidate.url);
+                    const latestEmbeddedVersion = await findLatestEmbeddedVersion(page.url);
 
-                    if (latestEmbedded && candidate.markdown_hash && latestEmbedded.markdown_hash && candidate.markdown_hash === latestEmbedded.markdown_hash) {
-                        console.log(`[Message Handlers triggerBatchEmbedding] Exact ORIGINAL markdown hash match found... Handling as duplicate.`);
-                        await incrementPageVersionVisitCount(latestEmbedded.version_id);
-                        await deletePageVersion(candidate.version_id); 
-                        duplicateCount++;
-                        continue; 
+                    if (latestEmbeddedVersion && latestEmbeddedVersion.markdown_hash === page.markdown_hash) {
+                        console.log(`[Message Handlers triggerBatchEmbedding] Skipping page ${page.url} (version ${page.version_id}) as its content hash matches the latest embedded version.`);
+                        await deletePageVersion(page.version_id);
+                        skippedDuplicatesCount++;
+                        continue;
                     }
 
-                    console.log(`[Message Handlers triggerBatchEmbedding] Original markdown hashes differ or no previous embedded version. Proceeding with summarization for version_id: ${candidate.version_id}.`);
+                    console.log(`[Message Handlers triggerBatchEmbedding] Original markdown hashes differ or no previous embedded version. Proceeding with summarization for version_id: ${page.version_id}.`);
                     
-                    const summary = await getSummaryFromLLM(candidate.markdown_content);
+                    const summary = await getSummaryFromLLM(page.markdown_content);
                     if (!summary) {
-                        console.warn(`[Message Handlers triggerBatchEmbedding] Summarization failed for version_id: ${candidate.version_id}. Skipping.`);
+                        console.warn(`[Message Handlers triggerBatchEmbedding] Summarization failed for version_id: ${page.version_id}. Skipping.`);
                         errorCount++;
                         continue;
                     }
                     const summaryHash = await calculateHash(summary);
 
-                    const summaryEmbeddingResult = await getEmbedding(summary, userEmbeddingConfig);
+                    const embeddingResult = await getEmbedding(page.markdown_content, embeddingFunctionConfig);
+                    if (embeddingResult && embeddingResult.embedding && embeddingResult.embedding.length > 0) {
+                        await updatePageVersionSummaryAndCleanup({ 
+                            version_id: page.version_id, 
+                            summary_content: summary, 
+                            summary_hash: summaryHash 
+                        });
 
-                    if (!summaryEmbeddingResult) {
-                        console.warn(`[Message Handlers triggerBatchEmbedding] SUMMARY embedding generation failed for version_id: ${candidate.version_id}. Skipping.`);
-                        errorCount++;
-                        continue; 
-                    }
-                    
-                    await updatePageVersionSummaryAndCleanup({ 
-                        version_id: candidate.version_id, 
-                        summary_content: summary, 
-                        summary_hash: summaryHash 
-                    });
-
-                    if (latestEmbedded) {
-                        if (summaryHash && latestEmbedded.summary_hash && summaryHash === latestEmbedded.summary_hash) {
-                            console.log(`[Message Handlers triggerBatchEmbedding] Exact SUMMARY hash match found... Handling as duplicate.`);
-                            await incrementPageVersionVisitCount(latestEmbedded.version_id);
-                            await deletePageVersion(candidate.version_id);
-                            duplicateCount++;
-                            continue;
-                        }
-
-                        if (summaryEmbeddingResult.dimension !== latestEmbedded.active_embedding_dimension) {
-                            console.warn(`[Message Handlers triggerBatchEmbedding] SUMMARY Embedding dimension mismatch... Skipping comparison, finalizing new version.`);
-                             await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
-                             finalizedCount++;
-                             continue;
-                        }
-                        
-                        const latestSummaryVector = await getSummaryEmbeddingForVersion(latestEmbedded.version_id);
-                        const candidateSummaryVector = summaryEmbeddingResult.embedding;
-
-                        if (!latestSummaryVector || !candidateSummaryVector) {
-                            console.error(`[Message Handlers triggerBatchEmbedding] Could not retrieve SUMMARY vectors for comparison... Finalizing candidate.`);
-                            await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
-                            finalizedCount++;
-                            errorCount++;
-                            continue;
-                        }
-
-                        const vectorCompareSql = `SELECT $1::vector <=> $2::vector as distance;`;
-                        const latestVectorString = `[${latestSummaryVector.join(',')}]`;
-                        const candidateVectorString = `[${candidateSummaryVector.join(',')}]`;
-                        
-                        const distanceResult = await db.query<{ distance: number }>(vectorCompareSql, [latestVectorString, candidateVectorString]);
-                        const distance = distanceResult.rows[0]?.distance;
-
-                        if (typeof distance !== 'number') {
-                             console.error(`[Message Handlers triggerBatchEmbedding] Failed to calculate SUMMARY vector distance... Finalizing candidate.`);
-                             await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
-                             finalizedCount++;
-                             errorCount++;
-                             continue;
-                        }
-
-                        console.log(`[Message Handlers triggerBatchEmbedding] SUMMARY Cosine distance between ${candidate.version_id} and ${latestEmbedded.version_id}: ${distance.toFixed(4)}`);
-
-                        if (distance < EMBEDDING_SIMILARITY_THRESHOLD) {
-                            console.log(`[Message Handlers triggerBatchEmbedding] SUMMARY semantically similar... Handling as duplicate.`);
-                            await incrementPageVersionVisitCount(latestEmbedded.version_id);
-                            await deletePageVersion(candidate.version_id);
-                            duplicateCount++;
+                        if (latestEmbeddedVersion) {
+                            if (summaryHash && latestEmbeddedVersion.summary_hash && summaryHash === latestEmbeddedVersion.summary_hash) {
+                                console.log(`[Message Handlers triggerBatchEmbedding] Exact SUMMARY hash match found... Handling as duplicate.`);
+                                await incrementPageVersionVisitCount(latestEmbeddedVersion.version_id);
+                                await deletePageVersion(page.version_id);
+                                duplicateCount++;
+                            } else {
+                                console.log(`[Message Handlers triggerBatchEmbedding] SUMMARY semantically different. Finalizing embedding.`);
+                                await finalizePageVersionEmbedding({ version_id: page.version_id, embeddingInfo: embeddingResult });
+                                finalizedCount++;
+                            }
                         } else {
-                            console.log(`[Message Handlers triggerBatchEmbedding] SUMMARY semantically different. Finalizing embedding.`);
-                            await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
+                            console.log(`[Message Handlers triggerBatchEmbedding] No previous embedded version found... Finalizing SUMMARY embedding.`);
+                            await finalizePageVersionEmbedding({ version_id: page.version_id, embeddingInfo: embeddingResult });
                             finalizedCount++;
                         }
-
                     } else {
-                        console.log(`[Message Handlers triggerBatchEmbedding] No previous embedded version found... Finalizing SUMMARY embedding.`);
-                        await finalizePageVersionEmbedding({ version_id: candidate.version_id, embeddingInfo: summaryEmbeddingResult });
-                        finalizedCount++;
+                        console.error(`[Message Handlers triggerBatchEmbedding] Embedding generation failed or returned empty for version_id: ${page.version_id}. Skipping.`);
+                        errorCount++;
+                        continue;
                     }
-
                 } catch (processingError) {
-                    console.error(`[Message Handlers triggerBatchEmbedding] Error processing candidate version_id ${candidate.version_id}:`, processingError);
+                    console.error(`[Message Handlers triggerBatchEmbedding] Error processing candidate version_id ${page.version_id}:`, processingError);
                     errorCount++;
                 }
             }
 
-            console.log(`[Message Handlers triggerBatchEmbedding] Batch embedding complete. Finalized: ${finalizedCount}, Duplicates (Deleted): ${duplicateCount}, Errors: ${errorCount}.`);
-            return { success: true, finalizedCount, duplicateCount, errorCount };
-
+            console.log(`[Message Handlers triggerBatchEmbedding] Batch embedding complete. Finalized: ${finalizedCount}, Skipped Duplicates: ${skippedDuplicatesCount}, Matched Summary Duplicates: ${duplicateCount}, Errors: ${errorCount}.`);
+            return { success: true, finalizedCount, duplicateCount: skippedDuplicatesCount + duplicateCount, errorCount };
         } catch (error: any) {
             console.error('[Message Handlers triggerBatchEmbedding] Unexpected error during batch embedding:', error);
-            if (userEmbeddingConfig) {
-                 console.error(`[Message Handlers triggerBatchEmbedding] Failed using embedding config: Provider=${userEmbeddingConfig.providerId}, Model=${userEmbeddingConfig.modelId}, BaseUrl=${userEmbeddingConfig.baseUrl}`);
+            // Log embeddingFunctionConfig safely
+            if (embeddingFunctionConfig) { 
+                 console.error(`[Message Handlers triggerBatchEmbedding] Failed using embedding config (if available): ${JSON.stringify(embeddingFunctionConfig)}`);
+            } else {
+                 console.error('[Message Handlers triggerBatchEmbedding] Embedding configuration was not available or not set at the time of error.');
             }
-            return { success: false, finalizedCount, duplicateCount, errorCount: candidates.length, error: error.message || 'Batch embedding failed.' };
+            const totalPotentialErrorCount = pagesToEmbed.length > 0 ? pagesToEmbed.length : (finalizedCount + duplicateCount + skippedDuplicatesCount + errorCount + 1);
+            return { success: false, finalizedCount, duplicateCount: skippedDuplicatesCount + duplicateCount, errorCount: totalPotentialErrorCount, error: error.message || 'Batch embedding failed.' };
         }
     });
 
@@ -705,47 +760,50 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Processing parameters - Text: "${text.substring(0,10)}...", Lang: "${lang}", Speed: ${speed}`);
 
         try {
-            const userConfig = await userConfigurationStorage.getValue();
-            const ttsConfig = userConfig?.ttsConfig;
-
-            if (!ttsConfig || ttsConfig.providerId !== 'elevenlabs' || !ttsConfig.apiKey) {
-                console.warn('[Message Handlers REQUEST_TTS_FROM_WIDGET] ElevenLabs TTS not configured or API key missing.');
-                return { success: false, error: 'ElevenLabs TTS not configured or API key missing.' };
+            const settings = await userConfigurationStorage.getValue();
+            if (!settings) {
+                console.error('[Message Handlers REQUEST_TTS_FROM_WIDGET] User settings not found.');
+                return { success: false, error: 'User settings not found' };
             }
 
-            const apiKey = ttsConfig.apiKey;
-            // Determine model based on language
-            let effectiveModelId = DEFAULT_ELEVENLABS_MODEL_ID; // Default model
-            if (lang && lang.toLowerCase().startsWith('zh')) { // Or any other condition for Flash
-                effectiveModelId = 'eleven_flash_v2.5';
-                console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Using Flash model for lang: ${lang}`);
-            }
-            
-            const effectiveVoiceId = DEFAULT_ELEVENLABS_VOICE_ID;
+            const selectedVendor = settings.selectedTtsVendor || 'browser';
+            console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Selected TTS Vendor: ${selectedVendor}`);
 
-            console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Generating audio via ElevenLabs. Text: "${text.substring(0,30)}...", Lang: ${lang}, Model: ${effectiveModelId}, Voice: ${effectiveVoiceId}, Speed: ${speed ?? 'default'}`);
-
-            const audioBlob = await generateElevenLabsSpeechStream(
-                apiKey,
-                text,
-                effectiveModelId,
-                effectiveVoiceId,
-                undefined, // voiceSettings
-                speed,
-                lang // Pass the lang parameter
-            );
-
-            if (audioBlob) {
+            if (selectedVendor === 'elevenlabs') {
+                if (!settings.elevenLabsApiKey || !settings.elevenLabsVoiceId) {
+                    const errMsg = 'ElevenLabs API key or Voice ID not configured.';
+                    console.error(`[Message Handlers REQUEST_TTS_FROM_WIDGET] ${errMsg}`);
+                    return { success: false, error: errMsg };
+                }
+                console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Using ElevenLabs. Voice ID: ${settings.elevenLabsVoiceId}`);
+                const audioStream = await generateElevenLabsSpeechStream(
+                    text,
+                    settings.elevenLabsApiKey,
+                    settings.elevenLabsVoiceId,
+                    DEFAULT_ELEVENLABS_MODEL_ID, // Assuming a default model or make it configurable
+                    undefined, // voiceSettings (5th argument)
+                    speed      // speed (6th argument)
+                );
+                // Convert stream to blob, then to data URL to send back
+                const audioBlob = await new Response(audioStream).blob();
                 const audioDataUrl = await blobToDataURL(audioBlob);
-                console.log('[Message Handlers REQUEST_TTS_FROM_WIDGET] Audio generated, returning data URL.');
+                console.log('[Message Handlers REQUEST_TTS_FROM_WIDGET] ElevenLabs TTS successful, returning data URL.');
                 return { success: true, audioDataUrl };
+            } else if (selectedVendor === 'browser') {
+                // Browser TTS is typically handled client-side, but if we were to do it here:
+                console.log('[Message Handlers REQUEST_TTS_FROM_WIDGET] Using Browser TTS (Note: Typically client-side).');
+                // This handler would need to communicate with a content script or offscreen document
+                // to trigger browser.tts.speak and capture the audio. This is complex.
+                // For now, let's assume if 'browser' is chosen, the client handles it and this message isn't strictly needed for generation.
+                // Or, return an indication that the client should use its own browser.tts.
+                return { success: false, error: 'Browser TTS should be handled client-side.' }; 
             } else {
-                console.error('[Message Handlers REQUEST_TTS_FROM_WIDGET] Failed to generate audio blob.');
-                return { success: false, error: 'Failed to generate audio from ElevenLabs.' };
+                console.warn(`[Message Handlers REQUEST_TTS_FROM_WIDGET] No TTS vendor selected or unsupported vendor: ${selectedVendor}`);
+                return { success: false, error: 'No TTS vendor configured or vendor not supported for background generation.' };
             }
-        } catch (error) {
-            console.error('[Message Handlers REQUEST_TTS_FROM_WIDGET] Error generating TTS:', error);
-            return { success: false, error: error instanceof Error ? error.message : 'Unknown error generating TTS.' };
+        } catch (error: any) {
+            console.error('[Message Handlers REQUEST_TTS_FROM_WIDGET] Error:', error);
+            return { success: false, error: error.message || 'Failed to generate TTS' };
         }
     });
 
@@ -862,8 +920,8 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
     console.log('[Message Handlers Register] <<< AFTER registering fetchAvailableDeckFiles handler.');
 
     // Add handler for getDailyStudyStats
-    messaging.onMessage('getDailyStudyStats', async (message) => {
-        console.log('[Message Handlers] Received getDailyStudyStats request.');
+    messaging.onMessage('getDailyStudyStats', async (_message) => {
+        console.log('[Message Handlers] Received getDailyStudyStats request');
         try {
             const stats = await getOrInitDailyStudyStats();
             return { 
@@ -878,7 +936,7 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
     });
 
     // Add handler for incrementDailyNewItemsStudied
-    messaging.onMessage('incrementDailyNewItemsStudied', async (message) => {
+    messaging.onMessage('incrementDailyNewItemsStudied', async (_message) => {
         console.log('[Message Handlers] Received incrementDailyNewItemsStudied request.');
         try {
             // First, record that activity happened today.
@@ -905,7 +963,7 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
     });
 
     // --- Add new streak handlers ---
-    messaging.onMessage('getStudyStreakData', async (message) => {
+    messaging.onMessage('getStudyStreakData', async (_message) => {
         console.log('[Message Handlers] Received getStudyStreakData request.');
         try {
             // It's crucial to check and reset the streak *before* fetching it for display.
@@ -925,8 +983,8 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         }
     });
 
-    messaging.onMessage('notifyDailyGoalComplete', async (message) => {
-        console.log('[Message Handlers] Received notifyDailyGoalComplete request.');
+    messaging.onMessage('notifyDailyGoalComplete', async (_message) => {
+        console.log('[Message Handlers] Received notifyDailyGoalComplete request');
         try {
             // This message is an explicit signal that the goal was met,
             // usually called from the frontend when it confirms the daily item count hits the limit.
@@ -946,8 +1004,8 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         }
     });
     
-    messaging.onMessage('recordStudyActivityToday', async (message) => {
-        console.log('[Message Handlers] Received recordStudyActivityToday request.');
+    messaging.onMessage('recordStudyActivityToday', async (_message) => {
+        console.log('[Message Handlers] Received recordStudyActivityToday request');
         try {
             await recordStudyActivityToday();
             return { success: true };

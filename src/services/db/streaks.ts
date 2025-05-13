@@ -1,5 +1,4 @@
 import { getDbInstance } from './init';
-import type { PGlite } from '@electric-sql/pglite';
 
 export interface StudyStreakData {
   currentStreak: number;
