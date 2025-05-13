@@ -1,4 +1,4 @@
-import { Component, Show, Switch, Match } from 'solid-js';
+import { Component, Show, Switch, Match, createEffect } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
 import { CheckCircle, XCircle } from 'phosphor-solid';
@@ -30,6 +30,13 @@ interface ExerciseFooterProps {
 }
 
 export const ExerciseFooter: Component<ExerciseFooterProps> = (props) => {
+  console.log(`[ExerciseFooter LIFECYCLE] Component rendering/updating with mode: ${props.mode}`);
+  // Add a more specific log for when the mode might cause the 'Check' button
+  createEffect(() => {
+    if (props.mode === 'check') {
+      console.log(`[ExerciseFooter MODE_CHECK] Mode is 'check'. isCheckDisabled: ${props.isCheckDisabled}`);
+    }
+  });
 
   const baseFooterClass = "fixed bottom-0 left-0 right-0 w-full px-6 pt-6 pb-6 bg-secondary";
   const correctBorder = "border-t-4 border-green-500";

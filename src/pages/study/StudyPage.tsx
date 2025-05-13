@@ -67,71 +67,86 @@ const mapFsrsStateToStatus = (stateValue: number): FlashcardStatus => {
 
 // --- Container Component ---
 const StudyPage: Component<StudyPageProps> = (props) => {
+  console.log('[StudyPage LIFECYCLE] Component init');
   const [currentItem, setCurrentItem] = createSignal<DueLearningItem | null>(null);
   const [itemError, setItemError] = createSignal<string | null>(null);
   const [exerciseDirection, setExerciseDirection] = createSignal<'EN_TO_NATIVE' | 'NATIVE_TO_EN'>('EN_TO_NATIVE');
   const [currentStudyStep, setCurrentStudyStep] = createSignal<'flashcard' | 'mcq' | 'noItem'>('noItem');
   const [isFetchingNextItem, setIsFetchingNextItem] = createSignal<boolean>(false);
   const [shouldShowLoadingSpinner, setShouldShowLoadingSpinner] = createSignal<boolean>(false);
-  let spinnerTimeoutId: any; // Use 'any' to avoid type conflicts with Node/browser setTimeout return types
+  let spinnerTimeoutId: any;
+
+  createEffect(() => console.log(`[StudyPage STATE] currentStudyStep changed to: ${currentStudyStep()}`));
+  createEffect(() => console.log(`[StudyPage STATE] isFetchingNextItem changed to: ${isFetchingNextItem()}`));
+  createEffect(() => console.log(`[StudyPage STATE] shouldShowLoadingSpinner changed to: ${shouldShowLoadingSpinner()}`));
+  createEffect(() => console.log(`[StudyPage STATE] currentItem changed: ${JSON.stringify(currentItem())?.substring(0,100)}...`));
 
   // --- Fetching Due Item Resource ---
   const [dueItemResource, { refetch: fetchDueItems }] = createResource(async () => {
-    console.log('[StudyPage Container] Fetching next due item resource...');
+    console.log('[StudyPage FN_CALL] fetchDueItems START');
     setIsFetchingNextItem(true);
     clearTimeout(spinnerTimeoutId);
-    setShouldShowLoadingSpinner(false); // Reset spinner visibility
+    setShouldShowLoadingSpinner(false); 
     spinnerTimeoutId = setTimeout(() => {
-      // Only show spinner if we are still in the process of fetching
       if (isFetchingNextItem()) {
+        console.log('[StudyPage FN_CALL] fetchDueItems - Spinner timeout triggered, showing spinner.');
         setShouldShowLoadingSpinner(true);
       }
-    }, 200); // Show spinner after 200ms if fetching is still ongoing
+    }, 200);
 
     setItemError(null);
-    setCurrentItem(null);
-    setCurrentStudyStep('noItem'); // Reset step
+    // setCurrentItem(null); // Already happens effectively via resource loading
+    // setCurrentStudyStep('noItem'); // Reset step - Handled by effect below
+
     try {
       const requestData = { limit: 1 };
-      console.log('[StudyPage Container] Sending getDueItems message with data:', requestData);
+      console.log('[StudyPage FN_CALL] fetchDueItems - Sending getDueItems message:', requestData);
       const response = await messaging.sendMessage('getDueItems', requestData);
-      console.log('[StudyPage Container] Received getDueItems response:', JSON.stringify(response, null, 2));
+      console.log(`[StudyPage FN_CALL] fetchDueItems - Received getDueItems response (first item): ${JSON.stringify(response?.dueItems?.[0])?.substring(0,100)}...`);
       
       if (response && response.dueItems && response.dueItems.length > 0) {
         const fetchedItem = response.dueItems[0];
-        console.log('[StudyPage Container] Setting current item:', JSON.stringify(fetchedItem, null, 2));
-        setCurrentItem(fetchedItem);
+        setCurrentItem(fetchedItem); // This will trigger the effect for currentStudyStep
         const direction = Math.random() < 0.5 ? 'EN_TO_NATIVE' : 'NATIVE_TO_EN';
         setExerciseDirection(direction);
-        setCurrentStudyStep('flashcard'); // Start with flashcard
-        console.log(`[StudyPage Container] Set exercise direction: ${direction}`);
+        // setCurrentStudyStep('flashcard'); // Let effect handle this based on currentItem()
+        console.log(`[StudyPage FN_CALL] fetchDueItems - Set exercise direction: ${direction}`);
+        console.log('[StudyPage FN_CALL] fetchDueItems END - Success, item fetched');
         return fetchedItem;
       } else {
-        console.log('[StudyPage Container] No due items returned in response.');
-        setCurrentItem(null);
-        setCurrentStudyStep('noItem');
+        console.log('[StudyPage FN_CALL] fetchDueItems - No due items returned.');
+        setCurrentItem(null); // Ensure item is null, triggers effect for noItem
+        // setCurrentStudyStep('noItem'); // Let effect handle
+        console.log('[StudyPage FN_CALL] fetchDueItems END - Success, no items');
         return null;
       }
     } catch (err: any) {
-      console.error('[StudyPage Container] Error fetching due items via messaging:', err);
+      console.error('[StudyPage FN_CALL] fetchDueItems - Error fetching due items:', err);
       setItemError(err.message || 'Failed to fetch due items.');
-      setCurrentStudyStep('noItem');
+      setCurrentItem(null); // Ensure item is null on error
+      // setCurrentStudyStep('noItem'); // Let effect handle
+      console.log('[StudyPage FN_CALL] fetchDueItems END - Error');
       return null;
     } finally {
       clearTimeout(spinnerTimeoutId);
       setShouldShowLoadingSpinner(false);
       setIsFetchingNextItem(false);
+      console.log('[StudyPage FN_CALL] fetchDueItems - Finally block executed.');
     }
   });
 
-  // Effect to reset study step when a new item starts loading or is loaded
+  // Effect to manage currentStudyStep based on dueItemResource.loading and currentItem
   createEffect(() => {
-    if (dueItemResource.loading) {
-        setCurrentStudyStep('noItem'); // Show loading for item itself
+    console.log(`[StudyPage EFFECT item/loading] dueItemResource.loading: ${dueItemResource.loading}, currentItem: ${!!currentItem()}`);
+    if (dueItemResource.loading && !currentItem()) { // Only set to 'noItem' if no item is currently set (avoids flash when refetching with an item already there)
+      console.log("[StudyPage EFFECT item/loading] Setting currentStudyStep to 'noItem' (loading new item initially or after empty set)");
+      setCurrentStudyStep('noItem'); 
     } else if (currentItem()) {
-        setCurrentStudyStep('flashcard');
-    } else {
-        setCurrentStudyStep('noItem');
+      console.log("[StudyPage EFFECT item/loading] Current item exists, setting currentStudyStep to 'flashcard'");
+      setCurrentStudyStep('flashcard');
+    } else if (!dueItemResource.loading && !currentItem()) {
+      console.log("[StudyPage EFFECT item/loading] No item and not loading, setting currentStudyStep to 'noItem' (e.g. no items due)");
+      setCurrentStudyStep('noItem');
     }
   });
 
@@ -340,15 +355,17 @@ const StudyPage: Component<StudyPageProps> = (props) => {
   // --- Handlers ---
 
   const handleFlashcardRated = async (rating: Rating) => {
+    console.log(`[StudyPage FN_CALL] handleFlashcardRated START - Rating: ${rating}`);
     const item = currentItem();
     if (!item) {
-      console.error("[StudyPage] No current item found when flashcard rated.");
+      console.error("[StudyPage FN_CALL] handleFlashcardRated - No current item found.");
       setItemError("Error submitting review: Item not found.");
-      fetchDueItems(); // Try to get a new item
+      fetchDueItems();
+      console.log(`[StudyPage FN_CALL] handleFlashcardRated END - No item, fetching next.`);
       return;
     }
 
-    console.log(`[StudyPage] Flashcard rated for Learning ID: ${item.learningId} with Grade: ${rating}`);
+    console.log(`[StudyPage FN_CALL] handleFlashcardRated - Submitting review for Learning ID: ${item.learningId}`);
     try {
       const response = await messaging.sendMessage('submitReviewResult', {
         learningId: item.learningId,
@@ -356,28 +373,33 @@ const StudyPage: Component<StudyPageProps> = (props) => {
       });
       if (!response.success) {
         setItemError(`Failed to submit review: ${response.error || 'Unknown error'}`);
+        console.warn(`[StudyPage FN_CALL] handleFlashcardRated - Review submission failed: ${response.error}`);
       }
 
-      // Decide if we should proceed to MCQ or fetch next item
-      if (rating === Rating.Again || rating === Rating.Hard) {
+      if (rating === Rating.Again || rating === Rating.Hard) { // Hard is not used by current UI but good to keep
+        console.log('[StudyPage FN_CALL] handleFlashcardRated - Rated Again/Hard, fetching next item.');
         fetchDueItems();
       } else {
-        setCurrentStudyStep('mcq'); // Attempt to move to MCQ, distractorResource will trigger
+        console.log('[StudyPage FN_CALL] handleFlashcardRated - Rated Good/Easy, setting currentStudyStep to mcq.');
+        setCurrentStudyStep('mcq'); 
       }
 
     } catch (err: any) {
-      console.error('[StudyPage] Error submitting flashcard review:', err);
+      console.error('[StudyPage FN_CALL] handleFlashcardRated - Error submitting flashcard review:', err);
       setItemError(`Error submitting review: ${err.message}`);
-      fetchDueItems(); // Fetch next item on error
+      fetchDueItems();
     }
+    console.log('[StudyPage FN_CALL] handleFlashcardRated END');
   };
 
   const handleMcqComplete = async (selectedOptionId: string | number, isCorrect: boolean) => {
+    console.log(`[StudyPage FN_CALL] handleMcqComplete START - Selected: ${selectedOptionId}, Correct: ${isCorrect}`);
     const item = currentItem();
     if (!item) {
-      console.error("[StudyPage] No current item found when MCQ completed.");
+      console.error("[StudyPage FN_CALL] handleMcqComplete - No current item found.");
       setItemError("Error submitting review: Item not found.")
       fetchDueItems();
+      console.log('[StudyPage FN_CALL] handleMcqComplete END - No item, fetching next.');
       return;
     }
 
@@ -392,6 +414,7 @@ const StudyPage: Component<StudyPageProps> = (props) => {
     }
 
     try {
+      console.log(`[StudyPage FN_CALL] handleMcqComplete - Submitting review for Learning ID: ${item.learningId}, Grade: ${grade}`);
       const response = await messaging.sendMessage('submitReviewResult', {
         learningId: item.learningId,
         grade,
@@ -399,37 +422,43 @@ const StudyPage: Component<StudyPageProps> = (props) => {
       });
       if (!response.success) {
         setItemError(`Failed to submit review: ${response.error || 'Unknown error'}`);
+        console.warn(`[StudyPage FN_CALL] handleMcqComplete - Review submission failed: ${response.error}`);
       }
     } catch (err: any) {
-      console.error('[StudyPage] Error submitting MCQ review:', err);
+      console.error('[StudyPage FN_CALL] handleMcqComplete - Error submitting MCQ review:', err);
       setItemError(`Error submitting review: ${err.message}`);
     } finally {
+      console.log('[StudyPage FN_CALL] handleMcqComplete - Fetching next item.');
       fetchDueItems(); // Always fetch next item after MCQ
     }
+    console.log('[StudyPage FN_CALL] handleMcqComplete END');
   }
 
   // Effect to automatically fetch next item if MCQ step is entered but no MCQ can be formed
   createEffect(() => {
     const step = currentStudyStep();
     const item = currentItem();
-    const props = mcqProps();
+    const props = mcqProps(); // This is mcqProps() from StudyPage
     const loadingDistractors = distractorResource.loading;
     const distError = distractorResource()?.error;
+    console.log(`[StudyPage EFFECT mcqGuard] Step: ${step}, Item: ${!!item}, Distractors Loading: ${loadingDistractors}, MCQ Props: ${!!props}, Dist Error: ${distError}, Item Error: ${itemError()}`);
 
     if (step === 'mcq' && item && !loadingDistractors && !props && !itemError()) {
         if (distError) {
-            console.warn(`[StudyPage] Distractor error for item ${item.learningId}: ${distError}. Fetching next item.`);
+            console.warn(`[StudyPage EFFECT mcqGuard] Distractor error for item ${item.learningId}: ${distError}. Fetching next item.`);
         } else {
-            console.warn(`[StudyPage] In MCQ step for item ${item.learningId}, but no MCQ props. Fetching next item.`);
+            console.warn(`[StudyPage EFFECT mcqGuard] In MCQ step for item ${item.learningId}, but no MCQ props. Fetching next item.`);
         }
         fetchDueItems();
     }
   });
   
   const handleSkipClick = () => {
+    console.log('[StudyPage FN_CALL] handleSkipClick');
     fetchDueItems();
   }
 
+  console.log('[StudyPage LIFECYCLE] Component setup complete, returning view props.');
   // --- Render the View component ---
   return (
     <StudyPageView

@@ -1,4 +1,4 @@
-import { Component, Show, Switch, Match } from 'solid-js';
+import { Component, Show, Switch, Match, createEffect } from 'solid-js';
 import { MCQ, type MCQProps } from '../../features/exercises/MCQ';
 import FlashcardReviewer, { type ReviewableCardData } from '../../features/exercises/Flashcard';
 import type { FlashcardStatus } from '../../services/db/types';
@@ -26,6 +26,42 @@ export interface StudyPageViewProps {
 
 // The purely presentational Study Page component
 export const StudyPageView: Component<StudyPageViewProps> = (props) => {
+  console.log('[StudyPageView LIFECYCLE] Component rendering/updating');
+
+  createEffect(() => {
+    console.log(`[StudyPageView PROPS] isFetchingNextItem: ${props.isFetchingNextItem}, spinnerVisible: ${props.spinnerVisible}, currentStudyStep: ${props.currentStudyStep}, itemError: ${props.itemError}`);
+  });
+  
+  createEffect(() => {
+    if (props.currentStudyStep === 'flashcard' && props.itemForFlashcardReviewer !== null) {
+      console.log('[StudyPageView RENDER_MATCH] Matched: Flashcard');
+    }
+  });
+
+  createEffect(() => {
+    if (props.currentStudyStep === 'mcq') {
+      console.log('[StudyPageView RENDER_MATCH] Matched: MCQ');
+    }
+  });
+  
+  createEffect(() => {
+    if (props.currentStudyStep === 'noItem' && !props.itemError && !props.isLoadingItem) {
+      console.log('[StudyPageView RENDER_MATCH] Matched: No items due message');
+    }
+  });
+
+  createEffect(() => {
+    if (props.spinnerVisible) {
+        console.log('[StudyPageView RENDER_MATCH] Matched: Loading spinner (main)');
+    }
+  });
+
+  createEffect(() => {
+    if (props.currentStudyStep === 'noItem' && props.itemError) {
+        console.log('[StudyPageView RENDER_MATCH] Matched: Item error display');
+    }
+  });
+
   return (
     <div class="study-page-container flex flex-col font-sans bg-background min-h-screen">
       <Header onBackClick={props.onNavigateBack} />

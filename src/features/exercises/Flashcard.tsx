@@ -1,4 +1,4 @@
-import { Component, createSignal } from 'solid-js';
+import { Component, createSignal, createEffect } from 'solid-js';
 import FlashcardDisplay from '../../shared/flashcard'; 
 import { Rating } from 'ts-fsrs';
 import type { FlashcardStatus } from '../../services/db/types';
@@ -23,19 +23,31 @@ export interface FlashcardReviewerProps {
 const transitionSettings = { duration: 0.3, easing: "ease-in-out" } as const;
 
 export const FlashcardReviewer: Component<FlashcardReviewerProps> = (props) => {
+  console.log('[FlashcardReviewer LIFECYCLE] Component init/render');
+  // onCleanup(() => console.log('[FlashcardReviewer LIFECYCLE] Component unmounted'));
+
   const [isAnswerShown, setIsAnswerShown] = createSignal(props.initialIsAnswerShown ?? false);
 
+  createEffect(() => {
+    const mode = isAnswerShown() ? 'flashcardRate' : 'flashcardShowAnswer';
+    console.log(`[FlashcardReviewer STATE_EFFECT] isAnswerShown changed: ${isAnswerShown()}. Calculated mode for footer: ${mode}`);
+  });
+
   const handleShowAnswer = () => {
+    console.log('[FlashcardReviewer FN_CALL] handleShowAnswer');
     setIsAnswerShown(true);
   };
 
   const handleRatingClick = (rating: Rating) => {
+    console.log(`[FlashcardReviewer FN_CALL] handleRatingClick START - Rating: ${rating}`);
     if (rating === Rating.Again || rating === Rating.Good) {
       props.onFlashcardRated(rating);
+      console.log('[FlashcardReviewer FN_CALL] handleRatingClick - Called props.onFlashcardRated');
       setIsAnswerShown(false); 
     } else {
-      console.warn(`[FlashcardReviewer] Unexpected rating received: ${rating}`);
+      console.warn(`[FlashcardReviewer FN_CALL] handleRatingClick - Unexpected rating: ${rating}`);
     }
+    console.log('[FlashcardReviewer FN_CALL] handleRatingClick END');
   };
 
   // Approximate footer height for padding, e.g. 8rem (128px) for pb-32
