@@ -262,3 +262,10 @@ CREATE INDEX IF NOT EXISTS idx_page_versions_markdown_hash ON page_versions (mar
 CREATE INDEX IF NOT EXISTS idx_page_versions_summary_hash ON page_versions (summary_hash);
 
 -- --- END RAG / Page History Tables ---
+
+-- NEW: Table for storing daily mood selections
+CREATE TABLE IF NOT EXISTS daily_moods (
+    date TEXT PRIMARY KEY NOT NULL,      -- Date in YYYY-MM-DD format
+    mood TEXT NOT NULL CHECK(mood IN ('happy', 'slightly-happy', 'neutral', 'slightly-frowning', 'sad')),
+    selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP -- When the mood was selected
+);

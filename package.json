@@ -31,6 +31,8 @@
     "clsx": "^2.1.1",
     "csv-stringify": "^6.5.2",
     "highlight.js": "^11.11.1",
+    "lottie-solid": "^1.2.0",
+    "lottie-web": "^5.12.2",
     "phosphor-solid": "^1.1.5",
     "solid-js": "^1.9.5",
     "solid-motionone": "^1.0.4",
