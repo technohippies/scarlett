@@ -1,84 +1,98 @@
-import { ExerciseFooter } from '../../../src/features/exercises/ExerciseFooter'; // Updated import name
+import { ExerciseFooter } from '../../../src/features/exercises/ExerciseFooter';
+import { Rating } from 'ts-fsrs'; // For Rating enum
+import { action } from '@storybook/addon-actions';
 
 export default {
-  title: 'Features/Exercises/ExerciseFooter', // Updated title
+  title: 'Features/Exercises/ExerciseFooter',
   component: ExerciseFooter,
-  parameters: {
-    // Layout might need adjustment if footer is fixed
-    layout: 'fullscreen', // Keep fullscreen for now, or use padded
-  },
   tags: ['autodocs'],
-  // Updated argTypes
+  parameters: {
+    layout: 'fullscreen', // To see the fixed positioning correctly
+  },
   argTypes: {
-    mode: { control: 'select', options: ['check', 'feedback'] },
-    // Feedback props
-    isCorrect: { control: 'boolean', if: { arg: 'mode', eq: 'feedback' } },
-    correctAnswerText: { control: 'text', if: { arg: 'mode', eq: 'feedback' } },
-    title: { control: 'text', if: { arg: 'mode', eq: 'feedback' } },
-    continueLabel: { control: 'text', if: { arg: 'mode', eq: 'feedback' } },
-    onContinue: { action: 'onContinue', if: { arg: 'mode', eq: 'feedback' } },
-    // Check props
-    isCheckDisabled: { control: 'boolean', if: { arg: 'mode', eq: 'check' } },
-    checkLabel: { control: 'text', if: { arg: 'mode', eq: 'check' } },
-    onCheck: { action: 'onCheck', if: { arg: 'mode', eq: 'check' } },
-    // Removed isOpen and onClose
+    mode: {
+      control: 'select',
+      options: ['check', 'feedback', 'flashcardShowAnswer', 'flashcardRate'],
+    },
+    isCorrect: { control: 'boolean' },
+    correctAnswerText: { control: 'text' },
+    onContinue: { action: 'onContinue' },
+    title: { control: 'text' },
+    continueLabel: { control: 'text' },
+    isCheckDisabled: { control: 'boolean' },
+    onCheck: { action: 'onCheck' },
+    checkLabel: { control: 'text' },
+    onShowAnswer: { action: 'onShowAnswer' },
+    showAnswerLabel: { control: 'text' },
+    onRate: { action: 'onRate' },
+    ratingLabels: { control: 'object' },
   },
 };
 
-// Simplified render function (no sheet logic needed)
-const Template = (args: any) => (
-    // Optional: Add some padding to the top of the story to see the fixed footer
-    // Add a container to simulate page height if footer is fixed
-    <div style={{"min-height": "300px", "position": "relative", "padding-bottom": "200px"}}>
-      <p>Content above footer...</p>
-      {/* Render footer potentially outside the main padding div if it's truly fixed */}
-      <ExerciseFooter {...args} />
+// Wrapper to simulate content above the footer, similar to a Template function
+const StoryWrapper = (args: any) => (
+  <div class="h-screen bg-background text-foreground p-4">
+    <div class="mb-80"> {/* Pushes content down, making space for footer */} 
+      <p>Some content above the footer to demonstrate fixed positioning.</p>
+      <p>Scroll down if necessary to see the footer.</p>
     </div>
+    <ExerciseFooter {...args} />
+  </div>
 );
 
-// === Feedback Mode Stories ===
+export const CheckMode = {
+  args: {
+    mode: 'check',
+    isCheckDisabled: false,
+    checkLabel: 'Check',
+    onCheck: action('onCheck'),
+  },
+  render: StoryWrapper,
+};
 
-export const FeedbackCorrect = {
-  render: Template,
+export const CheckModeDisabled = {
+  args: {
+    mode: 'check',
+    isCheckDisabled: true,
+    checkLabel: 'Check',
+    onCheck: action('onCheck'),
+  },
+  render: StoryWrapper,
+};
+
+export const FeedbackModeCorrect = {
   args: {
     mode: 'feedback',
     isCorrect: true,
     title: 'Excellent!',
-    onContinue: () => console.log('Story: Continue triggered (Correct)'),
-    continueLabel: 'Next Lesson',
-  }
+    onContinue: action('onContinue'),
+  },
+  render: StoryWrapper,
 };
 
-export const FeedbackIncorrect = {
-  render: Template,
+export const FeedbackModeIncorrect = {
   args: {
     mode: 'feedback',
     isCorrect: false,
-    // title prop is ignored in incorrect mode, defaults to "Correct solution:"
-    correctAnswerText: 'I like learning French.',
-    onContinue: () => console.log('Story: Continue triggered (Incorrect)'),
-    continueLabel: 'Got it',
-  }
+    correctAnswerText: 'The correct answer was apple.',
+    title: 'Oops, not quite!', // Custom title for incorrect
+    onContinue: action('onContinue'),
+  },
+  render: StoryWrapper,
 };
 
-// === Check Mode Stories ===
-
-export const CheckEnabled = {
-    render: Template,
-    args: {
-        mode: 'check',
-        isCheckDisabled: false,
-        onCheck: () => console.log('Story: Check triggered'),
-        checkLabel: 'Check',
-    }
+export const FlashcardShowAnswerMode = {
+  args: {
+    mode: 'flashcardShowAnswer',
+    onShowAnswer: action('onShowAnswer'),
+  },
+  render: StoryWrapper,
 };
 
-export const CheckDisabled = {
-    render: Template,
-    args: {
-        mode: 'check',
-        isCheckDisabled: true,
-        onCheck: () => console.log('Story: Check triggered (should not happen)'),
-        checkLabel: 'Check',
-    }
+export const FlashcardRateMode = {
+  args: {
+    mode: 'flashcardRate',
+    onRate: (rating: Rating) => action('onRate')(rating),
+  },
+  render: StoryWrapper,
 };

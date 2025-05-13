@@ -45,7 +45,7 @@ export const StudyPageView: Component<StudyPageViewProps> = (props) => {
         </div>
 
         {/* --- Exercise Area --- */}
-        <div class="exercise-area mt-4 w-full max-w-md flex flex-col flex-grow justify-center">
+        <div class="exercise-area w-full max-w-md flex flex-col flex-grow">
           <Switch fallback={
             <Show when={!props.isLoadingItem && !props.itemError && props.currentStudyStep === 'noItem'}>
                  <p class="text-foreground text-lg text-center">

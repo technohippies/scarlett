@@ -3,6 +3,7 @@ import { Button } from '../../components/ui/button';
 import FlashcardDisplay from '../../shared/flashcard'; 
 import { Rating } from 'ts-fsrs';
 import type { FlashcardStatus } from '../../services/db/types';
+import { ExerciseFooter } from './ExerciseFooter';
 
 export interface ReviewableCardData {
   id: number | string; 
@@ -17,7 +18,7 @@ export interface FlashcardReviewerProps {
   initialIsAnswerShown?: boolean;
 }
 
-const FlashcardReviewer: Component<FlashcardReviewerProps> = (props) => {
+export const FlashcardReviewer: Component<FlashcardReviewerProps> = (props) => {
   const [isAnswerShown, setIsAnswerShown] = createSignal(props.initialIsAnswerShown ?? false);
 
   const handleShowAnswer = () => {
@@ -25,69 +26,35 @@ const FlashcardReviewer: Component<FlashcardReviewerProps> = (props) => {
   };
 
   const handleRatingClick = (rating: Rating) => {
-    props.onFlashcardRated(rating);
-    setIsAnswerShown(false); 
+    if (rating === Rating.Again || rating === Rating.Good) {
+      props.onFlashcardRated(rating);
+      setIsAnswerShown(false); 
+    } else {
+      console.warn(`[FlashcardReviewer] Unexpected rating received: ${rating}`);
+    }
   };
 
+  // Approximate footer height for padding, e.g. 8rem (128px) for pb-32
+  const footerClearancePaddingBottom = "pb-32"; // Padding for the content to clear the footer
+  const contentPaddingTop = "pt-4"; // Top padding for the content area
+
   return (
-    <div class="flex flex-col items-center gap-6 w-full max-w-md mx-auto p-4">
-      <div class="w-full">
-        <FlashcardDisplay
-          front={props.card.front}
-          back={isAnswerShown() ? (props.card.back ?? undefined) : undefined}
-          status={props.status}
-        />
+    <div class="relative flex flex-col h-full w-full">
+      <div class="flex-grow flex flex-col items-center justify-center overflow-y-auto">
+        <div class={`w-full max-w-md ${contentPaddingTop} ${footerClearancePaddingBottom}`}>
+          <FlashcardDisplay
+            front={props.card.front}
+            back={isAnswerShown() ? (props.card.back ?? undefined) : undefined}
+            status={props.status}
+          />
+        </div>
       </div>
 
-      {!isAnswerShown() ? (
-        <Button
-          variant="secondary"
-          class="w-full justify-center"
-          onClick={handleShowAnswer}
-          size="lg"
-        >
-          Show
-        </Button>
-      ) : (
-        <div class="grid grid-cols-4 gap-2 w-full">
-          <Button
-            variant="secondary"
-            class="justify-center"
-            onClick={() => handleRatingClick(Rating.Again)}
-            size="lg"
-            title="Rate as Again (1)"
-          >
-            Again
-          </Button>
-          <Button
-            variant="secondary"
-            class="justify-center"
-            onClick={() => handleRatingClick(Rating.Hard)}
-            size="lg"
-            title="Rate as Hard (2)"
-          >
-            Hard
-          </Button>
-          <Button
-            variant="secondary"
-            class="justify-center"
-            onClick={() => handleRatingClick(Rating.Good)}
-            size="lg"
-            title="Rate as Good (3)"
-          >
-            Good
-          </Button>
-          <Button
-            variant="secondary"
-            class="justify-center"
-            onClick={() => handleRatingClick(Rating.Easy)}
-            size="lg"
-            title="Rate as Easy (4)"
-          >
-            Easy
-          </Button>
-        </div>
-      )}
+      <ExerciseFooter
+        mode={isAnswerShown() ? 'flashcardRate' : 'flashcardShowAnswer'}
+        onShowAnswer={handleShowAnswer}
+        onRate={handleRatingClick}
+      />
     </div>
   );
 };

@@ -51,15 +51,25 @@ export default {
   argTypes: {
     card: { control: 'object' },
     status: { control: 'select', options: ['new', 'learning', 'review', 'relearning'] as FlashcardStatus[] },
-    onFlashcardRated: { action: 'onFlashcardRatedTriggered' },
+    onFlashcardRated: { action: 'onFlashcardRated' },
     initialIsAnswerShown: { control: 'boolean' },
+  },
+  parameters: {
+    // Using fullscreen layout as the component now has a fixed footer internally
+    layout: 'fullscreen', 
   },
 };
 
-// Template for rendering
+// Template for rendering - SIMPLIFIED
 const Template = (args: FlashcardReviewerProps) => (
-  <div class="h-screen w-full flex items-center justify-center p-4 bg-background">
-    <FlashcardReviewer {...args} />
+  // Outermost takes full screen and uses flex column to manage height
+  <div class="h-screen w-screen flex flex-col items-center justify-center bg-background p-4">
+    {/* FlashcardReviewer now directly manages its width and takes available height */}
+    {/* It already has h-full internally, so it should expand within this flex child container */}
+    {/* The parent items-center/justify-center will center it if it's not h-full itself */}
+    <div class="w-full max-w-md flex-grow flex flex-col"> {/* Use flex-grow to take available space, and flex-col for internal h-full */} 
+      <FlashcardReviewer {...args} /> {/* FlashcardReviewer has h-full internally */} 
+    </div>
   </div>
 );
 
