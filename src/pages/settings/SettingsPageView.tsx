@@ -324,7 +324,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
 
                     {/* --- NEW Focus Mode Section --- */}
                     <Show when={props.activeSection() === 'focusmode'}>
-                       <p class="text-muted-foreground mb-6">Configure blocked domains and activate Focus Mode to minimize distractions.</p>
+                       {/* <p class="text-muted-foreground mb-6">Configure blocked domains and activate Focus Mode to minimize distractions.</p> */}
                        <div class="mt-4 ml-4">
                           <FocusModePanel
                             isLoading={props.isFocusModeLoading}

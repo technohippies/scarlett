@@ -99,4 +99,32 @@ export async function seedInitialBlockedDomains(): Promise<void> {
   } finally {
     console.log('[DB Seed] Seeding initial blocked domains END.');
   }
+}
+
+/**
+ * Retrieves all domains from the blocked_domains table.
+ */
+export async function getAllBlockedDomains(): Promise<{ name: string; category: string }[]> {
+  console.log('[DB Domains] Fetching all blocked domains...');
+  let db: PGlite | null = null;
+  try {
+    db = await getDbInstance();
+    if (!db) {
+      console.error('[DB Domains] Failed to get DB instance for getAllBlockedDomains.');
+      return [];
+    }
+
+    const result = await db.query<{ domain_name: string; category: string }>('SELECT domain_name, category FROM blocked_domains;');
+    
+    if (result && result.rows) {
+      console.log(`[DB Domains] Found ${result.rows.length} domains.`);
+      // Map domain_name to name to align with DomainDetail usage elsewhere if needed, but keep category
+      return result.rows.map(row => ({ name: row.domain_name, category: row.category }));
+    }
+    console.log('[DB Domains] No domains found or query failed.');
+    return [];
+  } catch (error) {
+    console.error('[DB Domains] Error fetching all blocked domains:', error);
+    return []; // Return empty array on error
+  }
 } 

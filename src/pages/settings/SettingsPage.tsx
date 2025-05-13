@@ -2,7 +2,7 @@ import { Component, createSignal, createEffect } from 'solid-js';
 import SettingsPageView from './SettingsPageView';
 import { useSettings } from '../../context/SettingsContext';
 import type { TtsProviderOption } from '../../features/models/TtsProviderPanel';
-import type { FunctionConfig } from '../../services/storage/types';
+import type { FunctionConfig, DomainDetail } from '../../services/storage/types';
 import { DEFAULT_ELEVENLABS_MODEL_ID } from '../../shared/constants';
 
 // Assume mock provider options are fetched or defined elsewhere if needed for the container
@@ -102,6 +102,39 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
     }
   };
 
+  // --- Focus Mode State and Handlers ---
+  const isFocusModeActiveSignal = () => settings.config.isFocusModeActive ?? false;
+  const focusModeBlockedDomainsSignal = () => settings.config.userBlockedDomains ?? [];
+  // For now, use general loading status. Can be refined if needed.
+  const isFocusModeLoadingSignal = () => settings.loadStatus() === 'pending'; 
+
+  const handleToggleFocusMode = (isEnabled: boolean) => {
+    console.log(`[SettingsPage] Focus Mode Toggled: ${isEnabled}`);
+    // Assuming a context method like this exists or will be added:
+    settings.updateUserConfiguration({ isFocusModeActive: isEnabled });
+  };
+
+  const handleAddFocusDomain = (domainName: string) => {
+    console.log(`[SettingsPage] Add Blocked Domain: ${domainName}`);
+    const currentDomains = settings.config.userBlockedDomains ?? [];
+    if (!currentDomains.some(d => d.name.toLowerCase() === domainName.toLowerCase())) {
+      const updatedDomains = [...currentDomains, { name: domainName }];
+      // Assuming a context method like this exists or will be added:
+      settings.updateUserConfiguration({ userBlockedDomains: updatedDomains });
+    } else {
+      console.warn("[SettingsPage] Domain already exists:", domainName);
+    }
+  };
+
+  const handleRemoveFocusDomain = (domainName: string) => {
+    console.log(`[SettingsPage] Remove Blocked Domain: ${domainName}`);
+    const currentDomains = settings.config.userBlockedDomains ?? [];
+    const updatedDomains = currentDomains.filter(d => d.name.toLowerCase() !== domainName.toLowerCase());
+    // Assuming a context method like this exists or will be added:
+    settings.updateUserConfiguration({ userBlockedDomains: updatedDomains });
+  };
+  // --- End Focus Mode ---
+
   return (
     <SettingsPageView
       // Standard Props
@@ -139,6 +172,14 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
 
       // Redirects Props
       onRedirectSettingChange={(service, update) => settings.handleRedirectSettingChange(service, update)}
+
+      // Focus Mode Props
+      isFocusModeActive={isFocusModeActiveSignal}
+      isFocusModeLoading={isFocusModeLoadingSignal}
+      focusModeBlockedDomains={focusModeBlockedDomainsSignal}
+      onFocusModeToggle={handleToggleFocusMode}
+      onFocusModeAddDomain={handleAddFocusDomain}
+      onFocusModeRemoveDomain={handleRemoveFocusDomain}
     />
   );
 };

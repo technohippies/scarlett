@@ -1,10 +1,11 @@
 import { createContext, useContext, createResource, ParentComponent, createEffect, createSignal, Accessor, JSX, Setter } from 'solid-js';
 import { createStore, produce, SetStoreFunction, Store } from 'solid-js/store';
 import { userConfigurationStorage } from '../services/storage/storage';
-import type { UserConfiguration, FunctionConfig, RedirectSettings, RedirectServiceSetting } from '../services/storage/types'; // Centralize types
+import type { UserConfiguration, FunctionConfig, RedirectSettings, RedirectServiceSetting, DomainDetail } from '../services/storage/types'; // Centralize types
 import type { ProviderOption } from '../features/models/ProviderSelectionPanel'; // Use types from panels where appropriate
 import type { ModelOption } from '../features/models/ModelSelectionPanel'; // Need ModelOption too
 import type { LLMConfig, LLMProviderId } from '../services/llm/types'; 
+import { getAllBlockedDomains } from '../services/db/domains'; // <-- IMPORT DB FUNCTION
 
 // Import provider implementations (adjust as needed, consider a registry)
 // These imports need to be fixed based on the previous correction
@@ -67,6 +68,7 @@ interface ISettingsContext {
   updateTtsConfig: (config: FunctionConfig | null) => Promise<void>;
   updateRedirectSetting: (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => Promise<void>;
   updateFullRedirectSettings: (settings: RedirectSettings) => Promise<void>; // Action to replace all redirect settings
+  updateUserConfiguration: (updates: Partial<UserConfiguration>) => Promise<void>; // <-- ADDED FOR GENERAL UPDATES
 
   // --- UI Interaction Handlers --- 
   handleSelectProvider: (funcType: FunctionName, provider: ProviderOption | undefined) => Promise<void>;
@@ -100,7 +102,9 @@ const initialConfig: UserConfiguration = {
   embeddingConfig: null, // Use the new object structure
   // readerConfig: null, // Removed Reader
   ttsConfig: null, // Use the new object structure
-  redirectSettings: {}
+  redirectSettings: {},
+  isFocusModeActive: false, // Ensure default is present if not in initialConfig from storage
+  userBlockedDomains: [], // Ensure default is present
 };
 
 // --- Store Definition ---
@@ -184,6 +188,44 @@ export const SettingsProvider: ParentComponent = (props) => {
             setSettingsStore(produce(state => {
                 Object.assign(state, currentConfig);
             }));
+
+            // --- Seed userBlockedDomains from PGlite if empty ---
+            // Ensure this runs only if userBlockedDomains isn't already populated by the user
+            if (!currentConfig.userBlockedDomains || currentConfig.userBlockedDomains.length === 0) {
+                console.log("[SettingsContext] userBlockedDomains is empty. Attempting to seed from PGlite.");
+                // Launch as an async task, don't block settings loading display
+                (async () => {
+                    try {
+                        const pgLiteDomains = await getAllBlockedDomains(); // Returns Array<{ name: string; category: string }>
+                        if (pgLiteDomains && pgLiteDomains.length > 0) {
+                            console.log(`[SettingsContext] Found ${pgLiteDomains.length} domains in PGlite.`);
+                            
+                            // Map to DomainDetail[] which is { name: string }[], as used by FocusModePanel
+                            const domainsToStore: DomainDetail[] = pgLiteDomains.map(d => ({ name: d.name }));
+                            
+                            // Get the very latest config from storage before updating, to avoid race conditions
+                            // if other parts of the app modified it since initial load.
+                            const latestConfigForSeeding = await userConfigurationStorage.getValue() || initialConfig;
+
+                            // Merge the seeded domains into this latest config
+                            const configWithSeededDomains: UserConfiguration = { 
+                                ...latestConfigForSeeding, 
+                                userBlockedDomains: domainsToStore 
+                            };
+                            await userConfigurationStorage.setValue(configWithSeededDomains);
+                            
+                            // Also update the local store immediately to reflect in UI
+                            setSettingsStore('userBlockedDomains', domainsToStore);
+                            console.log("[SettingsContext] userBlockedDomains seeded successfully and local store updated.");
+                        } else {
+                            console.log("[SettingsContext] No domains found in PGlite to seed or seeding returned empty.");
+                        }
+                    } catch (error) {
+                        console.error("[SettingsContext] Error seeding userBlockedDomains from PGlite:", error);
+                    }
+                })();
+            }
+            // --- End Seed ---
 
             // --- Fetch models for pre-configured providers (Optimized) --- 
             console.log("[SettingsContext] Checking for pre-configured providers to fetch models (optimized)...", currentConfig);
@@ -333,6 +375,38 @@ export const SettingsProvider: ParentComponent = (props) => {
         setSettingsStore('redirectSettings', settings);
         await saveCurrentSettings();
     };
+
+    // --- NEW: General User Configuration Update Function ---
+    const updateUserConfiguration = async (updates: Partial<UserConfiguration>) => {
+        console.log("[SettingsContext] updateUserConfiguration called with updates:", updates);
+        try {
+            // Get the latest full configuration from storage to merge onto
+            const latestStoredConfig = await userConfigurationStorage.getValue() || initialConfig;
+            
+            // Create the new configuration by merging updates onto the latest stored config
+            const newConfig: UserConfiguration = {
+                ...latestStoredConfig,
+                ...updates,
+            };
+
+            // Save the newly merged configuration to storage
+            console.log(`[SettingsContext setValue] About to save from updateUserConfiguration. Full new config: ${JSON.stringify(newConfig, null, 2)}`);
+            await userConfigurationStorage.setValue(newConfig);
+            console.log(`[SettingsContext setValue] Save complete from updateUserConfiguration.`);
+
+            // Update the local Solid store to reflect the changes immediately
+            // This ensures the UI reacts without needing a full refetch/reload of context
+            setSettingsStore(produce(state => {
+                Object.assign(state, newConfig);
+            }));
+            console.log("[SettingsContext] Internal store updated after updateUserConfiguration.");
+
+        } catch (error) {
+            console.error("[SettingsContext] Failed to update user configuration:", error);
+            // Potentially re-throw or handle error state for UI feedback
+        }
+    };
+    // --- END NEW ---
 
     // --- UI Interaction Handler Implementations ---
     const handleSelectProvider = async (funcType: FunctionName, provider: ProviderOption | undefined) => {
@@ -664,6 +738,7 @@ export const SettingsProvider: ParentComponent = (props) => {
         handleRedirectSettingChange,
         ttsTestAudio: ttsTestAudio, // Expose the signal accessor correctly
         setTtsTestAudio, // Expose setter
+        updateUserConfiguration, // <-- ADDED TO CONTEXT VALUE
     };
 
     // --- Render Provider ---

@@ -18,17 +18,17 @@ function buildDefaultRedirectSettings(): RedirectSettings {
 }
 
 // Default values for user configuration
-const defaultUserConfiguration: UserConfiguration = {
-  nativeLanguage: null, // Or a sensible default like 'en'?
+export const defaultUserConfiguration: UserConfiguration = {
+  nativeLanguage: null,
   targetLanguage: null,
   learningGoal: null,
-  llmConfig: null, 
+  onboardingComplete: false,
+  isFocusModeActive: true, // Changed to true
+  userBlockedDomains: [],
+  llmConfig: null,
   embeddingConfig: null,
   ttsConfig: null,
   redirectSettings: buildDefaultRedirectSettings(), // Use the helper function
-  onboardingComplete: false,
-  isFocusModeActive: false, // Default to not active
-  userBlockedDomains: [], // Added new field with default empty array
   focusSettings: {}, // Changed to empty object as categories are removed from panel
 };
 
