@@ -1,3 +1,5 @@
+import type { LLMProviderId } from '../llm/types';
+
 // Add these interfaces for redirect settings
 export interface RedirectServiceSetting {
     isEnabled: boolean;
@@ -43,15 +45,50 @@ export interface FunctionConfig {
 
 // Define the shape of the user's overall configuration
 export interface UserConfiguration {
-    nativeLanguage: string | null;
-    targetLanguage: string | null;
-    learningGoal: string | null;
-    onboardingComplete: boolean;
-    isFocusModeActive?: boolean;
-    userBlockedDomains?: DomainDetail[]; // New field for user-managed blocked domains
-    llmConfig: FunctionConfig | null;
-    embeddingConfig: FunctionConfig | null;
-    ttsConfig: FunctionConfig | null;
+    nativeLanguage?: string | null;
+    targetLanguage?: string | null;
+    showTargetLanguage?: boolean;
+    showNativeLanguage?: boolean;
+    showWordLists?: boolean;
+    showFlashcards?: boolean;
+    showGrammar?: boolean;
+    showEtymology?: boolean;
+    showTranslations?: boolean;
+    showDefinitions?: boolean;
+    showSynonyms?: boolean;
+    showAntonyms?: boolean;
+    showExamples?: boolean;
+    showDifficulty?: boolean;
+    showFrequency?: boolean;
+    showCEFRLevel?: boolean;
+    showHSKLevel?: boolean;
+    enableAutomaticTranslation?: boolean;
+    enableAutomaticDefinition?: boolean;
+    enableAutomaticSynonyms?: boolean;
+    enableAutomaticAntonyms?: boolean;
+    enableAutomaticExamples?: boolean;
+    enableAutomaticDifficulty?: boolean;
+    enableAutomaticFrequency?: boolean;
+    enableAutomaticCEFRLevel?: boolean;
+    enableAutomaticHSKLevel?: boolean;
+    enableFocusMode?: boolean;
+    focusModeDuration?: number; // in minutes
+    focusModeBlockedDomains?: DomainDetail[];
+    selectedTtsVendor?: 'elevenlabs' | 'browser' | 'none';
+    elevenLabsApiKey?: string;
+    elevenLabsVoiceId?: string;
+    selectedLlmProvider?: LLMProviderId | 'none'; // none means no LLM features enabled
+    ollamaBaseUrl?: string;
+    ollamaModel?: string;
+    lmStudioBaseUrl?: string; // Assuming similar structure for LM Studio if added
+    lmStudioModel?: string;
+    janBaseUrl?: string;
+    janModel?: string;
+    embeddingModelProvider?: LLMProviderId | 'none'; // Changed EmbeddingProviderType to LLMProviderId
+    embeddingModelName?: string; // e.g., 'text-embedding-ada-002' for OpenAI, or local model name
+    lastMoodEntryDate?: string; // YYYY-MM-DD
+
+    // Added missing properties
     redirectSettings?: RedirectSettings;
-    focusSettings?: FocusSettings; // Marking as optional, as it's being superseded by userBlockedDomains
+    onboardingComplete?: boolean;
 }

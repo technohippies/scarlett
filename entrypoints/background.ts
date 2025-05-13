@@ -13,6 +13,8 @@ import { defineExtensionMessaging, Logger } from '@webext-core/messaging';
 import { registerContextMenuHandlers } from '../src/background/handlers/context-menu-handler';
 // Import storage to check onboarding status
 import { userConfigurationStorage } from '../src/services/storage/storage';
+// Import DomainDetail for typing
+import type { DomainDetail } from '../src/services/storage/types'; 
 // Use WXT's browser namespace
 import { browser } from 'wxt/browser';
 
@@ -55,12 +57,24 @@ async function handleNavigation(details: OnBeforeNavigateDetails): Promise<void>
   }
 
   try {
-    const config = await userConfigurationStorage.getValue();
+    let config = await userConfigurationStorage.getValue();
     // --- ADDED: Log loaded config BEFORE the check --- 
-    console.log('[Redirect & Focus] Loaded config:', JSON.stringify(config, null, 2)); 
+    console.log('[Redirect & Focus] Loaded raw config from storage:', JSON.stringify(config, null, 2)); 
+
+    // Perform a quick migration/normalization for focus mode keys directly after loading
+    if (config) {
+        if (config.hasOwnProperty('isFocusModeActive') && typeof (config as any).isFocusModeActive !== 'undefined') {
+            config.enableFocusMode = (config as any).isFocusModeActive;
+        }
+        if (config.hasOwnProperty('userBlockedDomains') && typeof (config as any).userBlockedDomains !== 'undefined') {
+            config.focusModeBlockedDomains = (config as any).userBlockedDomains;
+        }
+        // Log config after potential in-line migration
+        console.log('[Redirect & Focus] Config after potential in-line migration:', JSON.stringify(config, null, 2));
+    }
 
     // --- FOCUS MODE BLOCKING LOGIC ---
-    if (config?.isFocusModeActive && config?.userBlockedDomains && config.userBlockedDomains.length > 0) {
+    if (config?.enableFocusMode && config?.focusModeBlockedDomains && config.focusModeBlockedDomains.length > 0) {
       const currentUrlObj = new URL(details.url);
       const originalHost = currentUrlObj.hostname.toLowerCase();
       const extensionOrigin = new URL(browser.runtime.getURL('/' as any)).origin; // Cast to any if path is not recognized by type
@@ -71,7 +85,7 @@ async function handleNavigation(details: OnBeforeNavigateDetails): Promise<void>
         console.log('[Focus Mode] Navigation to own extension page or block page, allowing.');
         // Allow normal processing for other extension pages, then proceed to redirect logic if any
       } else {
-        const isDomainBlocked = config.userBlockedDomains.some(d => d.name.toLowerCase() === originalHost);
+        const isDomainBlocked = config.focusModeBlockedDomains.some((d: DomainDetail) => d.name.toLowerCase() === originalHost);
         if (isDomainBlocked) {
           console.log(`[Focus Mode] Domain ${originalHost} is blocked. Redirecting to block page.`);
           try {

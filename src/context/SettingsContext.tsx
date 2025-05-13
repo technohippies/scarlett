@@ -95,15 +95,14 @@ interface ISettingsContext {
 const initialConfig: UserConfiguration = {
   nativeLanguage: 'en', // Sensible default
   targetLanguage: '', // Needs to be set
-  learningGoal: '', // Needs to be set
   onboardingComplete: false,
   llmConfig: null, // Use the new object structure
   embeddingConfig: null, // Use the new object structure
   // readerConfig: null, // Removed Reader
   ttsConfig: null, // Use the new object structure
   redirectSettings: {},
-  isFocusModeActive: false, // Ensure default is present if not in initialConfig from storage
-  userBlockedDomains: [], // Ensure default is present
+  enableFocusMode: false, // UPDATED from isFocusModeActive
+  focusModeBlockedDomains: [], // UPDATED from userBlockedDomains
 };
 
 // --- Store Definition ---
@@ -183,51 +182,100 @@ export const SettingsProvider: ParentComponent = (props) => {
     createEffect(() => {
         if (!loadedSettings.loading && loadedSettings.state === 'ready' && loadedSettings()) {
             console.log("[SettingsContext] Settings resource is ready. Updating store state.");
-            const currentConfig = loadedSettings() as UserConfiguration;
+            
+            const configFromStorage = loadedSettings() as Partial<UserConfiguration> | null;
+            // Start with initialConfig, then overlay with what came from storage.
+            let effectiveConfig: UserConfiguration = { ...initialConfig, ...(configFromStorage || {}) }; 
+
+            let migrationNeeded = false;
+            // Perform migration if old keys exist
+            if (effectiveConfig.hasOwnProperty('isFocusModeActive')) {
+                console.log("[SettingsContext] Migrating 'isFocusModeActive' to 'enableFocusMode'.");
+                effectiveConfig.enableFocusMode = (effectiveConfig as any).isFocusModeActive;
+                delete (effectiveConfig as any).isFocusModeActive;
+                migrationNeeded = true;
+            }
+            if (effectiveConfig.hasOwnProperty('userBlockedDomains')) {
+                console.log("[SettingsContext] Migrating 'userBlockedDomains' to 'focusModeBlockedDomains'.");
+                effectiveConfig.focusModeBlockedDomains = (effectiveConfig as any).userBlockedDomains;
+                delete (effectiveConfig as any).userBlockedDomains;
+                migrationNeeded = true;
+            }
+            // Clean up learningGoal if it exists from old storage
+            if (effectiveConfig.hasOwnProperty('learningGoal')) {
+                console.log("[SettingsContext] Removing deprecated 'learningGoal' from config.");
+                delete (effectiveConfig as any).learningGoal;
+                migrationNeeded = true; 
+            }
+
+            if (migrationNeeded) {
+                console.log("[SettingsContext] Migration/cleanup performed. Saving updated config to storage.");
+                userConfigurationStorage.setValue(effectiveConfig).then(() => {
+                     console.log("[SettingsContext] Migrated/cleaned config saved to storage.");
+                }).catch(err => {
+                    console.error("[SettingsContext] Error saving migrated/cleaned config to storage:", err);
+                });
+            }
+            
             setSettingsStore(produce(state => {
-                Object.assign(state, currentConfig);
+                // Clear existing state keys that are not in effectiveConfig to ensure clean update
+                for (const key in state) {
+                    if (!(key in effectiveConfig)) {
+                        delete (state as any)[key];
+                    }
+                }
+                // Assign the properties from the processed effectiveConfig
+                Object.assign(state, effectiveConfig);
             }));
 
-            // --- Seed userBlockedDomains from PGlite if empty ---
-            // Ensure this runs only if userBlockedDomains isn't already populated by the user
-            if (!currentConfig.userBlockedDomains || currentConfig.userBlockedDomains.length === 0) {
-                console.log("[SettingsContext] userBlockedDomains is empty. Attempting to seed from PGlite.");
-                // Launch as an async task, don't block settings loading display
+            // --- Seed focusModeBlockedDomains from PGlite if empty ---
+            // This part should now use 'effectiveConfig.focusModeBlockedDomains'
+            if (!effectiveConfig.focusModeBlockedDomains || effectiveConfig.focusModeBlockedDomains.length === 0) {
+                console.log("[SettingsContext] focusModeBlockedDomains is empty. Attempting to seed from PGlite.");
                 (async () => {
                     try {
-                        const pgLiteDomains = await getAllBlockedDomains(); // Returns Array<{ name: string; category: string }>
+                        const pgLiteDomains = await getAllBlockedDomains(); 
                         if (pgLiteDomains && pgLiteDomains.length > 0) {
                             console.log(`[SettingsContext] Found ${pgLiteDomains.length} domains in PGlite.`);
-                            
-                            // Map to DomainDetail[] which is { name: string }[], as used by FocusModePanel
                             const domainsToStore: DomainDetail[] = pgLiteDomains.map(d => ({ name: d.name }));
                             
-                            // Get the very latest config from storage before updating, to avoid race conditions
-                            // if other parts of the app modified it since initial load.
-                            const latestConfigForSeeding = await userConfigurationStorage.getValue() || initialConfig;
+                            // Fetch the latest config again before this specific update to avoid race conditions with other updates
+                            let latestConfigForSeeding = { ...initialConfig, ...((await userConfigurationStorage.getValue()) || {}) };
+                            
+                            // Ensure latestConfigForSeeding is also clean of old/deprecated keys before merging new domains
+                            if (latestConfigForSeeding.hasOwnProperty('isFocusModeActive')) {
+                                latestConfigForSeeding.enableFocusMode = (latestConfigForSeeding as any).isFocusModeActive;
+                                delete (latestConfigForSeeding as any).isFocusModeActive;
+                            }
+                            if (latestConfigForSeeding.hasOwnProperty('userBlockedDomains')) {
+                                latestConfigForSeeding.focusModeBlockedDomains = (latestConfigForSeeding as any).userBlockedDomains;
+                                delete (latestConfigForSeeding as any).userBlockedDomains;
+                            }
+                            if (latestConfigForSeeding.hasOwnProperty('learningGoal')) {
+                                delete (latestConfigForSeeding as any).learningGoal;
+                            }
 
-                            // Merge the seeded domains into this latest config
                             const configWithSeededDomains: UserConfiguration = { 
                                 ...latestConfigForSeeding, 
-                                userBlockedDomains: domainsToStore 
+                                focusModeBlockedDomains: domainsToStore
                             };
+
                             await userConfigurationStorage.setValue(configWithSeededDomains);
                             
-                            // Also update the local store immediately to reflect in UI
-                            setSettingsStore('userBlockedDomains', domainsToStore);
-                            console.log("[SettingsContext] userBlockedDomains seeded successfully and local store updated.");
+                            setSettingsStore('focusModeBlockedDomains', domainsToStore);
+                            console.log("[SettingsContext] focusModeBlockedDomains seeded successfully and local store updated.");
                         } else {
                             console.log("[SettingsContext] No domains found in PGlite to seed or seeding returned empty.");
                         }
                     } catch (error) {
-                        console.error("[SettingsContext] Error seeding userBlockedDomains from PGlite:", error);
+                        console.error("[SettingsContext] Error seeding focusModeBlockedDomains from PGlite:", error);
                     }
                 })();
             }
             // --- End Seed ---
 
             // --- Fetch models for pre-configured providers (Optimized) --- 
-            console.log("[SettingsContext] Checking for pre-configured providers to fetch models (optimized)...", currentConfig);
+            console.log("[SettingsContext] Checking for pre-configured providers to fetch models (optimized)...", effectiveConfig);
 
             const providersToFetch = new Map<string, ProviderOption>();
             const funcTypesPerProvider = new Map<string, string[]>();
@@ -248,8 +296,8 @@ export const SettingsProvider: ParentComponent = (props) => {
                 }
             };
 
-            addProviderTask('LLM', currentConfig.llmConfig, llmProviderOptions);
-            addProviderTask('Embedding', currentConfig.embeddingConfig, embeddingProviderOptions);
+            addProviderTask('LLM', effectiveConfig.llmConfig, llmProviderOptions);
+            addProviderTask('Embedding', effectiveConfig.embeddingConfig, embeddingProviderOptions);
             // TODO: Add check for TTS
 
             if (providersToFetch.size > 0) {
@@ -277,7 +325,7 @@ export const SettingsProvider: ParentComponent = (props) => {
                     console.log(`[SettingsContext] Fetching models ONCE for provider: ${providerId} (used by: ${funcTypes.join(', ')})`);
                     try {
                         // Reuse the core logic from fetchModels but without state setting yet
-                        const fetchedModelInfoWithOptions = await fetchRawModelsForProvider(provider, currentConfig);
+                        const fetchedModelInfoWithOptions = await fetchRawModelsForProvider(provider, effectiveConfig);
 
                         // Process results for each funcType using this provider
                         funcTypes.forEach(funcType => {
