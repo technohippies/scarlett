@@ -5,8 +5,8 @@ import type { StudySummary } from '../../services/srs/types';
 import type { BackgroundProtocolMap } from '../../background/handlers/message-handlers';
 import type { Messages } from '../../types/i18n'; // Import Messages type
 import { useSettings } from '../../context/SettingsContext'; // <-- Import useSettings
-import { Show, createEffect } from 'solid-js';
-import { MoodSelector, type Mood } from '../../features/mood/MoodSelector';
+import { createEffect } from 'solid-js';
+import { type Mood } from '../../features/mood/MoodSelector';
 import { addMoodEntry } from '../../services/db/mood';
 
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
@@ -39,12 +39,12 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
     const lastMoodDate = settings.config.lastMoodEntryDate;
     const settingsAreLoaded = !settings.loadStatus().startsWith('pending');
     console.log(`[NewTabPage MoodEffect] Today: ${todayStr}, LastMoodEntry: ${lastMoodDate}, SettingsLoaded: ${settingsAreLoaded}, Onboarding: ${settings.config.onboardingComplete}`);
-    if (lastMoodDate !== todayStr && settingsAreLoaded) {
+    if (settings.config.onboardingComplete && lastMoodDate !== todayStr && settingsAreLoaded) {
       setShowMoodSelector(true);
       console.log('[NewTabPage MoodEffect] setShowMoodSelector(true)');
     } else {
       setShowMoodSelector(false);
-      console.log(`[NewTabPage MoodEffect] setShowMoodSelector(false) - Reason: lastMoodDate matches: ${lastMoodDate === todayStr}, settings not loaded: ${!settingsAreLoaded}`);
+      console.log(`[NewTabPage MoodEffect] setShowMoodSelector(false) - Reason: onboarding: ${settings.config.onboardingComplete}, lastMoodDate matches: ${lastMoodDate === todayStr}, settings not loaded: ${!settingsAreLoaded}`);
     }
   });
 
@@ -151,36 +151,22 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
   // --- End Focus Mode ---
 
   return (
-    <>
-      {/* Mood Selector Section - Using fixed positioning for overlay centering (no extra bg/blur) */}
-      <Show when={showMoodSelector()}>
-        <div class="fixed inset-0 z-50 flex items-center justify-center">
-          {/* Removed bg-black/50 backdrop-blur-sm */}
-          <section class="w-full max-w-md p-6 bg-card rounded-xl shadow-lg mx-4">
-            <h2 class="text-xl font-semibold text-center text-card-foreground mb-5">
-              {i18n().get('newTabPageMoodPrompt', 'How are you feeling today?')}
-            </h2>
-            <MoodSelector onSelect={handleMoodSelect} class="justify-center" />
-          </section>
-        </div>
-      </Show>
-
-      <NewTabPageView 
-        summary={summaryData}
-        summaryLoading={() => summaryData.loading || props.messagesLoading} // Combine loading states
-        pendingEmbeddingCount={() => embeddingCountData()?.count ?? 0}
-        isEmbedding={isEmbedding}
-        embedStatusMessage={embedStatusMessage}
-        onEmbedClick={handleEmbedClick}
-        onNavigateToBookmarks={props.onNavigateToBookmarks}
-        onNavigateToStudy={props.onNavigateToStudy}
-        onNavigateToSettings={props.onNavigateToSettings}
-        messages={props.messages} // Pass messages down to the view
-        // No messagesLoading prop for NewTabPageView, it's handled here
-        isFocusModeActive={isFocusModeActive} // <-- Pass new prop
-        onToggleFocusMode={handleToggleFocusMode} // <-- Pass new prop
-      />
-    </>
+    <NewTabPageView
+      summary={summaryData}
+      summaryLoading={() => summaryData.loading || props.messagesLoading}
+      pendingEmbeddingCount={() => embeddingCountData()?.count ?? 0}
+      isEmbedding={isEmbedding}
+      embedStatusMessage={embedStatusMessage}
+      onEmbedClick={handleEmbedClick}
+      onNavigateToBookmarks={props.onNavigateToBookmarks}
+      onNavigateToStudy={props.onNavigateToStudy}
+      onNavigateToSettings={props.onNavigateToSettings}
+      messages={props.messages}
+      isFocusModeActive={isFocusModeActive}
+      onToggleFocusMode={handleToggleFocusMode}
+      showMoodSelector={showMoodSelector}
+      onMoodSelect={handleMoodSelect}
+    />
   );
 };
 

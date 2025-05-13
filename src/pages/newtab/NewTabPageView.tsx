@@ -6,6 +6,7 @@ import { EmbeddingProcessingPanel } from '../../features/embedding/EmbeddingProc
 import { BookmarkSimple, Gear } from 'phosphor-solid';
 import type { StudySummary } from '../../services/srs/types';
 import type { Messages } from '../../types/i18n';
+import { MoodSelector, type Mood } from '../../features/mood/MoodSelector';
 
 // Props for the View component
 export interface NewTabPageViewProps {
@@ -21,6 +22,8 @@ export interface NewTabPageViewProps {
   messages: Messages | undefined;
   isFocusModeActive: Accessor<boolean>;
   onToggleFocusMode: () => void;
+  showMoodSelector: Accessor<boolean>;
+  onMoodSelect: (mood: Mood | null) => Promise<void>;
 }
 
 // --- Rearranged View Component ---
@@ -38,7 +41,7 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
     <div class="newtab-page-container relative p-6 md:p-8 font-sans bg-background min-h-screen flex flex-col">
 
       {/* --- Top Left: Study Panel --- */}
-      <div class="study-panel-area max-w-xs w-full mb-auto"> {/* mb-auto pushes it up */}
+      <div class="study-panel-area max-w-xs w-full">
           <Show
               when={!props.summaryLoading()}
               fallback={ <div class="bg-card p-4 rounded-lg shadow-md flex justify-center items-center h-24"><Spinner class="h-8 w-8 text-muted-foreground" /></div> }
@@ -61,12 +64,30 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
           </Show>
       </div>
 
+      {/* --- Mood Selector Section (Conditionally Rendered, Centered in available space) --- */}
+      <Show when={props.showMoodSelector()}>
+        {/* This div will grow and center its content both vertically and horizontally */}
+        <div class="flex-grow flex items-center justify-center py-4">
+          <section class="w-full max-w-md p-6 bg-card rounded-xl shadow-lg">
+            <h2 class="text-xl font-semibold text-center text-card-foreground mb-5">
+              {i18n().get('newTabPageMoodPrompt', 'How are you feeling today?')}
+            </h2>
+            <MoodSelector onSelect={props.onMoodSelect} class="justify-center" />
+          </section>
+        </div>
+      </Show>
+
+      {/* --- Placeholder to maintain space if mood selector is NOT shown, ensuring Action Buttons stay down --- */}
+      <Show when={!props.showMoodSelector()}>
+        <div class="flex-grow"></div>
+      </Show>
+
       {/* --- Bottom Right Area --- */}
-      {/* --- Change gap to gap-2 --- */}
-      <div class="mt-auto ml-auto flex flex-col gap-2 items-end"> 
+      {/* mt-auto will push this to the bottom of the flex container, respecting the flex-grow items above it */}
+      <div class="mt-auto ml-auto flex flex-col gap-2 items-end">
           
-          {/* Embedding Panel (now direct child) */} 
-          <EmbeddingProcessingPanel 
+          {/* Embedding Panel (now direct child) */}
+          <EmbeddingProcessingPanel
             pendingEmbeddingCount={props.pendingEmbeddingCount}
             isEmbedding={props.isEmbedding}
             embedStatusMessage={props.embedStatusMessage}
@@ -74,14 +95,14 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
             messages={props.messages}
           />
 
-          {/* Focus Mode Button (Moved to top of this stack) */} 
+          {/* Focus Mode Button (Moved to top of this stack) */}
           <Button onClick={props.onToggleFocusMode} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
             {props.isFocusModeActive()
-              ? i18n().get('newTabPageButtonStopFocus', 'Stop Focus') 
+              ? i18n().get('newTabPageButtonStopFocus', 'Stop Focus')
               : i18n().get('newTabPageButtonStartFocus', 'Start Focus')}
           </Button>
 
-          {/* Action Buttons (now direct children) */} 
+          {/* Action Buttons (now direct children) */}
           <Button onClick={props.onNavigateToBookmarks} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
               <BookmarkSimple weight="fill" size={18} />
               {i18n().get('newTabPageButtonBookmarks', 'Bookmarks')}

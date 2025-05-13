@@ -156,6 +156,12 @@
     "message": "今天感觉怎么样？",
     "description": "新标签页上每日心情选择器的提示。"
   },
+  "newTabPageButtonStartFocus": {
+    "message": "开始专注"
+  },
+  "newTabPageButtonStopFocus": {
+    "message": "停止专注"
+  },
   "flashcardPanelLabelNew": {
     "message": "新"
   },

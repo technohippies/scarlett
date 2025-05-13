@@ -46,7 +46,7 @@ export const MoodSelector: Component<MoodSelectorProps> = (props) => {
   // We need to ensure lottie files are in the public folder, e.g., public/lottie/happy.json
 
   return (
-    <div class={`flex items-center space-x-2 p-4 bg-gray-100 rounded-md ${props.class ?? ''}`}>
+    <div class={`flex items-center space-x-2 p-4 bg-background rounded-md ${props.class ?? ''}`}>
       <For each={moodOptions}>
         {(option) => {
           const isSelected = () => selectedMood() === option.mood;
