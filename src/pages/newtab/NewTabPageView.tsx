@@ -7,6 +7,7 @@ import { BookmarkSimple, Gear } from 'phosphor-solid';
 import type { StudySummary } from '../../services/srs/types';
 import type { Messages } from '../../types/i18n';
 import { MoodSelector, type Mood } from '../../features/mood/MoodSelector';
+import { Motion } from 'solid-motionone';
 
 // Props for the View component
 export interface NewTabPageViewProps {
@@ -24,7 +25,10 @@ export interface NewTabPageViewProps {
   onToggleFocusMode: () => void;
   showMoodSelector: Accessor<boolean>;
   onMoodSelect: (mood: Mood | null) => Promise<void>;
+  isPageReady: Accessor<boolean>;
 }
+
+const transitionSettings = { duration: 0.4, easing: "ease-in-out" } as const;
 
 // --- Rearranged View Component ---
 const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
@@ -38,7 +42,12 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
 
   return (
     // --- Main container: flex-col, padding, min-height ---
-    <div class="newtab-page-container relative p-6 md:p-8 font-sans bg-background min-h-screen flex flex-col">
+    <Motion
+      initial={{ opacity: 0 }}
+      animate={{ opacity: props.isPageReady() ? 1 : 0 }}
+      transition={transitionSettings}
+      class="newtab-page-container relative p-6 md:p-8 font-sans bg-background min-h-screen flex flex-col"
+    >
 
       {/* --- Top Left: Study Panel --- */}
       <div class="study-panel-area max-w-xs w-full">
@@ -113,7 +122,7 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
           </Button>
       </div>
 
-    </div>
+    </Motion>
   );
 };
 

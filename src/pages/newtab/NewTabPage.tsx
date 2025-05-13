@@ -1,11 +1,10 @@
-import { Component, createResource, createSignal } from 'solid-js';
+import { Component, createResource, createSignal, createEffect, createMemo } from 'solid-js';
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import NewTabPageView from './NewTabPageView';
 import type { StudySummary } from '../../services/srs/types';
 import type { BackgroundProtocolMap } from '../../background/handlers/message-handlers';
 import type { Messages } from '../../types/i18n'; // Import Messages type
 import { useSettings } from '../../context/SettingsContext'; // <-- Import useSettings
-import { createEffect } from 'solid-js';
 import { type Mood } from '../../features/mood/MoodSelector';
 import { addMoodEntry } from '../../services/db/mood';
 
@@ -150,6 +149,13 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
   };
   // --- End Focus Mode ---
 
+  const isPageReady = createMemo(() => {
+    const summaryActuallyLoaded = !summaryData.loading && summaryData.state === 'ready';
+    const messagesActuallyLoaded = !props.messagesLoading;
+    // console.log(`[NewTabPage isPageReady] summaryLoaded: ${summaryActuallyLoaded}, messagesLoaded: ${messagesActuallyLoaded}`);
+    return summaryActuallyLoaded && messagesActuallyLoaded;
+  });
+
   return (
     <NewTabPageView
       summary={summaryData}
@@ -166,6 +172,7 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
       onToggleFocusMode={handleToggleFocusMode}
       showMoodSelector={showMoodSelector}
       onMoodSelect={handleMoodSelect}
+      isPageReady={isPageReady}
     />
   );
 };
