@@ -1,28 +1,27 @@
-import { Component, createSignal, createResource, createMemo } from 'solid-js';
+import { Component, createSignal, createResource, createMemo, createEffect } from 'solid-js';
 import { defineExtensionMessaging } from "@webext-core/messaging";
 import type {
     GetDueItemsRequest,
     GetDueItemsResponse,
     SubmitReviewRequest,
     SubmitReviewResponse,
-    CacheDistractorsRequest,
-    CacheDistractorsResponse,
     GenerateLLMDistractorsRequest,
     GenerateLLMDistractorsResponse,
     GetDistractorsRequest,
     GetDistractorsResponse
 } from '../../shared/messaging-types';
-import type { DueLearningItem } from '../../services/srs/types';
-import { Rating } from 'ts-fsrs';
+import { Rating, State as FSRSStateEnum } from 'ts-fsrs'; 
+import type { DueLearningItem } from '../../services/srs/types'; // FSRSState was removed from here
 import { StudyPageView } from './StudyPageView';
 import type { MCQProps } from '../../features/exercises/MCQ';
+import type { ReviewableCardData } from '../../features/exercises/Flashcard';
+import type { FlashcardStatus } from '../../services/db/types';
 import { userConfigurationStorage } from '../../services/storage/storage';
 
 // Define the protocol map for messages SENT TO the background
 interface BackgroundProtocol {
     getDueItems(data: GetDueItemsRequest): Promise<GetDueItemsResponse>;
     submitReviewResult(data: SubmitReviewRequest): Promise<SubmitReviewResponse>;
-    cacheDistractors(data: CacheDistractorsRequest): Promise<CacheDistractorsResponse>;
     generateLLMDistractors(data: GenerateLLMDistractorsRequest): Promise<GenerateLLMDistractorsResponse>;
     getDistractorsForItem(data: GetDistractorsRequest): Promise<GetDistractorsResponse>;
 }
@@ -53,17 +52,32 @@ interface DistractorResourceData {
   forTranslationId: number | null;
 }
 
+// Helper to map FSRS numeric state to FlashcardStatus string
+const mapFsrsStateToStatus = (stateValue: number): FlashcardStatus => {
+  switch (stateValue) {
+    case FSRSStateEnum.New: return 'new';
+    case FSRSStateEnum.Learning: return 'learning';
+    case FSRSStateEnum.Review: return 'review';
+    case FSRSStateEnum.Relearning: return 'relearning';
+    default: 
+      console.warn(`[StudyPage] Unknown FSRS state value: ${stateValue}`);
+      return 'new';
+  }
+};
+
 // --- Container Component ---
 const StudyPage: Component<StudyPageProps> = (props) => {
   const [currentItem, setCurrentItem] = createSignal<DueLearningItem | null>(null);
   const [itemError, setItemError] = createSignal<string | null>(null);
   const [exerciseDirection, setExerciseDirection] = createSignal<'EN_TO_NATIVE' | 'NATIVE_TO_EN'>('EN_TO_NATIVE');
+  const [currentStudyStep, setCurrentStudyStep] = createSignal<'flashcard' | 'mcq' | 'noItem'>('noItem');
 
   // --- Fetching Due Item Resource ---
   const [dueItemResource, { refetch: fetchDueItems }] = createResource(async () => {
     console.log('[StudyPage Container] Fetching next due item resource...');
     setItemError(null);
     setCurrentItem(null);
+    setCurrentStudyStep('noItem'); // Reset step
     try {
       const requestData = { limit: 1 };
       console.log('[StudyPage Container] Sending getDueItems message with data:', requestData);
@@ -76,26 +90,45 @@ const StudyPage: Component<StudyPageProps> = (props) => {
         setCurrentItem(fetchedItem);
         const direction = Math.random() < 0.5 ? 'EN_TO_NATIVE' : 'NATIVE_TO_EN';
         setExerciseDirection(direction);
+        setCurrentStudyStep('flashcard'); // Start with flashcard
         console.log(`[StudyPage Container] Set exercise direction: ${direction}`);
         return fetchedItem;
       } else {
         console.log('[StudyPage Container] No due items returned in response.');
         setCurrentItem(null);
+        setCurrentStudyStep('noItem');
         return null;
       }
     } catch (err: any) {
       console.error('[StudyPage Container] Error fetching due items via messaging:', err);
       setItemError(err.message || 'Failed to fetch due items.');
+      setCurrentStudyStep('noItem');
       return null;
     }
   });
 
-  // --- Generating Distractors Resource ---
+  // Effect to reset study step when a new item starts loading or is loaded
+  createEffect(() => {
+    if (dueItemResource.loading) {
+        setCurrentStudyStep('noItem'); // Show loading for item itself
+    } else if (currentItem()) {
+        setCurrentStudyStep('flashcard');
+    } else {
+        setCurrentStudyStep('noItem');
+    }
+  });
+
+  // --- Generating Distractors Resource (Only if moving to MCQ step) ---
   const [distractorResource] = createResource(
-    () => ({ item: currentItem(), direction: exerciseDirection() }),
+    () => ({ item: currentItem(), direction: exerciseDirection(), step: currentStudyStep() }),
     async (deps): Promise<DistractorResourceData> => {
-        const { item, direction } = deps;
-        if (!item) return { distractors: null, error: null, forDirection: null, forTranslationId: null };
+        const { item, direction, step } = deps;
+        // Only fetch distractors if we are in MCQ step and have an item
+        if (step !== 'mcq' || !item) {
+            return { distractors: null, error: null, forDirection: null, forTranslationId: null };
+        }
+        
+        console.log(`[StudyPage Distractors] Step is MCQ, proceeding to fetch for item ${item.translationId}`);
 
         // Fetch user settings to determine the correct native language for DB fallback
         let userNativeLangCode = 'vi'; // Default, will be overridden by user settings
@@ -105,7 +138,7 @@ const StudyPage: Component<StudyPageProps> = (props) => {
                 userNativeLangCode = userSettings.nativeLanguage;
             }
         } catch (settingsError) {
-            console.warn('[StudyPage Container Distractors] Could not fetch user settings for DB fallback language, using default.', settingsError);
+            console.warn('[StudyPage Distractors] Could not fetch user settings for DB fallback language, using default.', settingsError);
         }
 
         const correctAnswerForFiltering = direction === 'EN_TO_NATIVE' ? item.targetText : item.sourceText;
@@ -113,20 +146,14 @@ const StudyPage: Component<StudyPageProps> = (props) => {
         let llmGeneratedDistractors: string[] = [];
         let generationError: string | null = null;
 
-        // Correctly determine the word the user is asked to translate for logging
         const questionWordForLog = direction === 'EN_TO_NATIVE' ? item.targetText : item.sourceText;
-        
-        // optionsLangForLog is an approximation for logging, actual distractor lang is determined by backend
         const optionsLangForLog = direction === 'EN_TO_NATIVE' 
-            ? getFullLanguageName(item.targetLang) // If EN_TO_NATIVE, item.targetLang is 'en', this log will say 'English' for options lang. Actual options are Native.
-            : getFullLanguageName('en');    // If NATIVE_TO_EN, this log will say 'English' for options lang. Actual options are English.
-                                        // This logging line is imperfect for optionsLangForLog but avoids needing userSettings here.
-                                        // Backend logs are more accurate for distractor language chosen.
+            ? getFullLanguageName(item.targetLang) 
+            : getFullLanguageName('en');
 
-        console.log(`[StudyPage Container Distractors] Generating/fetching ${optionsLangForLog} distractors for [${direction}]: ${questionWordForLog}`);
+        console.log(`[StudyPage Distractors] Generating/fetching ${optionsLangForLog} distractors for [${direction}]: ${questionWordForLog}`);
         
-        // LLM Generation Attempt
-        console.log(`[StudyPage Container Distractors] Attempting LLM generation...`);
+        console.log(`[StudyPage Distractors] Attempting LLM generation...`);
         try {
           const llmResponse = await messaging.sendMessage('generateLLMDistractors', {
             sourceText: item.sourceText,    
@@ -137,41 +164,30 @@ const StudyPage: Component<StudyPageProps> = (props) => {
           });
 
           if (llmResponse.distractors && llmResponse.distractors.length > 0) {
-            // LLM response is now directly an array of strings
             llmGeneratedDistractors = [...new Set(llmResponse.distractors)].filter(d => d !== correctAnswerForFiltering);
-            console.log('[StudyPage Container Distractors] LLM generated distractors:', llmGeneratedDistractors);
-            // Caching logic can be re-added here if desired later.
-            // For now, focusing on the core LLM distractor flow.
           } else if (llmResponse.error) {
-             console.warn('[StudyPage Container Distractors] LLM generation issue:', llmResponse.error);
+             console.warn('[StudyPage Distractors] LLM generation issue:', llmResponse.error);
              generationError = llmResponse.error;
           }
         } catch (llmError: any) {
-          console.error('[StudyPage Container Distractors] LLM call failed:', llmError);
+          console.error('[StudyPage Distractors] LLM call failed:', llmError);
           generationError = llmError.message ?? "LLM call failed";
         }
 
         let finalDistractorsPool = [...llmGeneratedDistractors];
 
-        // DB Fallback if LLM did not provide enough
         if (finalDistractorsPool.length < requiredDistractors) {
-            console.log('[StudyPage Container Distractors] LLM provided insufficient distractors. Using DB fallback...');
+            console.log('[StudyPage Distractors] LLM provided insufficient. Using DB fallback...');
             try {
                 const neededFromDb = requiredDistractors - finalDistractorsPool.length;
-                
-                // Corrected DB distractor language logic
                 let dbDistractorLangCode: string;
                 if (direction === 'NATIVE_TO_EN') {
-                    // User is translating Native to English, so distractors from DB should be English.
-                    // item.targetLang should be 'en' in this case.
                     dbDistractorLangCode = item.targetLang; 
-                } else { // EN_TO_NATIVE
-                    // User is translating English to Native, so distractors from DB should be in the user's Native language.
+                } else { 
                     dbDistractorLangCode = userNativeLangCode; 
                 }
                 
-                console.log(`[StudyPage Container Distractors] DB Fallback: Requesting ${neededFromDb} distractors in lang code: ${dbDistractorLangCode} for targetLexemeId: ${item.targetLexemeId}`);
-
+                console.log(`[StudyPage Distractors] DB Fallback: Requesting ${neededFromDb} in lang: ${dbDistractorLangCode} for targetLexemeId: ${item.targetLexemeId}`);
                 const dbResponse = await messaging.sendMessage('getDistractorsForItem', {
                     correctTargetLexemeId: item.targetLexemeId, 
                     targetLanguage: dbDistractorLangCode, 
@@ -179,18 +195,15 @@ const StudyPage: Component<StudyPageProps> = (props) => {
                 });
                 const dbDistractors = dbResponse.distractors.filter(d => !finalDistractorsPool.includes(d) && d !== correctAnswerForFiltering);
                 finalDistractorsPool.push(...dbDistractors);
-                console.log('[StudyPage Container Distractors] DB Fallback added:', dbDistractors);
             } catch (dbError: any) {
-                 console.error('[StudyPage Container Distractors] DB fallback failed:', dbError);
+                 console.error('[StudyPage Distractors] DB fallback failed:', dbError);
                  if (!generationError) generationError = dbError.message ?? "DB fallback failed";
             }
         }
         
-        // Ensure we have the right number of distractors, add placeholders if necessary
         let selectedDistractors: string[] = [];
         const availableDistractors = [...new Set(finalDistractorsPool)].filter(d => d !== correctAnswerForFiltering);
         
-        // Prefer last incorrect choice if available and distinct
         if (item.lastIncorrectChoice && availableDistractors.includes(item.lastIncorrectChoice) && item.lastIncorrectChoice !== correctAnswerForFiltering) {
             selectedDistractors.push(item.lastIncorrectChoice);
             availableDistractors.splice(availableDistractors.indexOf(item.lastIncorrectChoice), 1);
@@ -201,14 +214,12 @@ const StudyPage: Component<StudyPageProps> = (props) => {
              selectedDistractors.push(availableDistractors.splice(randomIndex, 1)[0]);
         }
         
-        // If still not enough, add placeholders (this part should ideally not be reached often with good LLM + DB fallback)
         let placeholderIndex = 0;
         while (selectedDistractors.length < requiredDistractors) {
              selectedDistractors.push(`Placeholder ${String.fromCharCode(65 + placeholderIndex++)}`);
-             if (!generationError) generationError = "Not enough unique distractors found from LLM or DB.";
+             if (!generationError) generationError = "Not enough unique distractors from LLM or DB.";
         }
 
-        console.log('[StudyPage Container Distractors] Final selected distractors to combine with correct answer:', selectedDistractors);
         return {
             distractors: selectedDistractors.slice(0, requiredDistractors),
             error: generationError,
@@ -217,57 +228,67 @@ const StudyPage: Component<StudyPageProps> = (props) => {
         };
     }
   );
+  
+  // --- Memos for Props ---
 
-  // --- Memo for Final MCQ Props ---
+  const itemForFlashcardReviewer = createMemo<ReviewableCardData | null>(() => {
+    const item = currentItem();
+    const direction = exerciseDirection();
+    if (!item) return null;
+
+    return {
+      id: item.learningId,
+      front: direction === 'EN_TO_NATIVE' ? item.targetText : item.sourceText,
+      back: direction === 'EN_TO_NATIVE' ? item.sourceText : item.targetText,
+    };
+  });
+
+  const flashcardStatus = createMemo<FlashcardStatus>(() => {
+    const item = currentItem();
+    return item ? mapFsrsStateToStatus(item.currentState) : 'new';
+  });
+
   const mcqProps = createMemo<MCQProps | null>(() => {
-    const currentItemData = currentItem();
-    const currentDirection = exerciseDirection();
+    const itemData = currentItem();
+    const direction = exerciseDirection();
+    const step = currentStudyStep();
 
-    if (distractorResource.loading) {
-        console.log('[StudyPage MCQ Props] Waiting: Distractors loading...');
+    if (step !== 'mcq' || !itemData || distractorResource.loading) {
         return null;
     }
 
-    const currentDistractorInfo = distractorResource();
+    const distractorInfo = distractorResource();
 
     if (
-        !currentItemData || 
-        !currentDistractorInfo ||
-        !currentDistractorInfo.distractors ||
-        currentDistractorInfo.forDirection !== currentDirection ||
-        currentDistractorInfo.forTranslationId !== currentItemData.translationId
+        !distractorInfo ||
+        !distractorInfo.distractors ||
+        distractorInfo.forDirection !== direction ||
+        distractorInfo.forTranslationId !== itemData.translationId
     ) {
-        if (!currentItemData) console.log('[StudyPage MCQ Props] Waiting: No current item data.');
-        else if (!currentDistractorInfo) console.log('[StudyPage MCQ Props] Waiting: No distractor info (resource might have errored or not resolved).');
-        else if (!currentDistractorInfo.distractors) console.log('[StudyPage MCQ Props] Waiting: Distractor info present, but no distractors array.');
-        else if (currentDistractorInfo.forDirection !== currentDirection) {
+        if (!distractorInfo) console.log('[StudyPage MCQ Props] Waiting: No distractor info (resource might have errored or not resolved).');
+        else if (!distractorInfo.distractors) console.log('[StudyPage MCQ Props] Waiting: Distractor info present, but no distractors array.');
+        else if (distractorInfo.forDirection !== direction) {
             console.log(`[StudyPage MCQ Props] Waiting: Stale distractors direction. ` +
-                        `Expected dir: ${currentDirection} (got ${currentDistractorInfo.forDirection})`);
-        } else if (currentDistractorInfo.forTranslationId !== currentItemData.translationId) {
+                        `Expected dir: ${direction} (got ${distractorInfo.forDirection})`);
+        } else if (distractorInfo.forTranslationId !== itemData.translationId) {
             console.log(`[StudyPage MCQ Props] Waiting: Stale distractors TId. ` +
-                        `Expected TId: ${currentItemData.translationId} (got ${currentDistractorInfo.forTranslationId})`);
+                        `Expected TId: ${itemData.translationId} (got ${distractorInfo.forTranslationId})`);
         }
-        return null;
+        return null; 
     }
 
-    // Determine the text to display for translation and the correct option text
     let sentenceToTranslateDisplay: string;
     let correctAnswerForOptionsList: string;
 
-    if (currentDirection === 'EN_TO_NATIVE') {
-        // User sees English, options are Native
-        sentenceToTranslateDisplay = currentItemData.targetText;  // English word
-        correctAnswerForOptionsList = currentItemData.sourceText; // Native word
-    } else { // NATIVE_TO_EN
-        // User sees Native, options are English
-        sentenceToTranslateDisplay = currentItemData.sourceText;  // Native word
-        correctAnswerForOptionsList = currentItemData.targetText; // English word
+    if (direction === 'EN_TO_NATIVE') {
+        sentenceToTranslateDisplay = itemData.targetText;
+        correctAnswerForOptionsList = itemData.sourceText;
+    } else { 
+        sentenceToTranslateDisplay = itemData.sourceText;
+        correctAnswerForOptionsList = itemData.targetText;
     }
 
-    // currentDistractorInfo.distractors is now an array of strings from the resource, verified for current item/direction
-    const receivedDistractors = currentDistractorInfo.distractors;
-
-    // Combine correct answer with distractors
+    const receivedDistractors = distractorInfo.distractors;
     const allOptionsRaw = [correctAnswerForOptionsList, ...receivedDistractors];
     const shuffledOptions = shuffleArray(allOptionsRaw);
 
@@ -279,28 +300,61 @@ const StudyPage: Component<StudyPageProps> = (props) => {
     const correctOptionId = finalOptions.findIndex(opt => opt.text === correctAnswerForOptionsList);
 
     if (correctOptionId === -1) {
-        console.error("[StudyPage MCQ Props] Correct answer not found in final shuffled options!", { correctAnswerForOptionsList, finalOptions });
-        return null; // Should not happen
+        console.error("[StudyPage MCQ Props] Correct answer not found in final options!", { correctAnswerForOptionsList, finalOptions });
+        return null; 
     }
 
-    const props: MCQProps = {
+    const mcqP: MCQProps = {
       instructionText: "Translate:",
       sentenceToTranslate: sentenceToTranslateDisplay,
       options: finalOptions,
       correctOptionId: correctOptionId,
       onComplete: handleMcqComplete
     };
-    console.log('[StudyPage Container] Generated Final MCQ Props:', JSON.stringify(props, null, 2));
-    return props;
+    return mcqP;
   });
 
-  // --- Handle MCQ Completion ---
-  const handleMcqComplete = async (selectedOptionId: string | number, isCorrect: boolean) => {
-    console.log(`[StudyPage Container] MCQ Complete. Correct: ${isCorrect}, Selected ID: ${selectedOptionId}`);
+  // --- Handlers ---
+
+  const handleFlashcardRated = async (rating: Rating) => {
     const item = currentItem();
     if (!item) {
-      console.error("[StudyPage Container] No current item found when MCQ completed.");
+      console.error("[StudyPage] No current item found when flashcard rated.");
+      setItemError("Error submitting review: Item not found.");
+      fetchDueItems(); // Try to get a new item
+      return;
+    }
+
+    console.log(`[StudyPage] Flashcard rated for Learning ID: ${item.learningId} with Grade: ${rating}`);
+    try {
+      const response = await messaging.sendMessage('submitReviewResult', {
+        learningId: item.learningId,
+        grade: rating,
+      });
+      if (!response.success) {
+        setItemError(`Failed to submit review: ${response.error || 'Unknown error'}`);
+      }
+
+      // Decide if we should proceed to MCQ or fetch next item
+      if (rating === Rating.Again || rating === Rating.Hard) {
+        fetchDueItems();
+      } else {
+        setCurrentStudyStep('mcq'); // Attempt to move to MCQ, distractorResource will trigger
+      }
+
+    } catch (err: any) {
+      console.error('[StudyPage] Error submitting flashcard review:', err);
+      setItemError(`Error submitting review: ${err.message}`);
+      fetchDueItems(); // Fetch next item on error
+    }
+  };
+
+  const handleMcqComplete = async (selectedOptionId: string | number, isCorrect: boolean) => {
+    const item = currentItem();
+    if (!item) {
+      console.error("[StudyPage] No current item found when MCQ completed.");
       setItemError("Error submitting review: Item not found.")
+      fetchDueItems();
       return;
     }
 
@@ -314,37 +368,59 @@ const StudyPage: Component<StudyPageProps> = (props) => {
         }
     }
 
-    console.log(`[StudyPage Container] Submitting review for Learning ID: ${item.learningId} with Grade: ${grade}. Incorrect choice: ${incorrectChoiceText ?? 'N/A'}`);
-
     try {
       const response = await messaging.sendMessage('submitReviewResult', {
         learningId: item.learningId,
         grade,
         incorrectChoiceText
       });
-      console.log('[StudyPage Container] Submit review response:', response);
       if (!response.success) {
         setItemError(`Failed to submit review: ${response.error || 'Unknown error'}`);
-        console.warn("[StudyPage Container] Review submission failed, but fetching next item.");
       }
-      fetchDueItems();
     } catch (err: any) {
-      console.error('[StudyPage Container] Error submitting review:', err);
+      console.error('[StudyPage] Error submitting MCQ review:', err);
       setItemError(`Error submitting review: ${err.message}`);
-      fetchDueItems();
+    } finally {
+      fetchDueItems(); // Always fetch next item after MCQ
     }
+  }
+
+  // Effect to automatically fetch next item if MCQ step is entered but no MCQ can be formed
+  createEffect(() => {
+    const step = currentStudyStep();
+    const item = currentItem();
+    const props = mcqProps();
+    const loadingDistractors = distractorResource.loading;
+    const distError = distractorResource()?.error;
+
+    if (step === 'mcq' && item && !loadingDistractors && !props && !itemError()) {
+        if (distError) {
+            console.warn(`[StudyPage] Distractor error for item ${item.learningId}: ${distError}. Fetching next item.`);
+        } else {
+            console.warn(`[StudyPage] In MCQ step for item ${item.learningId}, but no MCQ props. Fetching next item.`);
+        }
+        fetchDueItems();
+    }
+  });
+  
+  const handleSkipClick = () => {
+    fetchDueItems();
   }
 
   // --- Render the View component ---
   return (
     <StudyPageView
         isLoadingItem={dueItemResource.loading}
-        isLoadingDistractors={distractorResource.loading}
+        isLoadingDistractors={currentStudyStep() === 'mcq' && distractorResource.loading}
+        itemForFlashcardReviewer={itemForFlashcardReviewer()}
+        flashcardStatus={flashcardStatus()}
         mcqProps={mcqProps()}
         itemError={itemError()}
-        distractorError={distractorResource()?.error ?? null}
-        onSkipClick={fetchDueItems}
+        distractorError={currentStudyStep() === 'mcq' ? distractorResource()?.error ?? null : null}
+        onSkipClick={handleSkipClick}
         onNavigateBack={props.onNavigateBack}
+        currentStudyStep={currentStudyStep()}
+        onFlashcardRated={handleFlashcardRated}
     />
   );
 };

@@ -1,6 +1,7 @@
-import FlashcardReviewer, { type FlashcardReviewerProps } from '../../../src/features/exercises/Flashcard';
+import FlashcardReviewer, { type FlashcardReviewerProps, type ReviewableCardData } from '../../../src/features/exercises/Flashcard';
 // import { Rating } from 'ts-fsrs'; // Removed as per user diff, assuming not directly needed in story
 import { action } from '@storybook/addon-actions';
+import type { FlashcardStatus } from '../../../src/services/db/types'; // Ensure this path is correct
 
 // Mocked types for Storybook context. 
 // You'll need to ensure these align with your actual types in services/db/types.ts
@@ -30,29 +31,17 @@ export interface MockFlashcardDbType {
   last_review?: string | null; // Date string
 }
 
-const mockFlashcardDbNew: MockFlashcardDbType = {
+// Mock data for ReviewableCardData
+const mockReviewableCardNew: ReviewableCardData = {
   id: 1,
   front: 'Front of Card (New)',
   back: 'Back of Card (New)',
-  type: 'front_back',
-  exercise_type: null, 
-  exercise_data: null,
-  cloze_text: null,
 };
 
-const mockFlashcardDbMcq: MockFlashcardDbType = {
+const mockReviewableCardReview: ReviewableCardData = {
   id: 2,
-  front: 'Question context or front text for an MCQ card',
-  back: 'Optional back text / answer reference',
-  type: 'front_back', // or 'mcq' if you add that to the FlashcardDbType.type enum
-  exercise_type: 'mcq',
-  exercise_data: JSON.stringify({
-    type: 'mcq',
-    question: 'What is the capital of France?',
-    options: ['Berlin', 'Madrid', 'Paris', 'Rome'],
-    correct_index: 2,
-  }),
-  cloze_text: null,
+  front: 'Front of Review Card',
+  back: 'Back of Review Card',
 };
 
 export default {
@@ -60,15 +49,14 @@ export default {
   component: FlashcardReviewer,
   tags: ['autodocs'],
   argTypes: {
-    // Type casting because Storybook might not infer it correctly from mocked types
     card: { control: 'object' },
-    status: { control: 'select', options: ['new', 'learning', 'review', 'relearning'] as MockFlashcardStatus[] },
-    onReview: { action: 'onReviewTriggered' },
+    status: { control: 'select', options: ['new', 'learning', 'review', 'relearning'] as FlashcardStatus[] },
+    onFlashcardRated: { action: 'onFlashcardRatedTriggered' },
     initialIsAnswerShown: { control: 'boolean' },
   },
 };
 
-// Render function similar to your other stories for consistency
+// Template for rendering
 const Template = (args: FlashcardReviewerProps) => (
   <div class="h-screen w-full flex items-center justify-center p-4 bg-background">
     <FlashcardReviewer {...args} />
@@ -78,9 +66,9 @@ const Template = (args: FlashcardReviewerProps) => (
 export const DefaultNewCard = {
   render: Template,
   args: {
-    card: mockFlashcardDbNew as any, // Cast to any if MockFlashcardDbType causes issues with props
-    status: 'new' as MockFlashcardStatus,
-    onReview: action('onReview'),
+    card: mockReviewableCardNew,
+    status: 'new' as FlashcardStatus,
+    onFlashcardRated: action('onFlashcardRated'),
     initialIsAnswerShown: false,
   },
 };
@@ -88,9 +76,9 @@ export const DefaultNewCard = {
 export const DefaultNewCardAnswerShown = {
   render: Template,
   args: {
-    card: mockFlashcardDbNew as any,
-    status: 'new' as MockFlashcardStatus,
-    onReview: action('onReview'),
+    card: mockReviewableCardNew,
+    status: 'new' as FlashcardStatus,
+    onFlashcardRated: action('onFlashcardRated'),
     initialIsAnswerShown: true,
   },
 };
@@ -98,34 +86,13 @@ export const DefaultNewCardAnswerShown = {
 export const ReviewCard = {
   render: Template,
   args: {
-    card: { ...mockFlashcardDbNew, id: 3, front: 'Front of Review Card', back: 'Back of Review Card' } as any,
-    status: 'review' as MockFlashcardStatus,
-    onReview: action('onReview'),
+    card: mockReviewableCardReview,
+    status: 'review' as FlashcardStatus,
+    onFlashcardRated: action('onFlashcardRated'),
+    initialIsAnswerShown: false,
   },
 };
 
-export const McqCard = {
-  render: Template,
-  args: {
-    card: mockFlashcardDbMcq as any,
-    status: 'new' as MockFlashcardStatus,
-    onReview: action('onReview'),
-  },
-};
-
-export const ClozeCard = {
-  render: Template,
-  args: {
-    card: {
-      id: 4,
-      front: 'This is a sentence with a [cloze].',
-      back: 'cloze answer',
-      type: 'cloze',
-      exercise_type: 'cloze',
-      exercise_data: null, 
-      cloze_text: 'This is a sentence with a {{c1::cloze}}.',
-    } as any,
-    status: 'new' as MockFlashcardStatus,
-    onReview: action('onReview'),
-  },
-}; 
+// MCQ and Cloze card stories would be removed or rethought at this component's level,
+// as this component no longer handles those types directly.
+// They become scenarios for the parent StudyPage. 

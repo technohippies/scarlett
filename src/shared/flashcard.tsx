@@ -48,7 +48,7 @@ const Flashcard: Component<FlashcardProps> = (props) => {
       </Show>
       
       {/* Main card structure */}
-      <div class="aspect-[2/3] w-full max-w-sm rounded-lg bg-card text-card-foreground shadow-sm flex flex-col justify-between items-stretch relative overflow-hidden">
+      <div class="aspect-[2/3] w-full rounded-lg bg-card text-card-foreground shadow-sm flex flex-col justify-between items-stretch relative overflow-hidden">
         {/* Top (Front) Text */}
         <div class="flex-1 flex flex-col justify-end px-4 pb-3 md:px-6 md:pb-4 text-left">
           <p class="text-lg">{props.front}</p>

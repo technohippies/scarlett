@@ -1,18 +1,27 @@
-import { StudyPageView } from '../../../src/pages/study/StudyPageView';
+import { StudyPageView, type StudyPageViewProps } from '../../../src/pages/study/StudyPageView';
 import { action } from '@storybook/addon-actions';
+import type { ReviewableCardData } from '../../../src/features/exercises/Flashcard';
+import type { FlashcardStatus } from '../../../src/services/db/types';
+import type { MCQProps } from '../../../src/features/exercises/MCQ';
+import { Rating } from 'ts-fsrs'; // For Rating enum
 
-// Mock MCQProps for stories that need it
-const mockMcqProps = {
-  instructionText: "Translate:",
-  sentenceToTranslate: "Hello, world!",
+const mockBaseMcqProps: MCQProps = {
+  instructionText: "Translate this word:",
+  sentenceToTranslate: "Apple",
   options: [
-    { id: 0, text: "Bonjour le monde !" },
-    { id: 1, text: "Au revoir le monde !" }, // Incorrect
-    { id: 2, text: "Bonsoir le monde !" }, // Incorrect
-    { id: 3, text: "Salut le monde !" }    // Incorrect (alternate correct-ish)
+    { id: 0, text: "Manzana (Correct)" },
+    { id: 1, text: "Naranja" },
+    { id: 2, text: "Plátano" },
+    { id: 3, text: "Uva" }
   ],
   correctOptionId: 0,
-  onComplete: action('mcqComplete'), // Action for MCQ completion
+  onComplete: action('mcqComplete'),
+};
+
+const mockReviewableCard: ReviewableCardData = {
+  id: 'fc1',
+  front: 'Hello',
+  back: 'Hola',
 };
 
 export default {
@@ -25,82 +34,95 @@ export default {
   argTypes: {
     isLoadingItem: { control: 'boolean' },
     isLoadingDistractors: { control: 'boolean' },
-    mcqProps: { control: 'object' }, // Use object control, provide data in stories
     itemError: { control: 'text' },
     distractorError: { control: 'text' },
     onSkipClick: { action: 'skipClicked' },
     onNavigateBack: { action: 'navigateBack' },
+    currentStudyStep: { control: 'select', options: ['flashcard', 'mcq', 'noItem'] },
+    itemForFlashcardReviewer: { control: 'object' },
+    flashcardStatus: { control: 'select', options: ['new', 'learning', 'review', 'relearning'] as FlashcardStatus[] },
+    onFlashcardRated: { action: 'flashcardRated' },
+    mcqProps: { control: 'object' },
   },
-  args: { // Default args
+  // Base default args, individual stories will override
+  args: {
     isLoadingItem: false,
     isLoadingDistractors: false,
-    mcqProps: null,
     itemError: null,
     distractorError: null,
     onSkipClick: action('skipClicked'),
     onNavigateBack: action('navigateBack'),
-  }
+    currentStudyStep: 'noItem',
+    itemForFlashcardReviewer: null,
+    flashcardStatus: 'new' as FlashcardStatus,
+    onFlashcardRated: action('flashcardRated'),
+    mcqProps: null,
+  } satisfies StudyPageViewProps, // Ensure args satisfy the props type
 };
 
-// Story: Loading Item
-export const LoadingItem = {
+// Story: Loading Item (initial state before any item is loaded)
+export const LoadingInitialItem = {
   args: {
     isLoadingItem: true,
+    currentStudyStep: 'noItem', // Explicitly noItem while loading initial
   },
 };
 
-// Story: Loading Distractors (after item has loaded)
-export const LoadingDistractors = {
+// Story: Displaying Flashcard (item loaded, flashcard step)
+export const DisplayingFlashcard = {
   args: {
-    isLoadingItem: false,
-    isLoadingDistractors: true,
+    currentStudyStep: 'flashcard',
+    itemForFlashcardReviewer: mockReviewableCard,
+    flashcardStatus: 'review' as FlashcardStatus,
+  },
+};
+
+// Story: Loading MCQ (after flashcard, before MCQ is ready)
+export const LoadingMCQ = {
+  args: {
+    currentStudyStep: 'mcq',
+    isLoadingItem: false, // Item is loaded
+    isLoadingDistractors: true, // Distractors (for MCQ) are loading
+    itemForFlashcardReviewer: mockReviewableCard, // Can still pass this, though view might not show it
+    flashcardStatus: 'review' as FlashcardStatus, // Status from previous step
+  },
+};
+
+// Story: Displaying MCQ (MCQ ready)
+export const DisplayingMCQ = {
+  args: {
+    currentStudyStep: 'mcq',
+    mcqProps: mockBaseMcqProps,
   },
 };
 
 // Story: Item Fetching Error
-export const ItemError = {
+export const ItemFetchError = {
   args: {
-    itemError: 'Network error fetching review item.',
+    isLoadingItem: false,
+    currentStudyStep: 'noItem', // Error occurred, so no active step
+    itemError: 'Failed to load the next learning item. Please try again.',
   },
 };
 
-// Story: Distractor Generation Error/Warning
-export const DistractorError = {
+// Story: Distractor Generation Error (during MCQ step)
+export const MCQDistractorError = {
   args: {
-    // Still might have placeholder MCQ props even with distractor error
-    mcqProps: {
-        ...mockMcqProps,
-        options: [
-            { id: 0, text: "Bonjour le monde !" },
-            { id: 1, text: "Placeholder A" },
-            { id: 2, text: "Placeholder B" },
-            { id: 3, text: "Placeholder C" }
-        ],
-        correctOptionId: 0
-    },
-    distractorError: 'Could not generate enough unique distractors.',
+    currentStudyStep: 'mcq',
+    isLoadingDistractors: false, // Loading finished, but resulted in error
+    mcqProps: null, // mcqProps might be null or have placeholders if error occurred
+    distractorError: 'Could not generate enough unique distractors for the MCQ.',
+    // We might still have the flashcard item data from the previous step
+    itemForFlashcardReviewer: mockReviewableCard, 
+    flashcardStatus: 'good' as FlashcardStatus, // e.g. user rated flashcard 'Good'
   },
 };
 
-// Story: MCQ Ready
-export const MCQReady = {
+// Story: No Items Due (after loading finishes and no items are found)
+export const NoItemsAvailable = {
   args: {
-    mcqProps: mockMcqProps,
+    isLoadingItem: false,
+    currentStudyStep: 'noItem',
+    itemError: null, // No error, just no items
   },
-};
-
-// Story: No Items Due (after loading finishes)
-export const NoItemsDue = {
-  args: {
-    // Loading is false, no errors, mcqProps is null
-    mcqProps: null,
-  },
-};
-
-// Story: Both Loading (initial state, less common)
-export const LoadingBoth = {
-    args: {
-        isLoadingItem: true,
-        isLoadingDistractors: true, // Technically possible if logic allows parallel starts
-    },
 }; 

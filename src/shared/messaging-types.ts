@@ -1,5 +1,5 @@
 import type { AlignmentData } from "../features/translator/TranslatorWidget";
-import type { Grade } from 'ts-fsrs';
+import type { Rating } from 'ts-fsrs';
 import type { DueLearningItem } from "../services/srs/types";
 import type { Bookmark, Tag } from "../services/db/types";
 
@@ -60,7 +60,7 @@ export interface GetDistractorsResponse {
 // Submit Review Result
 export interface SubmitReviewRequest {
   learningId: number;
-  grade: Grade;
+  grade: Rating;
   incorrectChoiceText?: string | null;
 }
 export interface SubmitReviewResponse {

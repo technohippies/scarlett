@@ -15,7 +15,7 @@ export interface DueLearningItem {
   cachedDistractors: string[] | null; // Distractors generated during review (if any)
   lastIncorrectChoice: string | null; // Text of the last incorrect choice made (if any)
   // Include current SRS state if needed for UI or logic (optional for now)
-  // currentState: number;
+  currentState: number; // UNCOMMENTED: Assuming this will hold the FSRS state (0:New, 1:Learning, 2:Review, 3:Relearning)
   // currentStability: number;
   // currentDifficulty: number;
 }
