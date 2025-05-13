@@ -3,11 +3,12 @@ import { action } from '@storybook/addon-actions'; // For logging handler calls
 // Use createEffect from solid-js
 import { createSignal, createEffect, type Accessor } from 'solid-js'; 
 import SettingsPageView from '../../../src/pages/settings/SettingsPageView';
-import type { UserConfiguration, RedirectSettings, RedirectServiceSetting, FunctionConfig } from '../../../src/services/storage/types';
+import type { UserConfiguration, RedirectSettings, RedirectServiceSetting, FunctionConfig, DomainDetail } from '../../../src/services/storage/types';
 import type { ProviderOption } from '../../../src/features/models/ProviderSelectionPanel';
 import type { ModelOption } from '../../../src/features/models/ModelSelectionPanel';
 // Import the exported status types
 import type { SettingsLoadStatus, FetchStatus, TestStatus } from '../../../src/context/SettingsContext'; 
+import type { TtsProviderOption } from '../../../src/features/models/TtsProviderPanel'; // Added for TTS
 
 // --- Mock Data ---
 
@@ -17,6 +18,10 @@ const mockLlmProviderOptions: ProviderOption[] = [
     { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
 ];
 const mockEmbeddingProviderOptions: ProviderOption[] = [...mockLlmProviderOptions];
+const mockAvailableTtsProviders: TtsProviderOption[] = [
+    { id: 'browser', name: 'Browser TTS', logoUrl: '' },
+    { id: 'elevenlabs', name: 'ElevenLabs', logoUrl: '/images/llm-providers/11-labs.png' },
+];
 const mockTtsProviderOptions: ProviderOption[] = [];
 
 const mockRedirectSettings: RedirectSettings = {
@@ -40,8 +45,14 @@ const mockInitialConfig: UserConfiguration = {
     learningGoal: 'casual',
     llmConfig: null,
     embeddingConfig: null,
-    ttsConfig: null,
+    ttsConfig: {
+      providerId: 'browser', // Default TTS provider
+      apiKey: null,
+      modelId: '', // Changed from null to empty string
+    },
     redirectSettings: mockRedirectSettings,
+    userBlockedDomains: [], // Add userBlockedDomains
+    isFocusModeActive: false, // Add isFocusModeActive
     onboardingComplete: true,
 };
 
@@ -50,6 +61,10 @@ const mockLlmConfigSelected: FunctionConfig = {
     modelId: 'llama3:latest',
     baseUrl: 'http://localhost:11434'
 };
+
+const mockInitialBlockedDomains: DomainDetail[] = [
+  { name: 'example.com' }, { name: 'another.com' }, { name: 'distracting.net' }
+];
 
 // Helper type for the transient state accessors expected by the ViewProps
 interface TransientStateAccessors {
@@ -119,6 +134,22 @@ export default {
      onEmbeddingTestConnection: { action: 'onEmbeddingTestConnection' },
      onRedirectSettingChange: { action: 'onRedirectSettingChange' },
      onBackClick: { action: 'onBackClick' },
+     isFocusModeActive: { control: 'boolean', name: 'Focus Mode Active' },
+     isFocusModeLoading: { control: 'boolean', name: 'Focus Mode Loading' },
+     focusModeBlockedDomains: { control: 'object', name: 'Focus Mode Blocked Domains' },
+     onFocusModeToggle: { action: 'onFocusModeToggle' },
+     onFocusModeAddDomain: { action: 'onFocusModeAddDomain' },
+     onFocusModeRemoveDomain: { action: 'onFocusModeRemoveDomain' },
+     availableTtsProviders: { table: { disable: true }, name: 'Available TTS Providers' },
+     selectedTtsProviderId: { control: 'text', name: 'Selected TTS Provider ID' },
+     onSelectTtsProvider: { action: 'onSelectTtsProvider' },
+     elevenLabsApiKey: { control: 'text', name: 'ElevenLabs API Key' },
+     onElevenLabsApiKeyChange: { action: 'onElevenLabsApiKeyChange' },
+     isElevenLabsTesting: { control: 'boolean', name: 'ElevenLabs Testing' },
+     onTestElevenLabs: { action: 'onTestElevenLabs' },
+     ttsTestAudioData: { control: 'object', name: 'TTS Test Audio Data (Blob)' },
+     onTtsPlayAudio: { action: 'onTtsPlayAudio' },
+     ttsTestError: { control: 'object', name: 'TTS Test Error' },
   },
   args: {
     initialActiveSection: 'llm',
@@ -127,6 +158,15 @@ export default {
     llmTransientState: createMockTransientState([], []),
     embeddingTransientState: createMockTransientState([], []),
     ttsTransientState: createMockTransientState([], []),
+    isFocusModeActive: false,
+    isFocusModeLoading: false,
+    focusModeBlockedDomains: mockInitialBlockedDomains,
+    availableTtsProviders: mockAvailableTtsProviders,
+    selectedTtsProviderId: 'browser',
+    elevenLabsApiKey: '',
+    isElevenLabsTesting: false,
+    ttsTestAudioData: null,
+    ttsTestError: null,
   }
 };
 
@@ -137,6 +177,31 @@ const BaseRender = (args: any) => {
 
     // Update internal signal when control arg changes
     createEffect(() => setActiveSection(args.initialActiveSection));
+
+    // Signals for props that require accessors
+    const [isFocusModeActiveSignal, setIsFocusModeActiveSignal] = createSignal(args.isFocusModeActive);
+    createEffect(() => setIsFocusModeActiveSignal(args.isFocusModeActive));
+    
+    const [isFocusModeLoadingSignal, setIsFocusModeLoadingSignal] = createSignal(args.isFocusModeLoading);
+    createEffect(() => setIsFocusModeLoadingSignal(args.isFocusModeLoading));
+
+    const [focusModeBlockedDomainsSignal, setFocusModeBlockedDomainsSignal] = createSignal<DomainDetail[]>(args.focusModeBlockedDomains);
+    createEffect(() => setFocusModeBlockedDomainsSignal(args.focusModeBlockedDomains));
+    
+    const [selectedTtsProviderIdSignal, setSelectedTtsProviderIdSignal] = createSignal<string | undefined>(args.selectedTtsProviderId);
+    createEffect(() => setSelectedTtsProviderIdSignal(args.selectedTtsProviderId));
+
+    const [elevenLabsApiKeySignal, setElevenLabsApiKeySignal] = createSignal<string>(args.elevenLabsApiKey);
+    createEffect(() => setElevenLabsApiKeySignal(args.elevenLabsApiKey));
+    
+    const [isElevenLabsTestingSignal, setIsElevenLabsTestingSignal] = createSignal<boolean>(args.isElevenLabsTesting);
+    createEffect(() => setIsElevenLabsTestingSignal(args.isElevenLabsTesting));
+
+    const [ttsTestAudioDataSignal, setTtsTestAudioDataSignal] = createSignal<Blob | null>(args.ttsTestAudioData);
+    createEffect(() => setTtsTestAudioDataSignal(args.ttsTestAudioData));
+    
+    const [ttsTestErrorSignal, setTtsTestErrorSignal] = createSignal<Error | null>(args.ttsTestError);
+    createEffect(() => setTtsTestErrorSignal(args.ttsTestError));
 
     // Construct the full props object expected by SettingsPageView
     // Ensure all required props are provided, using args for overrides
@@ -167,6 +232,49 @@ const BaseRender = (args: any) => {
             action('onRedirectSettingChange')(service, update);
         },
         onBackClick: action('onBackClick'),
+        // TTS Props
+        availableTtsProviders: args.availableTtsProviders,
+        selectedTtsProviderId: selectedTtsProviderIdSignal,
+        onSelectTtsProvider: (providerId: string | undefined) => {
+            action('onSelectTtsProvider')(providerId);
+            setSelectedTtsProviderIdSignal(providerId);
+        },
+        elevenLabsApiKey: elevenLabsApiKeySignal,
+        onElevenLabsApiKeyChange: (apiKey: string) => {
+            action('onElevenLabsApiKeyChange')(apiKey);
+            setElevenLabsApiKeySignal(apiKey);
+        },
+        isElevenLabsTesting: isElevenLabsTestingSignal,
+        onTestElevenLabs: () => {
+            action('onTestElevenLabs')();
+            setIsElevenLabsTestingSignal(true);
+            // Simulate API call
+            setTimeout(() => {
+                setIsElevenLabsTestingSignal(false);
+                // setTtsTestAudioDataSignal(new Blob(['mock audio data'], { type: 'audio/mpeg' })); 
+                // Or set an error: 
+                // setTtsTestErrorSignal(new Error("ElevenLabs API Key invalid"));
+            }, 1500);
+        },
+        ttsTestAudioData: ttsTestAudioDataSignal,
+        onTtsPlayAudio: action('onTtsPlayAudio'),
+        ttsTestError: ttsTestErrorSignal,
+        // Focus Mode Props
+        isFocusModeActive: isFocusModeActiveSignal,
+        isFocusModeLoading: isFocusModeLoadingSignal,
+        focusModeBlockedDomains: focusModeBlockedDomainsSignal,
+        onFocusModeToggle: (isEnabled: boolean) => {
+            action('onFocusModeToggle')(isEnabled);
+            setIsFocusModeActiveSignal(isEnabled);
+        },
+        onFocusModeAddDomain: (domainName: string) => {
+            action('onFocusModeAddDomain')(domainName);
+            setFocusModeBlockedDomainsSignal(prev => [...prev, { name: domainName }]);
+        },
+        onFocusModeRemoveDomain: (domainName: string) => {
+            action('onFocusModeRemoveDomain')(domainName);
+            setFocusModeBlockedDomainsSignal(prev => prev.filter(d => d.name !== domainName));
+        },
     };
 
     // Validate required props are present (basic check)
@@ -275,6 +383,39 @@ export const Redirects = {
     initialLoadStatus: 'ready',
     config: mockInitialConfig, // Use default config which includes redirects
   },
+};
+
+export const FocusMode = {
+  render: BaseRender,
+  args: {
+    initialActiveSection: 'focusmode',
+    initialLoadStatus: 'ready',
+    config: { 
+      ...mockInitialConfig, 
+      isFocusModeActive: true, 
+      userBlockedDomains: [{name: 'facebook.com'}, {name: 'twitter.com'}] 
+    },
+    isFocusModeActive: true, // Control this via args for Storybook control panel
+    isFocusModeLoading: false,
+    focusModeBlockedDomains: [{name: 'facebook.com'}, {name: 'twitter.com'}], // Control this too
+  },
+};
+
+export const TTS_Section = {
+  render: BaseRender,
+  args: {
+    initialActiveSection: 'tts',
+    initialLoadStatus: 'ready',
+    config: {
+      ...mockInitialConfig,
+      ttsConfig: { providerId: 'elevenlabs', apiKey: 'test-key', modelId: 'eleven_multilingual_v2', voiceId: 'somevoice' }
+    },
+    selectedTtsProviderId: 'elevenlabs',
+    elevenLabsApiKey: 'test-key',
+    isElevenLabsTesting: false,
+    ttsTestAudioData: null,
+    ttsTestError: null,
+  }
 };
 
 // TODO: Add stories for Embedding and Reader sections

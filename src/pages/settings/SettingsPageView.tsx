@@ -3,7 +3,7 @@ import { For, Show } from "solid-js";
 import { Button } from "../../components/ui/button";
 import { 
   Brain, ChartLine, SpeakerHigh,
-  TrendUp
+  TrendUp, EyeSlash
 } from "phosphor-solid";
 import {
   Sidebar,
@@ -17,7 +17,8 @@ import {
   SidebarProvider,
 } from "../../components/ui/sidebar";
 import RedirectsPanel from "../../features/redirects/RedirectsPanel";
-import type { UserConfiguration, RedirectServiceSetting, FunctionConfig } from "../../services/storage/types"; 
+import FocusModePanel from '../../features/focus/FocusModePanel';
+import type { UserConfiguration, RedirectServiceSetting, FunctionConfig, DomainDetail } from "../../services/storage/types";
 import type { ProviderOption } from "../../features/models/ProviderSelectionPanel";
 import type { ModelOption } from "../../features/models/ModelSelectionPanel";
 import type { SettingsLoadStatus, FetchStatus, TestStatus } from "../../context/SettingsContext";
@@ -27,12 +28,19 @@ import ConnectionTestPanel from "../../features/models/ConnectionTestPanel";
 import { TtsProviderPanel, type TtsProviderOption } from "../../features/models/TtsProviderPanel";
 import { Header } from '../../components/layout/Header';
 
-// Menu Items (Keep)
+// Menu Items
 const settingsMenuItems = [
-  { title: "LLM", url: "/settings/models/llm", icon: Brain },
-  { title: "Embedding", url: "/settings/models/embedding", icon: ChartLine },
-  { title: "TTS", url: "/settings/models/tts", icon: SpeakerHigh },
-  { title: "Redirects", url: "/settings/redirects", icon: TrendUp }
+  { title: "LLM", url: "/settings/models/llm", icon: Brain, sectionKey: 'llm' },
+  { title: "Embedding", url: "/settings/models/embedding", icon: ChartLine, sectionKey: 'embedding' },
+  { title: "TTS", url: "/settings/models/tts", icon: SpeakerHigh, sectionKey: 'tts' },
+];
+
+const censorshipMenuItems = [
+  { title: "Redirects", url: "/settings/redirects", icon: TrendUp, sectionKey: 'redirects' }
+];
+
+const productivityMenuItems = [
+  { title: "Focus Mode", url: "/settings/focus", icon: EyeSlash, sectionKey: 'focusmode' }
 ];
 
 // --- Type Definitions for Transient State (Assuming structure from getTransientState) ---
@@ -87,6 +95,14 @@ interface SettingsPageViewProps {
   // Redirects Props (keep)
   onRedirectSettingChange: (service: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => Promise<void>;
   onBackClick: () => void;
+
+  // --- NEW Focus Mode Props ---
+  isFocusModeActive: Accessor<boolean>;
+  isFocusModeLoading: Accessor<boolean>;
+  focusModeBlockedDomains: Accessor<DomainDetail[]>;
+  onFocusModeToggle: (isEnabled: boolean) => void;
+  onFocusModeAddDomain: (domainName: string) => void;
+  onFocusModeRemoveDomain: (domainName: string) => void;
 }
 
 
@@ -109,19 +125,18 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
           <SidebarProvider> 
               <Sidebar collapsible="icon" variant="sidebar">
                   <SidebarContent class="pt-24">
-                      {/* Model Group */}
                       <SidebarGroup>
                           <SidebarGroupLabel>MODELS</SidebarGroupLabel>
                           <SidebarGroupContent>
                               <SidebarMenu>
-                                  <For each={settingsMenuItems.filter(item => item.icon !== TrendUp)}>
+                                  <For each={settingsMenuItems}>
                                       {(item) => (
                                           <SidebarMenuItem>
                                               <SidebarMenuButton 
                                                   as="button" 
-                                                  onClick={() => props.onSectionChange(item.title.toLowerCase())} 
+                                                  onClick={() => props.onSectionChange(item.sectionKey)} 
                                                   tooltip={item.title}
-                                                  class={props.activeSection() === item.title.toLowerCase() ? 'bg-muted' : ''}
+                                                  class={props.activeSection() === item.sectionKey ? 'bg-muted' : ''}
                                               >
                                                   <item.icon />
                                                   <span>{item.title}</span>
@@ -133,19 +148,42 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                           </SidebarGroupContent>
                       </SidebarGroup>
                       
-                      {/* Censorship Group */}
                       <SidebarGroup>
                           <SidebarGroupLabel>CENSORSHIP</SidebarGroupLabel>
                           <SidebarGroupContent>
                               <SidebarMenu>
-                                  <For each={settingsMenuItems.filter(item => item.icon === TrendUp)}>
+                                  <For each={censorshipMenuItems}>
                                       {(item) => (
                                           <SidebarMenuItem>
                                               <SidebarMenuButton 
                                                   as="button" 
-                                                  onClick={() => props.onSectionChange(item.title.toLowerCase())} 
+                                                  onClick={() => props.onSectionChange(item.sectionKey)} 
                                                   tooltip={item.title}
-                                                  class={props.activeSection() === item.title.toLowerCase() ? 'bg-muted' : ''}
+                                                  class={props.activeSection() === item.sectionKey ? 'bg-muted' : ''}
+                                              >
+                                                  <item.icon />
+                                                  <span>{item.title}</span>
+                                              </SidebarMenuButton>
+                                          </SidebarMenuItem>
+                                      )}
+                                  </For>
+                              </SidebarMenu>
+                          </SidebarGroupContent>
+                      </SidebarGroup>
+
+                      {/* New Productivity Group */}
+                      <SidebarGroup>
+                          <SidebarGroupLabel>PRODUCTIVITY</SidebarGroupLabel>
+                          <SidebarGroupContent>
+                              <SidebarMenu>
+                                  <For each={productivityMenuItems}>
+                                      {(item) => (
+                                          <SidebarMenuItem>
+                                              <SidebarMenuButton 
+                                                  as="button" 
+                                                  onClick={() => props.onSectionChange(item.sectionKey)} 
+                                                  tooltip={item.title}
+                                                  class={props.activeSection() === item.sectionKey ? 'bg-muted' : ''}
                                               >
                                                   <item.icon />
                                                   <span>{item.title}</span>
@@ -254,20 +292,18 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                       </div>
                     </Show>
                     
-                    {/* --- TTS Section (Replaced with TtsProviderPanel) --- */} 
+                    {/* --- TTS Section --- */} 
                     <Show when={props.activeSection() === 'tts'}>
                       <TtsProviderPanel
                         availableProviders={props.availableTtsProviders}
                         selectedProviderId={props.selectedTtsProviderId}
                         onSelectProvider={props.onSelectTtsProvider}
                         
-                        // Pass ElevenLabs props
                         elevenLabsApiKey={props.elevenLabsApiKey}
                         onElevenLabsApiKeyChange={props.onElevenLabsApiKeyChange}
                         isElevenLabsTesting={props.isElevenLabsTesting}
                         onTestElevenLabs={props.onTestElevenLabs}
                         
-                        // Pass General Test/Audio props
                         testAudioData={props.ttsTestAudioData}
                         onPlayTestAudio={props.onTtsPlayAudio}
                         testError={props.ttsTestError}
@@ -284,6 +320,21 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                             onSettingChange={props.onRedirectSettingChange}
                           />
                       </div>
+                    </Show>
+
+                    {/* --- NEW Focus Mode Section --- */}
+                    <Show when={props.activeSection() === 'focusmode'}>
+                       <p class="text-muted-foreground mb-6">Configure blocked domains and activate Focus Mode to minimize distractions.</p>
+                       <div class="mt-4 ml-4">
+                          <FocusModePanel
+                            isLoading={props.isFocusModeLoading}
+                            isFocusModeActive={props.isFocusModeActive}
+                            blockedDomains={props.focusModeBlockedDomains}
+                            onToggleFocusMode={props.onFocusModeToggle}
+                            onAddDomain={props.onFocusModeAddDomain}
+                            onRemoveDomain={props.onFocusModeRemoveDomain}
+                          />
+                       </div>
                     </Show>
 
                     {/* --- Default / No Selection --- */} 

@@ -49,6 +49,10 @@ export const FocusModePanel: Component<FocusModePanelProps> = (props) => {
             </Switch>
           </div>
 
+          <p class="text-sm text-muted-foreground pt-1 pb-2">
+            Configure blocked domains and activate Focus Mode to minimize distractions.
+          </p>
+
           <div class="flex items-center space-x-2">
             <input
               type="text"
