@@ -3,11 +3,13 @@ import FlashcardDisplay from '../../shared/flashcard';
 import { Rating } from 'ts-fsrs';
 import type { FlashcardStatus } from '../../services/db/types';
 import { ExerciseFooter } from './ExerciseFooter';
+import { Motion } from 'solid-motionone';
 
 export interface ReviewableCardData {
   id: number | string; 
   front: string;
   back: string | null;
+  initialIsAnswerShown?: boolean;
 }
 
 export interface FlashcardReviewerProps {
@@ -16,6 +18,9 @@ export interface FlashcardReviewerProps {
   onFlashcardRated: (rating: Rating) => void; 
   initialIsAnswerShown?: boolean;
 }
+
+// Define transition settings similar to MCQ.tsx
+const transitionSettings = { duration: 0.3, easing: "ease-in-out" } as const;
 
 export const FlashcardReviewer: Component<FlashcardReviewerProps> = (props) => {
   const [isAnswerShown, setIsAnswerShown] = createSignal(props.initialIsAnswerShown ?? false);
@@ -39,7 +44,13 @@ export const FlashcardReviewer: Component<FlashcardReviewerProps> = (props) => {
 
   return (
     <div class="relative flex flex-col h-full w-full">
-      <div class="flex-grow flex flex-col items-center justify-center overflow-y-auto">
+      {/* Wrap the main content area with Motion for animation */}
+      <Motion
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={transitionSettings}
+        class="flex-grow flex flex-col items-center justify-center overflow-y-auto"
+      >
         <div class={`w-full max-w-md ${contentPaddingTop} ${footerClearancePaddingBottom}`}>
           <FlashcardDisplay
             front={props.card.front}
@@ -47,7 +58,7 @@ export const FlashcardReviewer: Component<FlashcardReviewerProps> = (props) => {
             status={props.status}
           />
         </div>
-      </div>
+      </Motion> {/* End of Motion wrapper */}
 
       <ExerciseFooter
         mode={isAnswerShown() ? 'flashcardRate' : 'flashcardShowAnswer'}
