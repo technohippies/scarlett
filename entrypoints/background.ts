@@ -45,19 +45,46 @@ const serviceHostChecks: { [key: string]: (host: string) => boolean } = {
 // Use inferred type from browser.webNavigation
 async function handleNavigation(details: OnBeforeNavigateDetails): Promise<void> {
   // --- ADDED: Log entry and basic details --- 
-  console.log(`[Redirect] handleNavigation called for URL: ${details.url}, FrameId: ${details.frameId}`);
+  console.log(`[Redirect & Focus] handleNavigation called for URL: ${details.url}, FrameId: ${details.frameId}`);
 
   // Ignore non-top-level frames and non-http(s) URLs
   if (details.frameId !== 0 || !details.url || !details.url.startsWith('http')) {
     // --- ADDED: Log exit reason --- 
-    console.log(`[Redirect] Exiting: Not a top-level HTTP(S) frame.`);
+    console.log(`[Redirect & Focus] Exiting: Not a top-level HTTP(S) frame.`);
     return;
   }
 
   try {
     const config = await userConfigurationStorage.getValue();
     // --- ADDED: Log loaded config BEFORE the check --- 
-    console.log('[Redirect] Loaded config:', JSON.stringify(config, null, 2)); 
+    console.log('[Redirect & Focus] Loaded config:', JSON.stringify(config, null, 2)); 
+
+    // --- FOCUS MODE BLOCKING LOGIC ---
+    if (config?.isFocusModeActive && config?.userBlockedDomains && config.userBlockedDomains.length > 0) {
+      const currentUrlObj = new URL(details.url);
+      const originalHost = currentUrlObj.hostname.toLowerCase();
+      const extensionOrigin = new URL(browser.runtime.getURL('/' as any)).origin; // Cast to any if path is not recognized by type
+      const blockPageUrl = browser.runtime.getURL('blockpage.html' as any); // Changed to blockpage.html
+
+      // Don't block extension's own pages or the block page itself
+      if (details.url.startsWith(extensionOrigin) || details.url === blockPageUrl) {
+        console.log('[Focus Mode] Navigation to own extension page or block page, allowing.');
+        // Allow normal processing for other extension pages, then proceed to redirect logic if any
+      } else {
+        const isDomainBlocked = config.userBlockedDomains.some(d => d.name.toLowerCase() === originalHost);
+        if (isDomainBlocked) {
+          console.log(`[Focus Mode] Domain ${originalHost} is blocked. Redirecting to block page.`);
+          try {
+            await browser.tabs.update(details.tabId, { url: blockPageUrl });
+            console.log(`[Focus Mode] Successfully redirected tab ${details.tabId} to ${blockPageUrl}`);
+          } catch (updateError) {
+            console.error(`[Focus Mode] Error updating tab ${details.tabId} to block page:`, updateError);
+          }
+          return; // Stop further processing, site is blocked.
+        }
+      }
+    }
+    // --- END FOCUS MODE BLOCKING LOGIC ---
 
     // Check for settings existence AND onboarding completion
     if (!config?.redirectSettings || !config.onboardingComplete) {

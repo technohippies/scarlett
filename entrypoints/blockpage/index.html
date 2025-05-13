@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Focus Mode - Blocked</title>
+  <link rel="stylesheet" href="/uno.css">
+  <script>
+    // This is a workaround for a WXT HMR issue in development where a new HTML file 
+    // might not have its CSS (like uno.css) properly applied on the first load after creation
+    // or after a Vite HMR update to the HTML itself.
+    // Forcing a reload if 'uno.css' fails to load can help, but ideally, WXT handles this.
+    // This might not be needed in production builds.
+    if (import.meta.env.DEV) {
+      const unoLink = document.querySelector('link[href="/uno.css"]');
+      if (unoLink) {
+        unoLink.onerror = () => {
+          console.warn('[BlockPage HTML] uno.css failed to load on first attempt, trying reload...');
+          // Avoid reload loops
+                          if (!sessionStorage.getItem('blockpage_reloaded')) {
+                              sessionStorage.setItem('blockpage_reloaded', 'true');
+                              location.reload();
+                          } else {
+                              console.error('[BlockPage HTML] uno.css failed to load after reload. Styles might be missing.');
+                          }
+        };
+      }
+      // Clear the flag when the page successfully loads next time (or on a new session)
+      window.addEventListener('load', () => {
+        sessionStorage.removeItem('blockpage_reloaded');
+      });
+    }
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="./main.tsx"></script>
+</body>
+</html>

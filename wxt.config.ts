@@ -8,9 +8,11 @@ export default defineConfig({
   // Use the Solid module provided by WXT instead of manually adding plugins
   modules: [
     '@wxt-dev/module-solid',
-    '@wxt-dev/unocss', // Add this
-    '@wxt-dev/auto-icons', // Keep this module listed
+    '@wxt-dev/unocss',
+    // '@wxt-dev/auto-icons', // This was removed in your manual edit, keeping it removed unless told otherwise
   ],
+  // The 'entrypoints' object is removed as it's not a valid top-level config property.
+  // WXT auto-discovers entrypoints from the 'entrypoints/' directory.
   vite: () => ({ // Keep vite as a function
     plugins: [
       copyPgliteAssets() // Add the custom Vite plugin here
@@ -73,6 +75,7 @@ export default defineConfig({
             "postgres.wasm",
             "postgres.data",
             "vector.tar.gz"
+            // 'entrypoints/blockpage/index.html' removed from here
         ],
       }
     ],

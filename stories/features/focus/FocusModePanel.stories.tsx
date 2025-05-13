@@ -34,7 +34,7 @@ export default {
 
 // --- Story Render Function (Simplified) --- 
 const RenderPanelWithState = (storyArgs: { isLoadingInitial?: boolean, isFocusModeActiveInitial?: boolean }) => {
-  const [isLoading, setIsLoading] = createSignal<boolean>(storyArgs.isLoadingInitial ?? false);
+  const [isLoading] = createSignal<boolean>(storyArgs.isLoadingInitial ?? false);
   const [isFocusModeActive, setIsFocusModeActive] = createSignal<boolean>(storyArgs.isFocusModeActiveInitial ?? false);
   const [blockedDomains, setBlockedDomains] = createSignal<DomainDetail[]>([...initialMockBlockedDomains]); // Use spread for a new array copy
 

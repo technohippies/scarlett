@@ -1,9 +1,11 @@
-import { Component, createResource, createSignal } from 'solid-js';
+import { Component, createResource, createSignal, Accessor } from 'solid-js';
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import NewTabPageView from './NewTabPageView';
 import type { StudySummary } from '../../services/srs/types';
 import type { BackgroundProtocolMap } from '../../background/handlers/message-handlers';
 import type { Messages } from '../../types/i18n'; // Import Messages type
+import { useSettings } from '../../context/SettingsContext'; // <-- Import useSettings
+import { Eye, EyeSlash } from 'phosphor-solid'; // <-- Import icons
 
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
 
@@ -94,6 +96,16 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
     }
   };
 
+  // --- Focus Mode --- 
+  const settings = useSettings();
+  const isFocusModeActive = () => settings.config.isFocusModeActive ?? false;
+  const handleToggleFocusMode = () => {
+    const currentStatus = isFocusModeActive();
+    console.log(`[NewTabPage] Toggling Focus Mode from ${currentStatus} to ${!currentStatus}`);
+    settings.updateUserConfiguration({ isFocusModeActive: !currentStatus });
+  };
+  // --- End Focus Mode ---
+
   return (
     <NewTabPageView 
       summary={summaryData}
@@ -107,6 +119,8 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
       onNavigateToSettings={props.onNavigateToSettings}
       messages={props.messages} // Pass messages down to the view
       // No messagesLoading prop for NewTabPageView, it's handled here
+      isFocusModeActive={isFocusModeActive} // <-- Pass new prop
+      onToggleFocusMode={handleToggleFocusMode} // <-- Pass new prop
     />
   );
 };

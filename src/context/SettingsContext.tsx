@@ -1,10 +1,9 @@
-import { createContext, useContext, createResource, ParentComponent, createEffect, createSignal, Accessor, JSX, Setter } from 'solid-js';
-import { createStore, produce, SetStoreFunction, Store } from 'solid-js/store';
+import { createContext, useContext, createResource, ParentComponent, createEffect, createSignal, Accessor, Setter } from 'solid-js';
+import { createStore, produce } from 'solid-js/store';
 import { userConfigurationStorage } from '../services/storage/storage';
 import type { UserConfiguration, FunctionConfig, RedirectSettings, RedirectServiceSetting, DomainDetail } from '../services/storage/types'; // Centralize types
 import type { ProviderOption } from '../features/models/ProviderSelectionPanel'; // Use types from panels where appropriate
 import type { ModelOption } from '../features/models/ModelSelectionPanel'; // Need ModelOption too
-import type { LLMConfig, LLMProviderId } from '../services/llm/types'; 
 import { getAllBlockedDomains } from '../services/db/domains'; // <-- IMPORT DB FUNCTION
 
 // Import provider implementations (adjust as needed, consider a registry)
@@ -121,7 +120,7 @@ const ELEVENLABS_TEST_TEXT = "Testing ElevenLabs text-to-speech integration.";
 // --- Provider Component ---
 export const SettingsProvider: ParentComponent = (props) => {
     // Resource to load initial settings from storage
-    const [loadedSettings, { refetch }] = createResource(async () => {
+    const [loadedSettings] = createResource(async () => {
         console.log("[SettingsContext] Attempting to load settings from storage...");
         const storedValue = await userConfigurationStorage.getValue();
         console.log("[SettingsContext] Value loaded from storage:", storedValue);
@@ -145,7 +144,7 @@ export const SettingsProvider: ParentComponent = (props) => {
 
     // --- Watch for external storage changes --- 
     createEffect(() => {
-        const unsubscribe = userConfigurationStorage.watch((newValue, oldValue) => {
+        const unsubscribe = userConfigurationStorage.watch((newValue) => {
             console.log("[SettingsContext watch] Storage changed externally. Updating internal store.");
             // Check if newValue is actually different to avoid infinite loops if watch triggers on own setValue
             // A deep comparison might be needed if watch is overly sensitive
@@ -160,7 +159,7 @@ export const SettingsProvider: ParentComponent = (props) => {
             }
         });
         // Cleanup the watcher when the component unmounts or effect re-runs
-        // onCleanup(unsubscribe); // Solid's cleanup mechanism
+        return () => unsubscribe();
     });
     // --- End Watcher ---
 

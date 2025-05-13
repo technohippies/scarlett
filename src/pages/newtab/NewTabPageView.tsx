@@ -1,4 +1,4 @@
-import { Component, Show } from 'solid-js';
+import { Component, Show, Accessor } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { Spinner } from '../../components/ui/spinner';
 import { FlashcardStudyPanel } from '../../features/srs/FlashcardStudyPanel';
@@ -19,6 +19,8 @@ export interface NewTabPageViewProps {
   onNavigateToStudy: () => void;
   onNavigateToSettings: () => void;
   messages: Messages | undefined;
+  isFocusModeActive: Accessor<boolean>;
+  onToggleFocusMode: () => void;
 }
 
 // --- Rearranged View Component ---
@@ -72,7 +74,13 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
             messages={props.messages}
           />
 
-          {/* --- Remove the quick-actions div --- */}
+          {/* Focus Mode Button (Moved to top of this stack) */} 
+          <Button onClick={props.onToggleFocusMode} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
+            {props.isFocusModeActive()
+              ? i18n().get('newTabPageButtonStopFocus', 'Stop Focus') 
+              : i18n().get('newTabPageButtonStartFocus', 'Start Focus')}
+          </Button>
+
           {/* Action Buttons (now direct children) */} 
           <Button onClick={props.onNavigateToBookmarks} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
               <BookmarkSimple weight="fill" size={18} />
