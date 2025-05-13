@@ -8,6 +8,7 @@ import { seedInitialTags } from '../src/services/db/tags';
 import { setupContextMenu } from '../src/background/setup/context-menu-setup';
 import { registerMessageHandlers, BackgroundProtocolMap } from '../src/background/handlers/message-handlers';
 import { defineExtensionMessaging, Logger } from '@webext-core/messaging';
+import { checkAndResetStreakIfNeeded } from '../src/services/db/streaks_db';
 
 // Import handler registration functions
 import { registerContextMenuHandlers } from '../src/background/handlers/context-menu-handler';
@@ -248,26 +249,23 @@ export default defineBackground({
 
         // --- Perform Async Setup Tasks on Install/Update ---
         try {
-            if (details.reason === 'install' || details.reason === 'update') {
-                // Setup context menus (idempotent or recreate as needed)
-                // Doing this here ensures they are set up after install/update.
-                console.log(`[Scarlett BG Entrypoint] Setting up context menus (reason: ${details.reason})...`);
-                await setupContextMenu();
-                console.log('[Scarlett BG Entrypoint] Context menu setup complete.');
-            }
+            // 1. Ensure DB is initialized (idempotent)
+            console.log('[Scarlett BG Entrypoint] Ensuring database is initialized...');
+            await ensureDbInitialized();
+            console.log('[Scarlett BG Entrypoint] Database initialization check complete.');
+
+            // 1.1 Check and reset streak (after DB init)
+            console.log('[Scarlett BG Entrypoint] Checking and resetting study streak if needed...');
+            await checkAndResetStreakIfNeeded();
+            console.log('[Scarlett BG Entrypoint] Study streak check complete.');
+
+            // 2. Seed initial tags if necessary (idempotent)
+            console.log('[Scarlett BG Entrypoint] Seeding initial tags...');
+            await seedInitialTags();
+            console.log('[Scarlett BG Entrypoint] Initial tag seeding attempt complete.');
 
             if (details.reason === 'install') {
                 console.log('[Scarlett BG Entrypoint] Reason is "install". Performing first-time setup...');
-
-                // Initialize DB Schema
-                console.log('[Scarlett BG Entrypoint] Ensuring database schema is applied...');
-                await ensureDbInitialized();
-                console.log('[Scarlett BG Entrypoint] DB schema check/application complete.');
-
-                // Seed Initial Tags
-                console.log('[Scarlett BG Entrypoint] Attempting to seed initial tags...');
-                await seedInitialTags();
-                console.log('[Scarlett BG Entrypoint] Initial tag seeding attempt complete.');
 
                 // Seed Initial Blocked Domains
                 console.log('[Scarlett BG Entrypoint] Attempting to seed initial blocked domains...');

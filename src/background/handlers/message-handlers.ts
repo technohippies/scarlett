@@ -26,7 +26,13 @@ import type {
     GetDailyStudyStatsRequest,
     GetDailyStudyStatsResponse,
     IncrementDailyNewItemsStudiedRequest,
-    IncrementDailyNewItemsStudiedResponse
+    IncrementDailyNewItemsStudiedResponse,
+    GetStudyStreakDataRequest,
+    GetStudyStreakDataResponse,
+    NotifyDailyGoalCompleteRequest,
+    NotifyDailyGoalCompleteResponse,
+    RecordStudyActivityTodayRequest,
+    RecordStudyActivityTodayResponse
 } from '../../shared/messaging-types';
 import {
     getDueLearningItems,
@@ -70,6 +76,12 @@ import {
     getOrInitDailyStudyStats,
     incrementNewItemsStudiedToday
 } from '../../services/db/study_session_db';
+import {
+    getStudyStreakData,
+    processDailyGoalCompletion,
+    checkAndResetStreakIfNeeded,
+    recordStudyActivityToday
+} from '../../services/db/streaks_db';
 // import type { LearningDirection, StudyItem } from '../../types/study';
 // import type { ITask } from 'pg-promise';
 
@@ -201,6 +213,9 @@ export interface BackgroundProtocolMap {
     fetchAvailableDeckFiles(): Promise<{ success: boolean; decks?: DeckInfoForFiltering[]; error?: string }>;
     getDailyStudyStats(data: GetDailyStudyStatsRequest): Promise<GetDailyStudyStatsResponse>;
     incrementDailyNewItemsStudied(data: IncrementDailyNewItemsStudiedRequest): Promise<IncrementDailyNewItemsStudiedResponse>;
+    getStudyStreakData(data: GetStudyStreakDataRequest): Promise<GetStudyStreakDataResponse>;
+    notifyDailyGoalComplete(data: NotifyDailyGoalCompleteRequest): Promise<NotifyDailyGoalCompleteResponse>;
+    recordStudyActivityToday(data: RecordStudyActivityTodayRequest): Promise<RecordStudyActivityTodayResponse>;
 }
 
 /**
@@ -866,13 +881,82 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
     messaging.onMessage('incrementDailyNewItemsStudied', async (message) => {
         console.log('[Message Handlers] Received incrementDailyNewItemsStudied request.');
         try {
+            // First, record that activity happened today.
+            await recordStudyActivityToday(); 
+
+            // Then, increment the count of new items studied.
             const updatedCount = await incrementNewItemsStudiedToday();
+            
+            // Check if daily goal is met AFTER incrementing.
+            const dailyStats = await getOrInitDailyStudyStats(); // Re-fetch to get the latest count.
+            const userSettings = await userConfigurationStorage.getValue();
+            const dailyNewItemLimit = userSettings.newItemsPerDay || 20; // Use configured limit or default to 20
+
+            if (dailyStats.newItemsStudiedToday >= dailyNewItemLimit) {
+                console.log(`[Message Handlers incrementDailyNewItemsStudied] Daily new item goal (${dailyNewItemLimit}) met or exceeded (${dailyStats.newItemsStudiedToday}). Processing goal completion for streak.`);
+                await processDailyGoalCompletion(); 
+            }
+
             return { success: true, updatedNewItemsStudiedToday: updatedCount };
         } catch (error: any) {
             console.error('[Message Handlers] Error in incrementDailyNewItemsStudied:', error);
             return { success: false, error: error.message || 'Failed to increment daily new items studied' };
         }
     });
+
+    // --- Add new streak handlers ---
+    messaging.onMessage('getStudyStreakData', async (message) => {
+        console.log('[Message Handlers] Received getStudyStreakData request.');
+        try {
+            // It's crucial to check and reset the streak *before* fetching it for display.
+            // This ensures the data is up-to-date regarding potential breaks from previous days.
+            await checkAndResetStreakIfNeeded();
+            const streakData = await getStudyStreakData();
+            return {
+                success: true,
+                currentStreak: streakData.currentStreak,
+                longestStreak: streakData.longestStreak,
+                lastStreakIncrementDate: streakData.lastStreakIncrementDate,
+                lastActivityDate: streakData.lastActivityDate
+            };
+        } catch (error: any) {
+            console.error('[Message Handlers] Error in getStudyStreakData:', error);
+            return { success: false, error: error.message || 'Failed to get study streak data' };
+        }
+    });
+
+    messaging.onMessage('notifyDailyGoalComplete', async (message) => {
+        console.log('[Message Handlers] Received notifyDailyGoalComplete request.');
+        try {
+            // This message is an explicit signal that the goal was met,
+            // usually called from the frontend when it confirms the daily item count hits the limit.
+            // The `incrementDailyNewItemsStudied` handler also calls this internally.
+            // Calling it here ensures that if the internal call was missed or if there's another
+            // path to goal completion, it's still processed.
+            // `processDailyGoalCompletion` is idempotent for the same day.
+            const updatedData = await processDailyGoalCompletion();
+            if (updatedData) {
+                return { success: true, updatedStreakData: updatedData };
+            } else {
+                return { success: false, error: 'Failed to process daily goal completion for streak.' };
+            }
+        } catch (error: any) {
+            console.error('[Message Handlers] Error in notifyDailyGoalComplete:', error);
+            return { success: false, error: error.message || 'Failed to process daily goal completion' };
+        }
+    });
+    
+    messaging.onMessage('recordStudyActivityToday', async (message) => {
+        console.log('[Message Handlers] Received recordStudyActivityToday request.');
+        try {
+            await recordStudyActivityToday();
+            return { success: true };
+        } catch (error: any) {
+            console.error('[Message Handlers] Error in recordStudyActivityToday:', error);
+            return { success: false, error: error.message || 'Failed to record study activity.' };
+        }
+    });
+    // --- END: Add new streak handlers ---
 
     console.log('[Message Handlers] Background message listeners registered using passed instance.');
 }

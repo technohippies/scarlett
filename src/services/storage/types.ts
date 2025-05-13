@@ -91,4 +91,5 @@ export interface UserConfiguration {
     // Added missing properties
     redirectSettings?: RedirectSettings;
     onboardingComplete?: boolean;
+    newItemsPerDay?: number; // Added for daily new item limit
 }

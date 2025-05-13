@@ -309,8 +309,26 @@ CREATE TABLE IF NOT EXISTS daily_moods (
 -- Table to store daily study session statistics
 CREATE TABLE IF NOT EXISTS daily_study_stats (
     id INTEGER PRIMARY KEY DEFAULT 1, -- Using a fixed ID for a singleton row representing global daily stats
-    last_reset_date TEXT NOT NULL,    -- Date in YYYY-MM-DD format, when the new_items_studied_today was last reset
-    new_items_studied_today INTEGER NOT NULL DEFAULT 0, -- Count of new items studied since last_reset_date
-    CONSTRAINT daily_study_stats_singleton CHECK (id = 1) -- Enforce singleton row
+    last_reset_date TEXT NOT NULL,    -- YYYY-MM-DD format, when new_items_studied_today was last reset
+    new_items_studied_today INTEGER NOT NULL DEFAULT 0 -- Count of new items studied on last_reset_date
+    -- removed updated_at as it's not directly managed by triggers and was causing issues
 );
 -- --- END Daily Study Stats Table ---
+
+-- --- Study Streak Table ---
+CREATE TABLE IF NOT EXISTS study_streak (
+    id INTEGER PRIMARY KEY DEFAULT 1,                      -- Fixed ID for a single global user streak record
+    current_streak INTEGER NOT NULL DEFAULT 0,             -- Current consecutive days goal met
+    longest_streak INTEGER NOT NULL DEFAULT 0,             -- Longest streak achieved
+    last_streak_increment_date TEXT,                       -- YYYY-MM-DD: Last date streak was incremented (goal met)
+    last_activity_date TEXT                                -- YYYY-MM-DD: Last date any new item was studied (even if goal not met)
+);
+
+-- Initialize with a default row if it doesn't exist.
+-- This helps simplify application logic by ensuring a row is always present.
+INSERT INTO study_streak (id, current_streak, longest_streak, last_streak_increment_date, last_activity_date)
+SELECT 1, 0, 0, NULL, NULL
+WHERE NOT EXISTS (SELECT 1 FROM study_streak WHERE id = 1);
+-- --- END Study Streak Table ---
+
+-- Note: Removed incomplete user_configuration table placeholder

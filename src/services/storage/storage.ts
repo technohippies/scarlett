@@ -21,16 +21,62 @@ function buildDefaultRedirectSettings(): RedirectSettings {
 export const defaultUserConfiguration: UserConfiguration = {
   nativeLanguage: null,
   targetLanguage: null,
-  learningGoal: null,
   onboardingComplete: false,
-  isFocusModeActive: true, // Changed to true
-  userBlockedDomains: [],
-  llmConfig: null,
-  embeddingConfig: null,
-  ttsConfig: null,
-  redirectSettings: buildDefaultRedirectSettings(), // Use the helper function
-  focusSettings: {}, // Changed to empty object as categories are removed from panel
-  lastMoodEntryDate: null, // Add the missing property
+  // llmConfig: null, // Removed: UserConfiguration uses individual LLM fields
+  // embeddingConfig: null, // Removed: UserConfiguration uses individual embedding fields
+  // ttsConfig: null, // Removed: UserConfiguration uses individual TTS fields
+  
+  // LLM related fields (ensure these match UserConfiguration in types.ts)
+  selectedLlmProvider: 'none',
+  ollamaBaseUrl: undefined, // Or null, depending on preference for optional fields
+  ollamaModel: undefined,
+  lmStudioBaseUrl: undefined,
+  lmStudioModel: undefined,
+  janBaseUrl: undefined,
+  janModel: undefined,
+  
+  // Embedding related fields
+  embeddingModelProvider: 'none',
+  embeddingModelName: undefined,
+  
+  // TTS related fields
+  selectedTtsVendor: 'browser',
+  elevenLabsApiKey: undefined,
+  elevenLabsVoiceId: undefined,
+
+  redirectSettings: buildDefaultRedirectSettings(),
+  // focusSettings: {}, // focusSettings is not in UserConfiguration type, individual fields are
+  enableFocusMode: false, // Default based on UserConfiguration type
+  focusModeDuration: 30, // Default based on UserConfiguration type (example)
+  focusModeBlockedDomains: [], // Default based on UserConfiguration type
+  lastMoodEntryDate: null,
+  newItemsPerDay: 20,
+
+  // Optional UI display settings from UserConfiguration - default to true or sensible values
+  showTargetLanguage: true,
+  showNativeLanguage: true,
+  showWordLists: true,
+  showFlashcards: true,
+  showGrammar: true,
+  showEtymology: true,
+  showTranslations: true,
+  showDefinitions: true,
+  showSynonyms: true,
+  showAntonyms: true,
+  showExamples: true,
+  showDifficulty: false, // Often less useful by default
+  showFrequency: false,  // Often less useful by default
+  showCEFRLevel: false,  // Often less useful by default
+  showHSKLevel: false,   // Often less useful by default
+  enableAutomaticTranslation: true,
+  enableAutomaticDefinition: true,
+  enableAutomaticSynonyms: false,
+  enableAutomaticAntonyms: false,
+  enableAutomaticExamples: true,
+  enableAutomaticDifficulty: false,
+  enableAutomaticFrequency: false,
+  enableAutomaticCEFRLevel: false,
+  enableAutomaticHSKLevel: false,
 };
 
 /**

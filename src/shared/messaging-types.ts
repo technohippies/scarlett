@@ -260,3 +260,39 @@ export interface IncrementDailyNewItemsStudiedResponse {
   error?: string;
 }
 // --- END Daily Study Stats ---
+
+// --- Study Streak Data ---
+export interface GetStudyStreakDataRequest {
+  // No params needed
+}
+export interface GetStudyStreakDataResponse {
+  success: boolean;
+  currentStreak?: number;
+  longestStreak?: number;
+  lastStreakIncrementDate?: string | null; // YYYY-MM-DD
+  lastActivityDate?: string | null; // YYYY-MM-DD
+  error?: string;
+}
+
+export interface NotifyDailyGoalCompleteRequest {
+  // No params needed, action implies intent
+}
+export interface NotifyDailyGoalCompleteResponse {
+  success: boolean;
+  updatedStreakData?: {
+    currentStreak: number;
+    longestStreak: number;
+    lastStreakIncrementDate: string | null;
+    lastActivityDate: string | null;
+  };
+  error?: string;
+}
+
+export interface RecordStudyActivityTodayRequest {
+    // No params needed
+}
+export interface RecordStudyActivityTodayResponse {
+    success: boolean;
+    error?: string;
+}
+// --- END Study Streak Data ---

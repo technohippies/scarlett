@@ -81,11 +81,10 @@ export async function recordPageVisitVersion(data: PageVisitData): Promise<void>
     // 3. Insert new version into page_versions
     const insertVersionSql = `
       INSERT INTO page_versions (
-          url, markdown_content, markdown_hash, captured_at, 
-          embedding_512, embedding_768, embedding_1024, 
-          active_embedding_dimension, last_embedded_at, visit_count
+          url, markdown_content, markdown_hash, captured_at,
+          embedding_model_id, last_embedded_at, processed_for_embedding_at
       )
-      VALUES ($1, $2, $3, $4, NULL, NULL, NULL, NULL, NULL, 1);
+      VALUES ($1, $2, $3, $4, NULL, NULL, NULL);
     `;
     const versionParams = [
       url,              // $1

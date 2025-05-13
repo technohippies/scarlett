@@ -3,6 +3,7 @@ import { defineExtensionMessaging } from '@webext-core/messaging';
 import NewTabPageView from './NewTabPageView';
 import type { StudySummary } from '../../services/srs/types';
 import type { BackgroundProtocolMap } from '../../background/handlers/message-handlers';
+import type { GetStudyStreakDataResponse, GetDailyStudyStatsResponse } from '../../shared/messaging-types';
 import type { Messages } from '../../types/i18n'; // Import Messages type
 import { useSettings } from '../../context/SettingsContext'; // <-- Import useSettings
 import { type Mood } from '../../features/mood/MoodSelector';
@@ -99,6 +100,31 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
     }
   }, { initialValue: { count: 0 } });
 
+  const [streakData] = createResource<GetStudyStreakDataResponse>(async () => {
+    console.log('[NewTabPage] Fetching study streak data...');
+    try {
+      const result = await messaging.sendMessage('getStudyStreakData', {});
+      console.log('[NewTabPage] Received study streak data:', result);
+      return result; // Assuming result is { currentStreak, longestStreak, success: true } or similar
+    } catch (error) {
+      console.error('[NewTabPage] Error fetching study streak data:', error);
+      return { currentStreak: 0, longestStreak: 0, success: false, error: (error as Error).message };
+    }
+  }, { initialValue: { currentStreak: 0, longestStreak: 0, success: true } });
+
+  // Resource for daily study statistics
+  const [dailyStatsData] = createResource<GetDailyStudyStatsResponse>(async () => {
+    console.log('[NewTabPage] Fetching daily study stats...');
+    try {
+      const result = await messaging.sendMessage('getDailyStudyStats', {});
+      console.log('[NewTabPage] Received daily study stats:', result);
+      return result;
+    } catch (error) {
+      console.error('[NewTabPage] Error fetching daily study stats:', error);
+      return { newItemsStudiedToday: 0, lastResetDate: '', success: false, error: (error as Error).message };
+    }
+  }, { initialValue: { newItemsStudiedToday: 0, lastResetDate: '', success: true } });
+
   const [isEmbedding, setIsEmbedding] = createSignal(false);
   const [embedStatusMessage, setEmbedStatusMessage] = createSignal<string | null>(null);
 
@@ -149,11 +175,22 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
   };
   // --- End Focus Mode ---
 
+  const dailyGoalCompleted = createMemo(() => {
+    const stats = dailyStatsData();
+    const configuredLimit = settings.config?.newItemsPerDay ?? 20;
+    if (stats && stats.success && typeof stats.newItemsStudiedToday === 'number') {
+      return stats.newItemsStudiedToday >= configuredLimit;
+    }
+    return false; // Default to false if stats are not available, errored, or count is not a number
+  });
+
   const isPageReady = createMemo(() => {
     const summaryActuallyLoaded = !summaryData.loading && summaryData.state === 'ready';
     const messagesActuallyLoaded = !props.messagesLoading;
-    // console.log(`[NewTabPage isPageReady] summaryLoaded: ${summaryActuallyLoaded}, messagesLoaded: ${messagesActuallyLoaded}`);
-    return summaryActuallyLoaded && messagesActuallyLoaded;
+    const streakActuallyLoaded = !streakData.loading && streakData.state === 'ready';
+    const dailyStatsActuallyLoaded = !dailyStatsData.loading && dailyStatsData.state === 'ready';
+    // console.log(`[NewTabPage isPageReady] summaryLoaded: ${summaryActuallyLoaded}, messagesLoaded: ${messagesActuallyLoaded}, streakLoaded: ${streakActuallyLoaded}, dailyStatsLoaded: ${dailyStatsActuallyLoaded}`);
+    return summaryActuallyLoaded && messagesActuallyLoaded && streakActuallyLoaded && dailyStatsActuallyLoaded;
   });
 
   return (
@@ -172,7 +209,11 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
       onToggleFocusMode={handleToggleFocusMode}
       showMoodSelector={showMoodSelector}
       onMoodSelect={handleMoodSelect}
+      currentStreak={() => streakData()?.currentStreak ?? 0}
+      longestStreak={() => streakData()?.longestStreak ?? 0}
+      streakLoading={() => streakData.loading}
       isPageReady={isPageReady}
+      dailyGoalCompleted={dailyGoalCompleted}
     />
   );
 };

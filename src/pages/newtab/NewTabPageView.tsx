@@ -3,7 +3,7 @@ import { Button } from '../../components/ui/button';
 import { Spinner } from '../../components/ui/spinner';
 import { FlashcardStudyPanel } from '../../features/srs/FlashcardStudyPanel';
 import { EmbeddingProcessingPanel } from '../../features/embedding/EmbeddingProcessingPanel';
-import { BookmarkSimple, Gear } from 'phosphor-solid';
+import { BookmarkSimple, Gear, Flame } from 'phosphor-solid';
 import type { StudySummary } from '../../services/srs/types';
 import type { Messages } from '../../types/i18n';
 import { MoodSelector, type Mood } from '../../features/mood/MoodSelector';
@@ -16,6 +16,9 @@ export interface NewTabPageViewProps {
   pendingEmbeddingCount: () => number;
   isEmbedding: () => boolean;
   embedStatusMessage: () => string | null;
+  currentStreak: Accessor<number | undefined>;
+  longestStreak: Accessor<number | undefined>;
+  streakLoading: Accessor<boolean>;
   onEmbedClick: () => void;
   onNavigateToBookmarks: () => void;
   onNavigateToStudy: () => void;
@@ -26,6 +29,7 @@ export interface NewTabPageViewProps {
   showMoodSelector: Accessor<boolean>;
   onMoodSelect: (mood: Mood | null) => Promise<void>;
   isPageReady: Accessor<boolean>;
+  dailyGoalCompleted: Accessor<boolean>;
 }
 
 const transitionSettings = { duration: 0.4, easing: "ease-in-out" } as const;
@@ -48,34 +52,63 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
       transition={transitionSettings}
       class="newtab-page-container relative p-6 md:p-8 font-sans bg-background min-h-screen flex flex-col"
     >
-
-      {/* --- Top Left: Study Panel --- */}
-      <div class="study-panel-area max-w-xs w-full">
-          <Show
-              when={!props.summaryLoading()}
-              fallback={ <div class="bg-card p-4 rounded-lg shadow-md flex justify-center items-center h-24"><Spinner class="h-8 w-8 text-muted-foreground" /></div> }
-          >
+      {/* --- Top Area: Study Panel and Streak --- */}
+      <div class="top-area flex flex-col md:flex-row gap-4 mb-4">
+        {/* --- Top Left: Study Panel (Conditionally Rendered) --- */}
+        <Show when={!props.dailyGoalCompleted()}>
+          <div class="study-panel-area max-w-xs w-full">
               <Show
-                  when={props.summary()}
-                  fallback={ <p class="text-muted-foreground p-4 text-sm bg-card rounded-lg shadow-md">{i18n().get('newTabPageNoStudyData', 'No study data available.')}</p> }
+                  when={!props.summaryLoading()}
+                  fallback={ <div class="bg-card p-4 rounded-lg shadow-md flex justify-center items-center h-24"><Spinner class="h-8 w-8 text-muted-foreground" /></div> }
               >
-                  {(data) => (
-                      <FlashcardStudyPanel
-                          dueCount={data().dueCount}
-                          reviewCount={data().reviewCount}
-                          newCount={data().newCount}
-                          onStudyClick={props.onNavigateToStudy}
-                          class="bg-card p-4 rounded-lg shadow-md"
-                          messages={props.messages}
-                      />
-                  )}
+                  <Show
+                      when={props.summary()}
+                      fallback={ <p class="text-muted-foreground p-4 text-sm bg-card rounded-lg shadow-md">{i18n().get('newTabPageNoStudyData', 'No study data available.')}</p> }
+                  >
+                      {(data) => (
+                          <FlashcardStudyPanel
+                              dueCount={data().dueCount}
+                              reviewCount={data().reviewCount}
+                              newCount={data().newCount}
+                              onStudyClick={props.onNavigateToStudy}
+                              class="bg-card p-4 rounded-lg shadow-md"
+                              messages={props.messages}
+                          />
+                      )}
+                  </Show>
               </Show>
+          </div>
+        </Show>
+
+        {/* --- Top Right: Streak Display --- */}
+        <div class="streak-display-area max-w-xs w-full md:ml-auto">
+          <Show
+            when={!props.streakLoading()}
+            fallback={<div class="bg-card p-4 rounded-lg shadow-md flex justify-center items-center h-24"><Spinner class="h-6 w-6 text-muted-foreground" /></div>}
+          >
+            <div class="bg-card p-4 rounded-lg shadow-md text-card-foreground flex flex-col gap-3">
+              <h3 class="text-lg font-semibold flex items-center justify-center md:justify-start">
+                <Flame weight="fill" class="mr-2 text-orange-500" size={20} />
+                {i18n().get('newTabPageStreakTitle', 'Streak')}
+              </h3>
+              <div class="flex items-start justify-around gap-2 md:gap-3">
+                  <div class="flex-1 bg-secondary p-3 rounded text-center min-w-20">
+                    <span class="block text-xl font-bold text-orange-500">{props.currentStreak() ?? 0}</span>
+                    <span class="block text-xs md:text-sm text-muted-foreground">{i18n().get('newTabPageLabelCurrent', 'Current')}</span>
+                  </div>
+
+                  <div class="flex-1 bg-secondary p-3 rounded text-center min-w-20">
+                     <span class="block text-xl font-bold text-primary">{props.longestStreak() ?? 0}</span>
+                     <span class="block text-xs md:text-sm text-muted-foreground">{i18n().get('newTabPageLabelLongest', 'Longest')}</span>
+                  </div>
+              </div>
+            </div>
           </Show>
+        </div>
       </div>
 
       {/* --- Mood Selector Section (Conditionally Rendered, Centered in available space) --- */}
       <Show when={props.showMoodSelector()}>
-        {/* This div will grow and center its content both vertically and horizontally */}
         <div class="flex-grow flex items-center justify-center py-4">
           <section class="w-full max-w-md p-6 bg-card rounded-xl shadow-lg">
             <h2 class="text-xl font-semibold text-center text-card-foreground mb-5">
@@ -86,16 +119,12 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
         </div>
       </Show>
 
-      {/* --- Placeholder to maintain space if mood selector is NOT shown, ensuring Action Buttons stay down --- */}
       <Show when={!props.showMoodSelector()}>
         <div class="flex-grow"></div>
       </Show>
 
-      {/* --- Bottom Right Area --- */}
-      {/* mt-auto will push this to the bottom of the flex container, respecting the flex-grow items above it */}
       <div class="mt-auto ml-auto flex flex-col gap-2 items-end">
           
-          {/* Embedding Panel (now direct child) */}
           <EmbeddingProcessingPanel
             pendingEmbeddingCount={props.pendingEmbeddingCount}
             isEmbedding={props.isEmbedding}
@@ -104,14 +133,12 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
             messages={props.messages}
           />
 
-          {/* Focus Mode Button (Moved to top of this stack) */}
           <Button onClick={props.onToggleFocusMode} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
             {props.isFocusModeActive()
               ? i18n().get('newTabPageButtonStopFocus', 'Stop Focus')
               : i18n().get('newTabPageButtonStartFocus', 'Start Focus')}
           </Button>
 
-          {/* Action Buttons (now direct children) */}
           <Button onClick={props.onNavigateToBookmarks} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
               <BookmarkSimple weight="fill" size={18} />
               {i18n().get('newTabPageButtonBookmarks', 'Bookmarks')}
