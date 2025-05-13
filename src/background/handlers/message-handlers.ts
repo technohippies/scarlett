@@ -22,7 +22,11 @@ import type {
     ExtractMarkdownRequest,
     ExtractMarkdownResponse,
     RequestActiveLearningWordsPayload,
-    RequestActiveLearningWordsResponse
+    RequestActiveLearningWordsResponse,
+    GetDailyStudyStatsRequest,
+    GetDailyStudyStatsResponse,
+    IncrementDailyNewItemsStudiedRequest,
+    IncrementDailyNewItemsStudiedResponse
 } from '../../shared/messaging-types';
 import {
     getDueLearningItems,
@@ -62,6 +66,10 @@ import { userConfigurationStorage } from '../../services/storage/storage';
 import type { FunctionConfig } from '../../services/storage/types';
 import { generateElevenLabsSpeechStream } from '../../services/tts/elevenLabsService';
 import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
+import {
+    getOrInitDailyStudyStats,
+    incrementNewItemsStudiedToday
+} from '../../services/db/study_session_db';
 // import type { LearningDirection, StudyItem } from '../../types/study';
 // import type { ITask } from 'pg-promise';
 
@@ -191,6 +199,8 @@ export interface BackgroundProtocolMap {
     GET_LEARNING_WORDS_BY_TRANSLATION_IDS(data: { translationIds: number[] }): Promise<{ success: boolean; words?: any[]; error?: string }>;
     REQUEST_LEARNING_WORDS_FOR_HIGHLIGHTING(): Promise<{ success: boolean; words?: any[]; error?: string }>;
     fetchAvailableDeckFiles(): Promise<{ success: boolean; decks?: DeckInfoForFiltering[]; error?: string }>;
+    getDailyStudyStats(data: GetDailyStudyStatsRequest): Promise<GetDailyStudyStatsResponse>;
+    incrementDailyNewItemsStudied(data: IncrementDailyNewItemsStudiedRequest): Promise<IncrementDailyNewItemsStudiedResponse>;
 }
 
 /**
@@ -242,13 +252,30 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
     messaging.onMessage('getDueItems', async (message) => {
         console.log('[Message Handlers] Received getDueItems request:', message.data);
         try {
-            const dueItems = await getDueLearningItems(message.data.limit);
-            console.log(`[Message Handlers] getDueLearningItems returned ${dueItems?.length ?? 0} item(s). Returning to StudyPage.`);
-            console.log('[Message Handlers] Due items data:', JSON.stringify(dueItems, null, 2));
-            return { dueItems };
+            // Explicitly destructure all potential options from message.data
+            const { 
+                limit, 
+                excludeNewIfLimitReached, 
+                newItemsStudiedToday, 
+                dailyNewItemLimit 
+            } = message.data as GetDueItemsRequest; // Type assertion for clarity
+
+            // Construct the options object to pass to getDueLearningItems
+            // This ensures that even if some optional fields are undefined in message.data,
+            // they are passed as undefined, allowing getDueLearningItems to use its defaults only when truly not provided.
+            const schedulerOptions = {
+                excludeNewIfLimitReached,
+                newItemsStudiedToday,
+                dailyNewItemLimit
+            };
+
+            const dueItems = await getDueLearningItems(limit, schedulerOptions);
+
+            console.log(`[Message Handlers] getDueLearningItems returned ${dueItems.length} item(s). Returning to StudyPage.`);
+            return { success: true, dueItems };
         } catch (error) {
-            console.error('[Message Handlers] Error calling getDueLearningItems:', error);
-            return { dueItems: [] }; 
+            console.error('[Message Handlers] Error in getDueItems handler:', error);
+            return { success: false, error: String(error) };
         }
     });
 
@@ -818,6 +845,34 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         }
     });
     console.log('[Message Handlers Register] <<< AFTER registering fetchAvailableDeckFiles handler.');
+
+    // Add handler for getDailyStudyStats
+    messaging.onMessage('getDailyStudyStats', async (message) => {
+        console.log('[Message Handlers] Received getDailyStudyStats request.');
+        try {
+            const stats = await getOrInitDailyStudyStats();
+            return { 
+                success: true, 
+                lastResetDate: stats.lastResetDate,
+                newItemsStudiedToday: stats.newItemsStudiedToday
+            };
+        } catch (error: any) {
+            console.error('[Message Handlers] Error in getDailyStudyStats:', error);
+            return { success: false, error: error.message || 'Failed to get daily study stats' };
+        }
+    });
+
+    // Add handler for incrementDailyNewItemsStudied
+    messaging.onMessage('incrementDailyNewItemsStudied', async (message) => {
+        console.log('[Message Handlers] Received incrementDailyNewItemsStudied request.');
+        try {
+            const updatedCount = await incrementNewItemsStudiedToday();
+            return { success: true, updatedNewItemsStudiedToday: updatedCount };
+        } catch (error: any) {
+            console.error('[Message Handlers] Error in incrementDailyNewItemsStudied:', error);
+            return { success: false, error: error.message || 'Failed to increment daily new items studied' };
+        }
+    });
 
     console.log('[Message Handlers] Background message listeners registered using passed instance.');
 }

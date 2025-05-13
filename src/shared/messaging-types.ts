@@ -42,9 +42,14 @@ export interface UpdateAlignmentPayload {
 // Get Due Items
 export interface GetDueItemsRequest {
   limit: number;
+  excludeNewIfLimitReached?: boolean; // Optional: Hint to scheduler
+  newItemsStudiedToday?: number;      // Optional: Current count of new items studied
+  dailyNewItemLimit?: number;         // Optional: The daily limit for new items
 }
 export interface GetDueItemsResponse {
-  dueItems: DueLearningItem[];
+  success: boolean;
+  dueItems?: DueLearningItem[];
+  error?: string;
 }
 
 // Get Distractors
@@ -234,3 +239,24 @@ export interface RequestActiveLearningWordsResponse {
 }
 
 // --- END NEW: Active Learning Words Highlighting ---
+
+// --- Daily Study Stats --- 
+export interface GetDailyStudyStatsRequest {
+  // No params needed for now
+}
+export interface GetDailyStudyStatsResponse {
+  success: boolean;
+  lastResetDate?: string; // YYYY-MM-DD
+  newItemsStudiedToday?: number;
+  error?: string;
+}
+
+export interface IncrementDailyNewItemsStudiedRequest {
+  // No params needed, action implies intent
+}
+export interface IncrementDailyNewItemsStudiedResponse {
+  success: boolean;
+  updatedNewItemsStudiedToday?: number;
+  error?: string;
+}
+// --- END Daily Study Stats ---

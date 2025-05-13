@@ -22,22 +22,18 @@ function startInitialization(): Promise<PGlite> {
             // --- Apply Schema --- 
             console.log('[DB startInitialization] Applying database schema START...');
             try {
-                // Check for 'bookmarks' table
-                const checkSql = `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'bookmarks');`;
-                console.log('[DB startInitialization] Executing check query for \'bookmarks\' table...');
-                const checkResult = await instance.query<{ exists: boolean }>(checkSql);
-                const tableExists = checkResult?.rows?.[0]?.exists;
-                console.log(`[DB startInitialization] Check query result: bookmarks exists = ${tableExists}`);
+                // ALWAYS execute the full schema.
+                // CREATE TABLE IF NOT EXISTS and CREATE INDEX IF NOT EXISTS statements
+                // in schema.sql will handle idempotency.
+                console.log('[DB startInitialization] Executing full schema from schema.sql...');
+                await instance.exec(dbSchemaSql);
+                console.log('[DB startInitialization] --- FULL SCHEMA EXECUTION COMPLETE ---');
 
-                if (tableExists === false) {
-                    console.log('[DB startInitialization] bookmarks table does not exist. Applying full schema...');
-                    await instance.exec(dbSchemaSql);
-                    console.log('[DB startInitialization] --- FULL SCHEMA EXECUTION COMPLETE ---');
-                    const verifyResult = await instance.query<{ exists: boolean }>(checkSql);
-                    console.log(`[DB startInitialization] Verification result: bookmarks exists = ${verifyResult?.rows?.[0]?.exists}`);
-                } else {
-                    console.log('[DB startInitialization] bookmarks table already exists. Assuming schema is up-to-date.');
-                }
+                // Optional: Add a verification step for a newly added table to confirm, e.g., daily_study_stats
+                const verifyDailyStatsSql = `SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'daily_study_stats');`;
+                const verifyResult = await instance.query<{ exists: boolean }>(verifyDailyStatsSql);
+                console.log(`[DB startInitialization] Verification result: daily_study_stats table exists = ${verifyResult?.rows?.[0]?.exists}`);
+
                 console.log('[DB startInitialization] Applying database schema COMPLETE.');
             } catch (schemaError) {
                 console.error('[DB startInitialization] Error during schema check/application:', schemaError);

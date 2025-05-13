@@ -12,6 +12,7 @@ export interface StudyPageViewProps {
   isLoadingDistractors: boolean;
   isFetchingNextItem: boolean;
   spinnerVisible: boolean;
+  initialLoadComplete: boolean;
   itemError: string | null;
   distractorError: string | null;
   onSkipClick: () => void;
@@ -86,8 +87,9 @@ export const StudyPageView: Component<StudyPageViewProps> = (props) => {
             {/* --- Exercise Area (only if not fetching next and no item error, or if there is an item) --- */}
             <div class="exercise-area w-full max-w-md flex flex-col flex-grow">
               <Switch fallback={
-                // Fallback for the main exercise switch: No items due, only if not loading item and no error
-                <Show when={!props.isLoadingItem && !props.itemError && props.currentStudyStep === 'noItem'}>
+                // Fallback for the main exercise switch:
+                // Show "No items due" only if initial load is complete, not loading, no error, and noItem step
+                <Show when={props.initialLoadComplete && !props.isLoadingItem && !props.itemError && props.currentStudyStep === 'noItem'}>
                      <p class="text-foreground text-lg text-center">
                         🎉 No items due for review right now! Great job! 🎉
                      </p>

@@ -8,7 +8,11 @@ import type {
     GenerateLLMDistractorsRequest,
     GenerateLLMDistractorsResponse,
     GetDistractorsRequest,
-    GetDistractorsResponse
+    GetDistractorsResponse,
+    GetDailyStudyStatsRequest,
+    GetDailyStudyStatsResponse,
+    IncrementDailyNewItemsStudiedRequest,
+    IncrementDailyNewItemsStudiedResponse
 } from '../../shared/messaging-types';
 import { Rating, State as FSRSStateEnum } from 'ts-fsrs'; 
 import type { DueLearningItem } from '../../services/srs/types'; // FSRSState was removed from here
@@ -24,6 +28,8 @@ interface BackgroundProtocol {
     submitReviewResult(data: SubmitReviewRequest): Promise<SubmitReviewResponse>;
     generateLLMDistractors(data: GenerateLLMDistractorsRequest): Promise<GenerateLLMDistractorsResponse>;
     getDistractorsForItem(data: GetDistractorsRequest): Promise<GetDistractorsResponse>;
+    getDailyStudyStats(data: GetDailyStudyStatsRequest): Promise<GetDailyStudyStatsResponse>;
+    incrementDailyNewItemsStudied(data: IncrementDailyNewItemsStudiedRequest): Promise<IncrementDailyNewItemsStudiedResponse>;
 }
 
 // Props for StudyPage
@@ -33,6 +39,9 @@ export interface StudyPageProps {
 
 // Initialize messaging client
 const messaging = defineExtensionMessaging<BackgroundProtocol>();
+
+// Define the daily new item limit
+const DAILY_NEW_ITEM_LIMIT = 20;
 
 // Utility function to shuffle an array (Fisher-Yates shuffle)
 function shuffleArray<T>(array: T[]): T[] {
@@ -76,14 +85,55 @@ const StudyPage: Component<StudyPageProps> = (props) => {
   const [shouldShowLoadingSpinner, setShouldShowLoadingSpinner] = createSignal<boolean>(false);
   let spinnerTimeoutId: any;
 
+  // State for daily new item limits
+  const [dailyNewItemCount, setDailyNewItemCount] = createSignal(0);
+  const [lastResetDateForNewItems, setLastResetDateForNewItems] = createSignal(new Date().toISOString().split('T')[0]);
+  const [dailyStatsLoaded, setDailyStatsLoaded] = createSignal(false);
+  const [initialLoadComplete, setInitialLoadComplete] = createSignal(false);
+
   createEffect(() => console.log(`[StudyPage STATE] currentStudyStep changed to: ${currentStudyStep()}`));
   createEffect(() => console.log(`[StudyPage STATE] isFetchingNextItem changed to: ${isFetchingNextItem()}`));
   createEffect(() => console.log(`[StudyPage STATE] shouldShowLoadingSpinner changed to: ${shouldShowLoadingSpinner()}`));
   createEffect(() => console.log(`[StudyPage STATE] currentItem changed: ${JSON.stringify(currentItem())?.substring(0,100)}...`));
+  createEffect(() => console.log(`[StudyPage STATE] dailyNewItemCount changed to: ${dailyNewItemCount()}/${DAILY_NEW_ITEM_LIMIT}, lastResetDate: ${lastResetDateForNewItems()}`));
+
+  // Effect to load daily study stats on component mount
+  createEffect(async () => {
+    console.log('[StudyPage EFFECT dailyStats] Attempting to load daily study stats.');
+    try {
+      const response = await messaging.sendMessage('getDailyStudyStats', {});
+      if (response.success && response.lastResetDate && typeof response.newItemsStudiedToday === 'number') {
+        console.log('[StudyPage EFFECT dailyStats] Loaded stats:', response);
+        setLastResetDateForNewItems(response.lastResetDate);
+        setDailyNewItemCount(response.newItemsStudiedToday);
+      } else {
+        console.warn('[StudyPage EFFECT dailyStats] Failed to load daily stats or stats were incomplete:', response.error);
+        // Fallback to initializing with today's date and 0 count if BE fails to provide proper init
+        const today = new Date().toISOString().split('T')[0];
+        setLastResetDateForNewItems(today);
+        setDailyNewItemCount(0);
+      }
+    } catch (error) {
+      console.error('[StudyPage EFFECT dailyStats] Error fetching daily study stats:', error);
+      const today = new Date().toISOString().split('T')[0];
+      setLastResetDateForNewItems(today);
+      setDailyNewItemCount(0);
+    } finally {
+      setDailyStatsLoaded(true);
+      setInitialLoadComplete(true);
+      console.log('[StudyPage EFFECT dailyStats] Daily stats loading attempt complete. Initial load marked complete.');
+    }
+  });
 
   // --- Fetching Due Item Resource ---
-  const [dueItemResource, { refetch: fetchDueItems }] = createResource(async () => {
-    console.log('[StudyPage FN_CALL] fetchDueItems START');
+  const [dueItemResource, { refetch: fetchDueItems }] = createResource(
+    () => dailyStatsLoaded(), // Depend on dailyStatsLoaded to ensure stats are checked first
+    async (statsLoaded) => {
+    if (!statsLoaded) {
+      console.log('[StudyPage FN_CALL] fetchDueItems - Waiting for daily stats to load...');
+      return null; // Don't fetch if daily stats aren't loaded yet
+    }
+    console.log('[StudyPage FN_CALL] fetchDueItems START (Daily stats loaded)');
     setIsFetchingNextItem(true);
     clearTimeout(spinnerTimeoutId);
     setShouldShowLoadingSpinner(false); 
@@ -95,36 +145,45 @@ const StudyPage: Component<StudyPageProps> = (props) => {
     }, 200);
 
     setItemError(null);
-    // setCurrentItem(null); // Already happens effectively via resource loading
-    // setCurrentStudyStep('noItem'); // Reset step - Handled by effect below
+
+    // Check and potentially reset daily new item count if the date changed
+    // This is a secondary check; primary reset happens in getOrInitDailyStudyStats (BE)
+    const todayStrForFetch = new Date().toISOString().split('T')[0];
+    if (lastResetDateForNewItems() !== todayStrForFetch) {
+      console.log(`[StudyPage FN_CALL] fetchDueItems - Date changed from ${lastResetDateForNewItems()} to ${todayStrForFetch}. Resetting UI count.`);
+      setLastResetDateForNewItems(todayStrForFetch);
+      setDailyNewItemCount(0); // Reset UI count, BE should have reset DB count via getDailyStudyStats
+    }
 
     try {
-      const requestData = { limit: 1 };
+      const requestData: GetDueItemsRequest = {
+        limit: 1,
+        excludeNewIfLimitReached: true, // Always pass true, scheduler decides based on counts
+        newItemsStudiedToday: dailyNewItemCount(),
+        dailyNewItemLimit: DAILY_NEW_ITEM_LIMIT
+      };
       console.log('[StudyPage FN_CALL] fetchDueItems - Sending getDueItems message:', requestData);
       const response = await messaging.sendMessage('getDueItems', requestData);
       console.log(`[StudyPage FN_CALL] fetchDueItems - Received getDueItems response (first item): ${JSON.stringify(response?.dueItems?.[0])?.substring(0,100)}...`);
       
       if (response && response.dueItems && response.dueItems.length > 0) {
         const fetchedItem = response.dueItems[0];
-        setCurrentItem(fetchedItem); // This will trigger the effect for currentStudyStep
+        setCurrentItem(fetchedItem);
         const direction = Math.random() < 0.5 ? 'EN_TO_NATIVE' : 'NATIVE_TO_EN';
         setExerciseDirection(direction);
-        // setCurrentStudyStep('flashcard'); // Let effect handle this based on currentItem()
         console.log(`[StudyPage FN_CALL] fetchDueItems - Set exercise direction: ${direction}`);
         console.log('[StudyPage FN_CALL] fetchDueItems END - Success, item fetched');
         return fetchedItem;
       } else {
         console.log('[StudyPage FN_CALL] fetchDueItems - No due items returned.');
-        setCurrentItem(null); // Ensure item is null, triggers effect for noItem
-        // setCurrentStudyStep('noItem'); // Let effect handle
+        setCurrentItem(null);
         console.log('[StudyPage FN_CALL] fetchDueItems END - Success, no items');
         return null;
       }
     } catch (err: any) {
       console.error('[StudyPage FN_CALL] fetchDueItems - Error fetching due items:', err);
       setItemError(err.message || 'Failed to fetch due items.');
-      setCurrentItem(null); // Ensure item is null on error
-      // setCurrentStudyStep('noItem'); // Let effect handle
+      setCurrentItem(null);
       console.log('[StudyPage FN_CALL] fetchDueItems END - Error');
       return null;
     } finally {
@@ -365,6 +424,13 @@ const StudyPage: Component<StudyPageProps> = (props) => {
       return;
     }
 
+    // Check if the item was new BEFORE submitting the review
+    // item.currentState comes from getDueLearningItems in scheduler.ts
+    const wasNewItem = item.currentState === FSRSStateEnum.New;
+    if (wasNewItem) {
+        console.log(`[StudyPage FN_CALL] handleFlashcardRated - Item ${item.learningId} was new. Current daily new count: ${dailyNewItemCount()}`);
+    }
+
     console.log(`[StudyPage FN_CALL] handleFlashcardRated - Submitting review for Learning ID: ${item.learningId}`);
     try {
       const response = await messaging.sendMessage('submitReviewResult', {
@@ -374,6 +440,36 @@ const StudyPage: Component<StudyPageProps> = (props) => {
       if (!response.success) {
         setItemError(`Failed to submit review: ${response.error || 'Unknown error'}`);
         console.warn(`[StudyPage FN_CALL] handleFlashcardRated - Review submission failed: ${response.error}`);
+      } else {
+        // If review was successful AND the item was new, increment daily count
+        if (wasNewItem) {
+          console.log(`[StudyPage FN_CALL] handleFlashcardRated - Incrementing daily new item count for item ${item.learningId}. Current UI count before increment: ${dailyNewItemCount()}`);
+          try {
+            const incrementResponse = await messaging.sendMessage('incrementDailyNewItemsStudied', {});
+            if (incrementResponse.success && typeof incrementResponse.updatedNewItemsStudiedToday === 'number') {
+              setDailyNewItemCount(incrementResponse.updatedNewItemsStudiedToday);
+              console.log(`[StudyPage FN_CALL] handleFlashcardRated - Daily new item count updated via backend to: ${incrementResponse.updatedNewItemsStudiedToday}`);
+            } else {
+              console.warn('[StudyPage FN_CALL] handleFlashcardRated - Failed to increment daily new item count on backend or received invalid response:', incrementResponse.error);
+              // Fallback: Increment locally if backend fails to respond correctly, though this might lead to discrepancies.
+              // Consider if this is desired or if we should rely solely on the next getDailyStudyStats call to correct it.
+              // For now, let's increment locally to keep UI somewhat responsive if backend call fails, but log it clearly.
+              setDailyNewItemCount(prev => {
+                const newCount = prev + 1;
+                console.warn(`[StudyPage FN_CALL] handleFlashcardRated - Backend increment failed. Fallback: Locally incremented dailyNewItemCount to ${newCount}`);
+                return newCount;
+              });
+            }
+          } catch (incrementError) {
+            console.error('[StudyPage FN_CALL] handleFlashcardRated - Error sending increment message:', incrementError);
+            // Fallback for network error during increment
+            setDailyNewItemCount(prev => {
+                const newCount = prev + 1;
+                console.warn(`[StudyPage FN_CALL] handleFlashcardRated - Network error during increment. Fallback: Locally incremented dailyNewItemCount to ${newCount}`);
+                return newCount;
+              });
+          }
+        }
       }
 
       if (rating === Rating.Again || rating === Rating.Hard) { // Hard is not used by current UI but good to keep
@@ -466,6 +562,7 @@ const StudyPage: Component<StudyPageProps> = (props) => {
         isLoadingDistractors={currentStudyStep() === 'mcq' && distractorResource.loading}
         isFetchingNextItem={isFetchingNextItem()}
         spinnerVisible={shouldShowLoadingSpinner()}
+        initialLoadComplete={initialLoadComplete()}
         itemForFlashcardReviewer={itemForFlashcardReviewer()}
         flashcardStatus={flashcardStatus()}
         mcqProps={mcqProps()}

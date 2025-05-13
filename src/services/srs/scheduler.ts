@@ -63,15 +63,32 @@ export async function getStudySummaryCounts(): Promise<SummaryCounts> {
  * Queries the database joining user_learning, lexeme_translations, and lexemes.
  * 
  * @param limit Optional limit on the number of items to fetch.
+ * @param options Optional: { excludeNewIfLimitReached?: boolean; newItemsStudiedToday?: number; dailyNewItemLimit?: number } to exclude new cards.
  * @returns A promise that resolves to an array of DueLearningItem objects.
  */
-export async function getDueLearningItems(limit: number = 10): Promise<DueLearningItem[]> {
-    console.log(`[SRS Scheduler] Fetching due learning items (Limit: ${limit})...`);
+export async function getDueLearningItems(
+    limit: number = 10,
+    options: { excludeNewIfLimitReached?: boolean; newItemsStudiedToday?: number; dailyNewItemLimit?: number } = {}
+): Promise<DueLearningItem[]> {
+    const { excludeNewIfLimitReached = false, newItemsStudiedToday = 0, dailyNewItemLimit = 20 } = options;
+
+    let shouldExcludeNew = false;
+    if (excludeNewIfLimitReached && newItemsStudiedToday >= dailyNewItemLimit) {
+        shouldExcludeNew = true;
+        console.log(`[SRS Scheduler] Daily new item limit (${dailyNewItemLimit}) reached or exceeded (${newItemsStudiedToday}). Forcing exclusion of new items.`);
+    } else if (options.hasOwnProperty('excludeNew') && typeof (options as any).excludeNew === 'boolean') {
+        // Support old direct excludeNew if provided for other use cases, but prioritize limit
+        shouldExcludeNew = (options as any).excludeNew;
+        if (shouldExcludeNew) {
+            console.log(`[SRS Scheduler] Explicitly excluding new items based on direct excludeNew option.`);
+        }
+    }
+
+    console.log(`[SRS Scheduler] Fetching due learning items (Limit: ${limit}, ActualExcludeNew: ${shouldExcludeNew}, StudiedToday: ${newItemsStudiedToday}/${dailyNewItemLimit})...`);
     try {
         const db = await getDbInstance();
-
-        // Added lt.cached_distractors and ul.last_incorrect_choice to SELECT
-        const query = `
+        const params: any[] = [];
+        let query = `
             SELECT
                 ul.learning_id AS "learningId",
                 ul.translation_id AS "translationId",
@@ -80,6 +97,7 @@ export async function getDueLearningItems(limit: number = 10): Promise<DueLearni
                 src_lex.text AS "sourceText",
                 tgt_lex.text AS "targetText",
                 tgt_lex.language AS "targetLang",
+                ul.state AS "currentState", -- Ensure FSRS state is fetched
                 lt.cached_distractors AS "cachedDistractors",
                 ul.last_incorrect_choice AS "lastIncorrectChoice"
             FROM
@@ -92,12 +110,27 @@ export async function getDueLearningItems(limit: number = 10): Promise<DueLearni
                 lexemes tgt_lex ON lt.target_lexeme_id = tgt_lex.lexeme_id
             WHERE
                 ul.due <= CURRENT_TIMESTAMP
-            ORDER BY
-                ul.due ASC
-            LIMIT $1
         `;
-        console.log('[SRS Scheduler] Executing query:', query.trim(), [limit]);
-        const result = await db.query<DueLearningItem>(query, [limit]);
+
+        if (shouldExcludeNew) {
+            query += ` AND ul.state != $${params.length + 1}`;
+            params.push(State.New);
+        }
+
+        // Adjust ORDER BY clause
+        if (shouldExcludeNew) {
+            query += ` ORDER BY ul.due ASC`;
+        } else {
+            // Prioritize new items (state = 0), then by due date
+            query += ` ORDER BY (CASE WHEN ul.state = $${params.length + 1} THEN 0 ELSE 1 END), ul.due ASC`;
+            params.push(State.New);
+        }
+
+        query += ` LIMIT $${params.length + 1}`;
+        params.push(limit);
+        
+        console.log('[SRS Scheduler] Executing query:', query.trim(), params);
+        const result = await db.query<DueLearningItem>(query, params);
 
         // Ensure cachedDistractors is an array or null (PGlite handles TEXT[] correctly usually)
         const processedResults = result.rows.map(item => {
