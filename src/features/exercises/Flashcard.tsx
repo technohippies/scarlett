@@ -1,5 +1,4 @@
 import { Component, createSignal } from 'solid-js';
-import { Button } from '../../components/ui/button';
 import FlashcardDisplay from '../../shared/flashcard'; 
 import { Rating } from 'ts-fsrs';
 import type { FlashcardStatus } from '../../services/db/types';

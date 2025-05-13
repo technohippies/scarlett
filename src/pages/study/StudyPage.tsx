@@ -71,10 +71,23 @@ const StudyPage: Component<StudyPageProps> = (props) => {
   const [itemError, setItemError] = createSignal<string | null>(null);
   const [exerciseDirection, setExerciseDirection] = createSignal<'EN_TO_NATIVE' | 'NATIVE_TO_EN'>('EN_TO_NATIVE');
   const [currentStudyStep, setCurrentStudyStep] = createSignal<'flashcard' | 'mcq' | 'noItem'>('noItem');
+  const [isFetchingNextItem, setIsFetchingNextItem] = createSignal<boolean>(false);
+  const [shouldShowLoadingSpinner, setShouldShowLoadingSpinner] = createSignal<boolean>(false);
+  let spinnerTimeoutId: any; // Use 'any' to avoid type conflicts with Node/browser setTimeout return types
 
   // --- Fetching Due Item Resource ---
   const [dueItemResource, { refetch: fetchDueItems }] = createResource(async () => {
     console.log('[StudyPage Container] Fetching next due item resource...');
+    setIsFetchingNextItem(true);
+    clearTimeout(spinnerTimeoutId);
+    setShouldShowLoadingSpinner(false); // Reset spinner visibility
+    spinnerTimeoutId = setTimeout(() => {
+      // Only show spinner if we are still in the process of fetching
+      if (isFetchingNextItem()) {
+        setShouldShowLoadingSpinner(true);
+      }
+    }, 200); // Show spinner after 200ms if fetching is still ongoing
+
     setItemError(null);
     setCurrentItem(null);
     setCurrentStudyStep('noItem'); // Reset step
@@ -104,6 +117,10 @@ const StudyPage: Component<StudyPageProps> = (props) => {
       setItemError(err.message || 'Failed to fetch due items.');
       setCurrentStudyStep('noItem');
       return null;
+    } finally {
+      clearTimeout(spinnerTimeoutId);
+      setShouldShowLoadingSpinner(false);
+      setIsFetchingNextItem(false);
     }
   });
 
@@ -245,7 +262,13 @@ const StudyPage: Component<StudyPageProps> = (props) => {
 
   const flashcardStatus = createMemo<FlashcardStatus>(() => {
     const item = currentItem();
-    return item ? mapFsrsStateToStatus(item.currentState) : 'new';
+    if (item && typeof item.currentState === 'number') {
+      return mapFsrsStateToStatus(item.currentState);
+    }
+    if (item && item.currentState === undefined) {
+      console.warn(`[StudyPage] item.currentState is undefined for learningId: ${item.learningId}. Defaulting to 'new' status.`);
+    }
+    return 'new'; // Default if no item or currentState is not a number or undefined
   });
 
   const mcqProps = createMemo<MCQProps | null>(() => {
@@ -412,6 +435,8 @@ const StudyPage: Component<StudyPageProps> = (props) => {
     <StudyPageView
         isLoadingItem={dueItemResource.loading}
         isLoadingDistractors={currentStudyStep() === 'mcq' && distractorResource.loading}
+        isFetchingNextItem={isFetchingNextItem()}
+        spinnerVisible={shouldShowLoadingSpinner()}
         itemForFlashcardReviewer={itemForFlashcardReviewer()}
         flashcardStatus={flashcardStatus()}
         mcqProps={mcqProps()}

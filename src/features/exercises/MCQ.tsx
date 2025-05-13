@@ -1,6 +1,7 @@
 import { Component, createSignal, For } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { ExerciseFooter } from './ExerciseFooter';
+import { Motion } from 'solid-motionone';
 
 // Define and export the Option type
 export interface Option {
@@ -14,9 +15,10 @@ export interface MCQProps {
   instructionText?: string;
   options: Option[]; // Use the exported Option type
   correctOptionId: string | number;
-  // Remove onCheck and onContinue, combine into onComplete
   onComplete: (selectedOptionId: string | number, isCorrect: boolean) => void;
 }
+
+const transitionSettings = { duration: 0.3, easing: "ease-in-out" } as const;
 
 export const MCQ: Component<MCQProps> = (props) => {
   const [selectedOptionId, setSelectedOptionId] = createSignal<string | number | undefined>();
@@ -35,7 +37,6 @@ export const MCQ: Component<MCQProps> = (props) => {
 
     const correct = selectedId === props.correctOptionId;
     setFeedbackCorrectness(correct);
-    // Call props.onCheck(correct); - Removed
 
     if (!correct) {
       const correctOption = props.options.find(opt => opt.id === props.correctOptionId);
@@ -46,7 +47,6 @@ export const MCQ: Component<MCQProps> = (props) => {
     setShowFeedback(true);
   };
 
-  // Modify handleContinue to call onComplete
   const handleContinue = () => {
       const selectedId = selectedOptionId();
       const correct = feedbackCorrectness();
@@ -55,19 +55,21 @@ export const MCQ: Component<MCQProps> = (props) => {
          props.onComplete(selectedId, correct);
       }
       
-      // Reset state after calling onComplete
       setShowFeedback(false);
       setFeedbackCorrectness(undefined);
       setCorrectAnswerText(undefined);
       setSelectedOptionId(undefined);
-      // props.onContinue(); - Removed
   }
 
   return (
     <div class="relative flex flex-col h-full bg-background text-foreground">
-      <div class="flex-grow overflow-y-auto flex flex-col items-center pb-60">
-        
-        <div class="w-full max-w-md mb-8">
+      <Motion
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={transitionSettings}
+        class="flex-grow overflow-y-auto flex flex-col items-center pb-60"
+      >
+        <div class="w-full max-w-md mb-8 pt-6">
           <p class="text-lg font-semibold mb-4">{props.instructionText ?? "Translate:"}</p>
           <p class="text-xl md:text-2xl">{props.sentenceToTranslate}</p>
         </div>
@@ -86,10 +88,9 @@ export const MCQ: Component<MCQProps> = (props) => {
             )}
           </For>
         </div>
+      </Motion>
 
-      </div>
-
-      <ExerciseFooter 
+      <ExerciseFooter
         mode={showFeedback() ? 'feedback' : 'check'}
         isCheckDisabled={selectedOptionId() === undefined}
         onCheck={handleCheck}
