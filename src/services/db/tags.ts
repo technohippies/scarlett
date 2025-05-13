@@ -4,29 +4,6 @@ import type { PGlite } from '@electric-sql/pglite';
 
 console.log('[DB Tags] Service loaded.');
 
-// --- Utility Functions (Removed as unused) ---
-/*
-const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-
-function isValidDate(value: any): value is Date | string {
-  if (value instanceof Date && !isNaN(value.getTime())) {
-    return true;
-  }
-  if (typeof value === 'string' && ISO_DATE_REGEX.test(value)) {
-    return true;
-  }
-  return false;
-}
-
-function toSqlTimestamp(date: Date | string | undefined | null): string | null {
-  if (!date || !isValidDate(date)) {
-    return null;
-  }
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return d.toISOString().replace('T', ' ').replace('Z', ''); 
-}
-*/
-
 // --- Predefined Initial Tags ---
 const initialTagData: { name: string; description?: string }[] = [
   // Tech

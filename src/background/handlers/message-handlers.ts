@@ -13,7 +13,7 @@ import type {
     GetStudySummaryRequest,
     GetStudySummaryResponse,
     SaveBookmarkResponse,
-    LoadBookmarksResponse,
+    LoadBookmarksResponse, 
     TagListResponse, 
     TagSuggestResponse,
     GetPageInfoResponse,
@@ -36,13 +36,10 @@ import { ollamaChat } from '../../services/llm/providers/ollama/chat';
 import { getLLMDistractorsPrompt } from '../../services/llm/prompts/exercises';
 import type { LLMConfig, LLMChatResponse, LLMProviderId, ChatMessage } from '../../services/llm/types';
 import { handleSaveBookmark, handleLoadBookmarks } from './bookmark-handlers';
-import { handleTagList, handleTagSuggest } from './tag-handlers';
+import { handleTagList } from './tag-handlers';
 import { 
     handleGetPageInfo, 
     handleGetSelectedText, 
-    handleProcessPageVisit, 
-    handleTriggerBatchEmbedding, 
-    handleGetPendingEmbeddingCount 
 } from './pageInteractionHandlers';
 import { getEmbedding } from '../../services/llm/embedding';
 import { 

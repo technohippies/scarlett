@@ -157,6 +157,27 @@ CREATE TABLE IF NOT EXISTS tags (
 -- Index for faster lookup of tags by name
 CREATE INDEX IF NOT EXISTS idx_tags_tag_name ON tags (tag_name);
 
+-- Table for managing predefined blocked domains for Focus Mode
+CREATE TABLE IF NOT EXISTS blocked_domains (
+    domain_id SERIAL PRIMARY KEY,
+    domain_name TEXT NOT NULL UNIQUE,
+    category TEXT NULL, -- Category from the CSV (e.g., "Social Media", "News")
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for faster lookup of blocked domains by name
+CREATE INDEX IF NOT EXISTS idx_blocked_domains_domain_name ON blocked_domains (domain_name);
+-- Index for faster lookup by category (optional, but might be useful)
+CREATE INDEX IF NOT EXISTS idx_blocked_domains_category ON blocked_domains (category);
+
+-- Trigger to update updated_at timestamp for blocked_domains (if you have the function defined elsewhere)
+-- Assuming update_updated_at_column() function is already defined from other tables
+CREATE TRIGGER update_blocked_domains_modtime
+BEFORE UPDATE ON blocked_domains
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
 -- --- Deck Organization Tables ---
 
 -- Stores metadata about predefined or user-added decks

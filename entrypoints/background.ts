@@ -15,13 +15,9 @@ import { registerContextMenuHandlers } from '../src/background/handlers/context-
 import { userConfigurationStorage } from '../src/services/storage/storage';
 // Use WXT's browser namespace
 import { browser } from 'wxt/browser';
-// Remove the problematic import
-// import type { WebNavigation } from 'wxt/browser/webNavigation'; 
 
-// Removed unused import:
-// import type { UserConfiguration, RedirectServiceSetting } from '../src/services/storage/types';
-// Correct import path for constants
 import { REDIRECT_SERVICES } from '../src/shared/constants'; // Only need REDIRECT_SERVICES here now
+import { seedInitialBlockedDomains } from '../src/services/db/domains';
 
 console.log('[Scarlett BG Entrypoint] Script loaded. Defining background...');
 
@@ -231,6 +227,11 @@ export default defineBackground({
                 console.log('[Scarlett BG Entrypoint] Attempting to seed initial tags...');
                 await seedInitialTags();
                 console.log('[Scarlett BG Entrypoint] Initial tag seeding attempt complete.');
+
+                // Seed Initial Blocked Domains
+                console.log('[Scarlett BG Entrypoint] Attempting to seed initial blocked domains...');
+                await seedInitialBlockedDomains();
+                console.log('[Scarlett BG Entrypoint] Initial blocked domain seeding attempt complete.');
 
                 // Check and Open Onboarding page
                 console.log('[Scarlett BG Entrypoint] Checking onboarding status...');

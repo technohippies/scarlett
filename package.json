@@ -1,8 +1,8 @@
 {
-  "name": "supercoach",
-  "description": "manifest.json description",
+  "name": "scarlett-supercoach",
+  "description": "Meet Scarlett, your personal AI tutor and lifecoach.",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.3.0-alpha",
   "type": "module",
   "scripts": {
     "dev": "wxt",

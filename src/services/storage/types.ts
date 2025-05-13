@@ -1,12 +1,31 @@
 // Add these interfaces for redirect settings
 export interface RedirectServiceSetting {
     isEnabled: boolean;
-    chosenInstance: string; 
+    chosenInstance: string; // URL of the chosen frontend instance
 }
   
 export interface RedirectSettings {
     [serviceName: string]: RedirectServiceSetting; // Use the interface defined above
 }
+
+// --- NEW: Focus Mode Settings Types ---
+export interface FocusCategorySetting {
+    isEnabled: boolean;
+    // Add future settings per category if needed, e.g., timeLimitMinutes?: number
+}
+
+export interface FocusSettings {
+    // Key is the category name in lowercase (e.g., 'distracting', 'social media')
+    [category: string]: FocusCategorySetting;
+}
+// --- END NEW ---
+
+// --- NEW: Domain Detail for Focus Mode Blocked List ---
+export interface DomainDetail {
+  name: string;
+  // description?: string; // Keeping it simple for now, can be added back if needed from CSV
+}
+// --- END NEW ---
 
 // --- User Configuration Structure ---
 
@@ -28,8 +47,11 @@ export interface UserConfiguration {
     targetLanguage: string | null;
     learningGoal: string | null;
     onboardingComplete: boolean;
-    llmConfig: FunctionConfig | null; // Use FunctionConfig like others
-    embeddingConfig: FunctionConfig | null; // Use FunctionConfig like others
-    ttsConfig: FunctionConfig | null; // Ensure TTS is included
-    redirectSettings: RedirectSettings;
+    isFocusModeActive?: boolean;
+    userBlockedDomains?: DomainDetail[]; // New field for user-managed blocked domains
+    llmConfig: FunctionConfig | null;
+    embeddingConfig: FunctionConfig | null;
+    ttsConfig: FunctionConfig | null;
+    redirectSettings?: RedirectSettings;
+    focusSettings?: FocusSettings; // Marking as optional, as it's being superseded by userBlockedDomains
 }

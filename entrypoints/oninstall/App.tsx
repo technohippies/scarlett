@@ -440,10 +440,10 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
           } else {
             console.log(`[App] Filtering decks for native: ${nativeLang}, target: ${targetLang}`);
             const filtered = response.decks.filter((deck: DeckInfoForFiltering) => { // Use DeckInfoForFiltering type
-              // Check for both direct and reverse match
+              // Check for only direct match
               const directMatch = deck.sourceLanguage === nativeLang && deck.targetLanguage === targetLang;
-              const reverseMatch = deck.sourceLanguage === targetLang && deck.targetLanguage === nativeLang;
-              return directMatch || reverseMatch;
+              // const reverseMatch = deck.sourceLanguage === targetLang && deck.targetLanguage === nativeLang; // REMOVED
+              return directMatch; // Keep only direct match
             });
             console.log(`[App] Found ${filtered.length} recommended decks:`, filtered);
             setRecommendedDecks(filtered);

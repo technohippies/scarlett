@@ -1,6 +1,6 @@
 import { storage } from '#imports';
 // Import the correct type definition
-import type { UserConfiguration, RedirectSettings } from './types';
+import type { UserConfiguration, RedirectSettings, FocusSettings, DomainDetail } from './types';
 // Import constants needed to build the default
 import { REDIRECT_SERVICES, DEFAULT_REDIRECT_INSTANCES } from '../../shared/constants';
 
@@ -27,6 +27,9 @@ const defaultUserConfiguration: UserConfiguration = {
   ttsConfig: null,
   redirectSettings: buildDefaultRedirectSettings(), // Use the helper function
   onboardingComplete: false,
+  isFocusModeActive: false, // Default to not active
+  userBlockedDomains: [], // Added new field with default empty array
+  focusSettings: {}, // Changed to empty object as categories are removed from panel
 };
 
 /**

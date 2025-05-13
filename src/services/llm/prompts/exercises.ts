@@ -81,19 +81,31 @@ export function getLLMDistractorsPrompt(
 ): string {
   // More direct prompt, focusing on NOT providing the correct translation.
   // It also gives a clear bad example of what NOT to do.
-  return `
+
+  let basePrompt = `
 Your task: Generate ${distractorCount} unique ${distractorsLanguageName} words/phrases.
-These must be plausible but **incorrect** translations for the ${originalWordLanguageName} word: "${wordToTranslate}".
+These must be plausible but **incorrect** translations for the ${originalWordLanguageName} word: \"${wordToTranslate}\".
 (Good distractors may be related by spelling, sound, or meaning, but must not be the correct translation.)
 
-Output: A valid JSON array of ${distractorCount} ${distractorsLanguageName} strings. E.g., ["val1", "val2", "val3"].
+Output: A valid JSON array of ${distractorCount} ${distractorsLanguageName} strings. E.g., [\"val1\", \"val2\", \"val3\"].
 
-Example of good distractors (if creating English distractors for French "chat" [cat]):
-["chatting", "hat", "dog"]
+Example of good distractors (if creating English distractors for French \"chat\" [cat]):
+[\"chatting\", \"hat\", \"dog\"]
 
-**Critical Rule:** You MUST NOT include the actual correct ${distractorsLanguageName} translation of "${wordToTranslate}".
-(e.g., If "CORRECT WORD" is the right translation, it must NOT be in your list.)
+**Critical Rule:** You MUST NOT include the actual correct ${distractorsLanguageName} translation of \"${wordToTranslate}\".
+(e.g., If \"CORRECT WORD\" is the right translation, it must NOT be in your list.)`;
+
+  // Add specific instruction for Chinese to exclude Pinyin
+  if (distractorsLanguageName.toLowerCase() === 'chinese') {
+    basePrompt += `
+
+**Important:** For Chinese distractors, provide ONLY the characters. DO NOT include Pinyin (romanization). E.g., for "爱", output [\"恨\", \"怕\", \"问\"], NOT [\"hèn\", \"pà\", \"wèn\"] or [\"恨 (hèn)\"].`;
+  }
+
+  basePrompt += `
 
 Return only the JSON array:
-`.trim();
+`;
+
+  return basePrompt.trim();
 }
