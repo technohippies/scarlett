@@ -65,7 +65,7 @@ export const MCQ: Component<MCQProps> = (props) => {
 
   return (
     <div class="relative flex flex-col h-full bg-background text-foreground">
-      <div class="flex-grow overflow-y-auto flex flex-col items-center p-4 pt-12 md:p-8 md:pt-16 pb-40">
+      <div class="flex-grow overflow-y-auto flex flex-col items-center pb-60">
         
         <div class="w-full max-w-md mb-8">
           <p class="text-lg font-semibold mb-4">{props.instructionText ?? "Translate:"}</p>

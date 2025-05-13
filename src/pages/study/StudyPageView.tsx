@@ -66,7 +66,7 @@ export const StudyPageView: Component<StudyPageViewProps> = (props) => {
                 when={!props.isLoadingDistractors && props.mcqProps !== null} 
                 fallback={
                   <div class="flex items-center justify-center text-foreground text-lg">
-                    <Spinner class="h-5 w-5 mr-2" /> Loading MCQ...
+                    <Spinner class="h-5 w-5" />
                   </div>
                 }
               >
