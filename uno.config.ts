@@ -7,7 +7,7 @@ export default defineConfig({
   ],
   theme: {
     colors: {
-      border: "hsl(216 12.2% 83.9%)",
+      border: "hsl(240 4.8% 13%)",
       input: "hsl(230 8% 16%)",
       ring: "hsl(216 12.2% 70%)",
       background: "hsl(240 4.8% 9.8%)",

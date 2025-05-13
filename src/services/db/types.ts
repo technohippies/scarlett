@@ -30,6 +30,9 @@ export interface CreateBookmarkInput {
   selectedText?: string | null;
 }
 
+// Define FlashcardStatus based on existing Flashcard.state
+export type FlashcardStatus = 'new' | 'learning' | 'review' | 'relearning' | null;
+
 // Flashcard structure based on schema.sql
 export interface Flashcard {
   id: number;
@@ -41,6 +44,9 @@ export interface Flashcard {
   source_highlight?: string | null;
   source_url?: string | null;
   created_at: string; // Assuming TIMESTAMP comes back as string
+  // Exercise fields
+  exercise_type?: string | null; // Added
+  exercise_data?: string | null;  // Added (JSON string for mcq/cloze data)
   // SRS fields
   due?: string | null; // Assuming TIMESTAMP comes back as string
   stability?: number | null;
@@ -49,7 +55,7 @@ export interface Flashcard {
   scheduled_days?: number;
   reps?: number;
   lapses?: number;
-  state?: 'new' | 'learning' | 'review' | 'relearning' | null;
+  state?: FlashcardStatus; // Use the exported type
   last_review?: string | null; // Assuming TIMESTAMP comes back as string
 }
 
