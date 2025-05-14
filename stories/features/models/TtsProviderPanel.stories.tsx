@@ -1,5 +1,17 @@
 import { createSignal, createEffect } from 'solid-js';
-import { TtsProviderPanel, type TtsProviderOption, type TtsModelOption, type KokoroDownloadStatus } from '../../../src/features/models/TtsProviderPanel'; // Adjust path as needed
+import { TtsProviderPanel, type TtsProviderOption } from '../../../src/features/models/TtsProviderPanel'; // Adjust path as needed
+
+// --- Locally Defined Types for Story ---
+// This type was previously imported but not exported from the component.
+// Define it here if it's only for storybook mock data.
+export interface TtsModelOption {
+    id: string;
+    name: string;
+}
+
+// This type was previously imported but not exported from the component.
+// Define it here if it's only for storybook mock data.
+export type KokoroDownloadStatus = 'not-downloaded' | 'downloading' | 'downloaded' | 'error';
 
 // --- Mock Data ---
 const mockElevenLabsProvider: TtsProviderOption = { 
@@ -75,24 +87,14 @@ export default {
 const BaseRender = (args: any) => {
     const [selectedProvider, setSelectedProvider] = createSignal<string | undefined>(args.selectedProviderId());
     const [apiKey, setApiKey] = createSignal<string>(args.elevenLabsApiKey());
-    const [elModel, setElModel] = createSignal<string | undefined>(args.selectedElevenLabsModelId());
-    const [kokoroStatus, setKokoroStatus] = createSignal<KokoroDownloadStatus>(args.kokoroDownloadStatus());
-    const [kokoroProgress, setKokoroProgress] = createSignal<number>(args.kokoroDownloadProgress());
-    const [kokoroDevice, setKokoroDevice] = createSignal<'cpu' | 'webgpu'>(args.kokoroDevicePreference());
     const [isElTesting, setIsElTesting] = createSignal<boolean>(args.isElevenLabsTesting());
-    const [isKokoroTestingBool, setIsKokoroTestingBool] = createSignal<boolean>(args.isKokoroTesting());
     const [audio, setAudio] = createSignal<Blob | null>(args.testAudioData());
     const [error, setError] = createSignal<Error | null>(args.testError());
 
     // Effects to update signals if Storybook controls change
     createEffect(() => setSelectedProvider(args.selectedProviderId()));
     createEffect(() => setApiKey(args.elevenLabsApiKey()));
-    createEffect(() => setElModel(args.selectedElevenLabsModelId()));
-    createEffect(() => setKokoroStatus(args.kokoroDownloadStatus()));
-    createEffect(() => setKokoroProgress(args.kokoroDownloadProgress()));
-    createEffect(() => setKokoroDevice(args.kokoroDevicePreference()));
     createEffect(() => setIsElTesting(args.isElevenLabsTesting()));
-    createEffect(() => setIsKokoroTestingBool(args.isKokoroTesting()));
     createEffect(() => setAudio(args.testAudioData()));
     createEffect(() => setError(args.testError()));
 
@@ -106,31 +108,6 @@ const BaseRender = (args: any) => {
         setApiKey(newKey);
     };
 
-    const handleElModelSelect = (modelId: string | undefined) => {
-        args.onSelectElevenLabsModel(modelId);
-        setElModel(modelId);
-    };
-
-    const handleDownloadKokoro = () => {
-        args.onDownloadKokoroModel();
-        // Simulate download for story
-        setKokoroStatus('downloading');
-        let progress = 0;
-        const interval = setInterval(() => {
-            progress += 10;
-            setKokoroProgress(progress);
-            if (progress >= 100) {
-                clearInterval(interval);
-                setKokoroStatus('downloaded');
-            }
-        }, 200);
-    };
-
-    const handleKokoroDeviceChange = (device: 'cpu' | 'webgpu') => {
-        args.onKokoroDevicePreferenceChange(device);
-        setKokoroDevice(device);
-    };
-    
     const handleTestElevenLabs = () => {
         args.onTestElevenLabs();
         setIsElTesting(true);
@@ -138,14 +115,6 @@ const BaseRender = (args: any) => {
             setIsElTesting(false);
             // Simulate success or error for story
             // setAudio(new Blob(["dummy audio"], {type: "audio/mpeg"})); 
-        }, 2000);
-    };
-
-    const handleTestKokoro = () => {
-        args.onTestKokoro();
-        setIsKokoroTestingBool(true);
-        setTimeout(() => {
-            setIsKokoroTestingBool(false);
         }, 2000);
     };
 
@@ -168,19 +137,8 @@ const BaseRender = (args: any) => {
                 
                 elevenLabsApiKey={apiKey} // Pass signal accessor
                 onElevenLabsApiKeyChange={handleApiKeyChange}
-                elevenLabsModels={args.elevenLabsModels}
-                selectedElevenLabsModelId={elModel} // Pass signal accessor
-                onSelectElevenLabsModel={handleElModelSelect}
                 isElevenLabsTesting={isElTesting} // Pass signal accessor
                 onTestElevenLabs={handleTestElevenLabs}
-
-                kokoroDownloadStatus={kokoroStatus} // Pass signal accessor
-                kokoroDownloadProgress={kokoroProgress} // Pass signal accessor
-                onDownloadKokoroModel={handleDownloadKokoro}
-                kokoroDevicePreference={kokoroDevice} // Pass signal accessor
-                onKokoroDevicePreferenceChange={handleKokoroDeviceChange}
-                isKokoroTesting={isKokoroTestingBool} // Pass signal accessor
-                onTestKokoro={handleTestKokoro}
 
                 testAudioData={audio} // Pass signal accessor
                 onPlayTestAudio={handlePlayAudio}

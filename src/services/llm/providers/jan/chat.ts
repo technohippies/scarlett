@@ -27,7 +27,7 @@ export async function _janChatNonStream(
     model: config.model,
     messages: messages,
     stream: false,
-    ...(config.extraParams ? config.extraParams : {}),
+    ...(config.options || {}),
   };
   const baseUrl = config.baseUrl || 'http://localhost:1337'; // Default Jan port
   console.log('[janChat] Sending non-streaming request body:', JSON.stringify(body));
@@ -59,7 +59,7 @@ export async function* _janChatStream(
     model: config.model,
     messages: messages,
     stream: true,
-    ...(config.extraParams ? config.extraParams : {}),
+    ...(config.options || {}),
   };
   const baseUrl = config.baseUrl || 'http://localhost:1337'; // Default Jan port
   console.log('[janChat] Sending streaming request body:', JSON.stringify(body));

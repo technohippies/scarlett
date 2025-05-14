@@ -1,4 +1,4 @@
-import { browser, type Browser } from 'wxt/browser';
+import { type Browser } from 'wxt/browser';
 import { getAllTags } from '../../services/db/tags';
 import { ensureDbInitialized } from '../../services/db/init';
 // Assuming response types are defined

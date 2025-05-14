@@ -1,5 +1,5 @@
 import { createSignal, createEffect, For, /*Show,*/ Component } from 'solid-js';
-import { Player, type AnimationItem } from 'lottie-solid';
+import { Player /*, type AnimationItem*/ } from 'lottie-solid';
 
 // Define mood types
 export type Mood = 'happy' | 'slightly-happy' | 'neutral' | 'slightly-frowning' | 'sad';

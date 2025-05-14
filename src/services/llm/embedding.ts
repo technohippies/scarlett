@@ -1,5 +1,5 @@
 import type { FunctionConfig } from '../storage/types'; // Import FunctionConfig
-import type { LLMProviderId } from './types'; // Keep this for casting if needed
+// import type { LLMProviderId } from './types'; // Keep this for casting if needed -- Removed as unused
 
 // REMOVED hardcoded config
 // const EMBEDDING_MODEL_CONFIG: Pick<LLMConfig, 'baseUrl' | 'model' | 'provider'> = { ... };
@@ -32,7 +32,7 @@ export async function getEmbedding(text: string, config: FunctionConfig): Promis
   }
   
   // Destructure needed info from config
-  const { providerId, modelId, baseUrl, apiKey } = config;
+  const { providerId, modelId, baseUrl, /*apiKey*/ } = config; // apiKey removed as it's not used in the current supported providers (Ollama)
 
   if (!providerId || !modelId || !baseUrl) {
     console.error('[getEmbedding] Incomplete embedding configuration provided:', config);

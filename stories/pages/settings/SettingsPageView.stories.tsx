@@ -42,7 +42,6 @@ const mockRedirectSettings: RedirectSettings = {
 const mockInitialConfig: UserConfiguration = {
     nativeLanguage: 'en',
     targetLanguage: 'es',
-    learningGoal: 'casual',
     llmConfig: null,
     embeddingConfig: null,
     ttsConfig: {
@@ -51,8 +50,8 @@ const mockInitialConfig: UserConfiguration = {
       modelId: '', // Changed from null to empty string
     },
     redirectSettings: mockRedirectSettings,
-    userBlockedDomains: [], // Add userBlockedDomains
-    isFocusModeActive: false, // Add isFocusModeActive
+    focusModeBlockedDomains: [], // Renamed from userBlockedDomains
+    enableFocusMode: false, // Renamed from isFocusModeActive
     onboardingComplete: true,
 };
 

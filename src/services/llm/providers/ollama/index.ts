@@ -57,7 +57,7 @@ async function ollamaEmbed(
   const body = {
     model: config.model, 
     prompt: text, // Uses 'prompt' instead of 'input'
-    options: config.extraParams // Pass extraParams as options if needed
+    options: config.options // Changed from config.extraParams
   };
   // Ollama default port is 11434
   const baseUrl = config.baseUrl || 'http://localhost:11434';
@@ -101,7 +101,7 @@ async function ollamaEmbed(
 // --- Test Connection Function --- 
 async function testConnection(
   config: LLMConfig,
-  functionName: 'LLM' | 'Embedding' | 'Reader'
+  functionName: 'LLM' | 'Embedding' | 'TTS' // Changed Reader to TTS
 ): Promise<void> {
   const baseUrl = config.baseUrl || 'http://localhost:11434';
   let testApiUrl = '';
@@ -110,7 +110,7 @@ async function testConnection(
   if (functionName === 'Embedding') {
     testApiUrl = `${baseUrl}/api/embeddings`;
     requestBody = { model: config.model, prompt: "test" }; // Ollama uses prompt
-  } else { // LLM or Reader - Test with streaming generate
+  } else { // LLM or TTS - Test with streaming generate. If TTS is passed, it will use this path.
     testApiUrl = `${baseUrl}/api/generate`;
     requestBody = { model: config.model, prompt: 'hi', options: { num_predict: 1 } }; // Default stream=true
   }
@@ -136,7 +136,7 @@ async function testConnection(
   if (functionName === 'Embedding') {
     await response.json(); // Just ensure full response is valid JSON
     console.log(`[Ollama testConnection] Embedding test successful.`);
-  } else {
+  } else { // LLM or TTS
     // Check first stream chunk
     const reader = response.body?.getReader();
     if (!reader) throw new Error("Failed to get stream reader.");

@@ -21,7 +21,7 @@ export default {
     // Callback props (actions logged in story)
     // onServiceSelect: { table: { disable: true } }, // Removed
     onSettingChange: { table: { disable: true } }, // Keep
-    onComplete: { table: { disable: true } }, 
+    // onComplete: { table: { disable: true } }, // Removed from argTypes
     onBack: { table: { disable: true } },
     
     // Controllable args for the story
@@ -33,10 +33,10 @@ export default {
         control: 'text',
         description: 'Page description text',
     },
-    continueLabel: {
-        control: 'text',
-        description: 'Label for the main action button',
-    },
+    // continueLabel: { // Removed from argTypes
+    //     control: 'text',
+    //     description: 'Label for the main action button',
+    // },
     // initialSelectedService: { ... }, // Removed
     showBackButton: { 
         control: 'boolean',
@@ -48,7 +48,7 @@ export default {
   args: {
     title: 'Bypass Censorship & Paywalls', // Updated title
     description: 'Use privacy-preserving frontends with many mirrors.', // Updated description
-    continueLabel: 'Continue',
+    // continueLabel: 'Continue', // Removed from default args
     isLoading: false,
     showBackButton: true,
   },
@@ -62,7 +62,7 @@ export const Default = {
      isLoading: boolean;
      title: string;
      description: string;
-     continueLabel: string;
+    //  continueLabel: string; // Removed from render args type
      showBackButton: boolean;
     }) => {
     // Internal state management for the story using SolidJS signals
@@ -103,11 +103,6 @@ export const Default = {
       }));
     };
 
-    const handleComplete = () => {
-        console.log('[Story] onComplete called. Current Settings:', allSettings());
-        alert('Continue/Save clicked! Check console for settings.');
-    };
-
     const handleBack = () => {
         console.log('[Story] onBack called.');
         alert('Back button clicked!');
@@ -122,8 +117,7 @@ export const Default = {
       onSettingChange: handleSettingChange,
       title: args.title,
       description: args.description,
-      continueLabel: args.continueLabel,
-      onComplete: handleComplete,
+      // continueLabel: args.continueLabel, // Removed from componentProps
       onBack: args.showBackButton ? handleBack : undefined,
     };
 

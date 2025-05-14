@@ -1,6 +1,6 @@
 import { storage } from '#imports';
 // Import the correct type definition
-import type { UserConfiguration, RedirectSettings, FocusSettings, DomainDetail } from './types';
+import type { UserConfiguration, RedirectSettings /*, FocusSettings, DomainDetail*/ } from './types';
 // Import constants needed to build the default
 import { REDIRECT_SERVICES, DEFAULT_REDIRECT_INSTANCES } from '../../shared/constants';
 
@@ -37,7 +37,7 @@ export const defaultUserConfiguration: UserConfiguration = {
   
   // Embedding related fields
   embeddingModelProvider: 'none',
-  embeddingModelName: undefined,
+  // embeddingModelName: undefined, // Removed as it's not in UserConfiguration type
   
   // TTS related fields
   selectedTtsVendor: 'browser',

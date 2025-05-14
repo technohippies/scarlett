@@ -3,10 +3,10 @@ import DeckSelectionPanel, { type DeckInfo } from '../../../src/features/decks/D
 
 // Mock Data - Remove language suffixes from names
 const mockDecks: DeckInfo[] = [
-  { id: 'programming_vi_en', name: 'Programming Terms', description: 'Common terms for programmers.', cardCount: 50 },
-  { id: 'travel_es_en', name: 'Travel Phrases', description: 'Essential phrases for your trip to Spain.', cardCount: 120 },
-  { id: 'business_zh_en', name: 'Business Chinese', description: 'Formal terms for the workplace.', cardCount: 200 },
-  { id: 'hsk_1_zh', name: 'HSK Level 1', description: 'Beginner Chinese vocabulary.', cardCount: 150 },
+  { id: 'programming_vi_en', name: 'Programming Terms', description: 'Common terms for programmers.', cardCount: 50, pathIdentifier: 'programming_vi_en' },
+  { id: 'travel_es_en', name: 'Travel Phrases', description: 'Essential phrases for your trip to Spain.', cardCount: 120, pathIdentifier: 'travel_es_en' },
+  { id: 'business_zh_en', name: 'Business Chinese', description: 'Formal terms for the workplace.', cardCount: 200, pathIdentifier: 'business_zh_en' },
+  { id: 'hsk_1_zh', name: 'HSK Level 1', description: 'Beginner Chinese vocabulary.', cardCount: 150, pathIdentifier: 'hsk_1_zh' },
 ];
 
 export default {
@@ -23,7 +23,7 @@ export default {
   args: { // Default args
     availableDecks: mockDecks,
     isLoading: false,
-    initiallySelectedDeckIds: [],
+    initiallySelectedDeckIds: [mockDecks[0].pathIdentifier, mockDecks[2].pathIdentifier], // Use pathIdentifier for pre-selection
   },
 };
 
@@ -76,7 +76,7 @@ export const Default = {
   args: {
     availableDecks: mockDecks,
     isLoading: false,
-    initiallySelectedDeckIds: [],
+    initiallySelectedDeckIds: [mockDecks[0].pathIdentifier, mockDecks[2].pathIdentifier], // Use pathIdentifier for pre-selection
   }
 };
 
@@ -103,6 +103,6 @@ export const PreSelected = {
   args: {
     availableDecks: mockDecks,
     isLoading: false,
-    initiallySelectedDeckIds: [mockDecks[0].id, mockDecks[2].id], // Pre-select some decks
+    initiallySelectedDeckIds: [mockDecks[0].pathIdentifier, mockDecks[2].pathIdentifier], // Use pathIdentifier for pre-selection
   }
 }; 

@@ -118,7 +118,7 @@ async function janEmbed(
 // --- Test Connection Function --- 
 async function testConnection(
   config: LLMConfig,
-  functionName: 'LLM' | 'Embedding' | 'Reader'
+  functionName: 'LLM' | 'Embedding' | 'TTS' // Changed Reader to TTS
 ): Promise<void> {
   const baseUrl = config.baseUrl || 'http://localhost:1337';
   let testApiUrl = '';
@@ -133,7 +133,7 @@ async function testConnection(
   if (functionName === 'Embedding') {
     testApiUrl = `${baseUrl}/v1/embeddings`;
     requestBody = { model: config.model, input: "test" };
-  } else { // LLM or Reader - Test with streaming chat completions
+  } else { // LLM or TTS - Test with streaming chat completions. If TTS is passed, it will use this path.
     testApiUrl = `${baseUrl}/v1/chat/completions`;
     requestBody = {
       model: config.model,
@@ -173,8 +173,8 @@ async function testConnection(
       throw new Error('Invalid response structure from Jan /v1/embeddings');
     }
     console.log(`[Jan testConnection] Embedding test successful.`);
-  } else {
-    // Check first stream chunk for LLM/Reader
+  } else { // LLM or TTS
+    // Check first stream chunk for LLM/TTS
     const reader = response.body?.getReader();
     if (!reader) throw new Error("Failed to get stream reader.");
     let firstChunkReceived = false;

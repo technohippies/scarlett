@@ -3,7 +3,7 @@ import { action } from '@storybook/addon-actions';
 import type { ReviewableCardData } from '../../../src/features/exercises/Flashcard';
 import type { FlashcardStatus } from '../../../src/services/db/types';
 import type { MCQProps } from '../../../src/features/exercises/MCQ';
-import { Rating } from 'ts-fsrs'; // For Rating enum
+// import { Rating } from 'ts-fsrs'; // For Rating enum - Removed as unused
 
 const mockBaseMcqProps: MCQProps = {
   instructionText: "Translate this word:",
@@ -34,6 +34,9 @@ export default {
   argTypes: {
     isLoadingItem: { control: 'boolean' },
     isLoadingDistractors: { control: 'boolean' },
+    isFetchingNextItem: { control: 'boolean' },
+    spinnerVisible: { control: 'boolean' },
+    initialLoadComplete: { control: 'boolean' },
     itemError: { control: 'text' },
     distractorError: { control: 'text' },
     onSkipClick: { action: 'skipClicked' },
@@ -48,6 +51,9 @@ export default {
   args: {
     isLoadingItem: false,
     isLoadingDistractors: false,
+    isFetchingNextItem: false,
+    spinnerVisible: false,
+    initialLoadComplete: false,
     itemError: null,
     distractorError: null,
     onSkipClick: action('skipClicked'),

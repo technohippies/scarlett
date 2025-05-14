@@ -11,6 +11,8 @@ interface PlainDataArgs {
     targetLang?: string;
     pronunciation?: string;
     alignment?: AlignmentData | null;
+    userNativeLanguage?: string;
+    userLearningLanguage?: string;
 }
 
 interface ActionArgs {
@@ -30,6 +32,8 @@ function createAccessorsAndSetters(staticArgs: PlainDataArgs) {
     const [targetLang, setTargetLang] = createSignal(staticArgs.targetLang || 'zh-CN');
     const [pronunciation, setPronunciation] = createSignal(staticArgs.pronunciation || undefined);
     const [alignment, setAlignment] = createSignal<AlignmentData | null | undefined>(staticArgs.alignment || null);
+    const [userNativeLanguage, setUserNativeLanguage] = createSignal(staticArgs.userNativeLanguage || 'en');
+    const [userLearningLanguage, setUserLearningLanguage] = createSignal(staticArgs.userLearningLanguage || 'zh-CN');
 
     // Effects to update signals if Storybook controls change staticArgs
     createEffect(() => setTextToTranslate(staticArgs.textToTranslate || ''));
@@ -39,10 +43,12 @@ function createAccessorsAndSetters(staticArgs: PlainDataArgs) {
     createEffect(() => setTargetLang(staticArgs.targetLang || 'zh-CN'));
     createEffect(() => setPronunciation(staticArgs.pronunciation || undefined));
     createEffect(() => setAlignment(staticArgs.alignment || null));
+    createEffect(() => setUserNativeLanguage(staticArgs.userNativeLanguage || 'en'));
+    createEffect(() => setUserLearningLanguage(staticArgs.userLearningLanguage || 'zh-CN'));
     
     return {
-        textToTranslate, translatedText, isLoading, sourceLang, targetLang, pronunciation, alignment,
-        setTextToTranslate, setTranslatedText, setIsLoading, setSourceLang, setTargetLang, setPronunciation, setAlignment
+        textToTranslate, translatedText, isLoading, sourceLang, targetLang, pronunciation, alignment, userNativeLanguage, userLearningLanguage,
+        setTextToTranslate, setTranslatedText, setIsLoading, setSourceLang, setTargetLang, setPronunciation, setAlignment, setUserNativeLanguage, setUserLearningLanguage
     };
 }
 
@@ -64,6 +70,8 @@ export default {
     alignment: { control: 'object' }, 
     onTTSRequest: { action: 'onTTSRequest', description: 'Callback for TTS requests' },
     onCloseRequest: { action: 'onCloseRequest', description: 'Callback for close action' },
+    userNativeLanguage: { control: 'select', options: ['en', 'zh-CN', 'es', 'fr', 'de'], description: 'User\'s native language code' },
+    userLearningLanguage: { control: 'select', options: ['en', 'zh-CN', 'es', 'fr', 'de'], description: 'User\'s learning language code' },
   },
   args: { // Default args for ALL stories
     textToTranslate: 'Hello',
@@ -73,6 +81,8 @@ export default {
     pronunciation: 'nǐ hǎo',
     isLoading: false,
     alignment: null,
+    userNativeLanguage: 'en',
+    userLearningLanguage: 'zh-CN',
     onTTSRequest: action('onTTSRequest'),       // Default action mock
     onCloseRequest: action('onCloseRequest'),   // Default action mock
   },
@@ -90,6 +100,8 @@ export const Default = {
     const [targetLang] = createSignal(args.targetLang || 'zh-CN');
     const [pronunciation] = createSignal(args.pronunciation || undefined);
     const [alignment] = createSignal<AlignmentData | null | undefined>(args.alignment || null);
+    const [userNativeLanguage] = createSignal(args.userNativeLanguage || 'en');
+    const [userLearningLanguage] = createSignal(args.userLearningLanguage || 'zh-CN');
 
     return (
       <TranslatorWidget
@@ -100,6 +112,8 @@ export const Default = {
         targetLang={targetLang}
         pronunciation={pronunciation}
         alignment={alignment}
+        userNativeLanguage={userNativeLanguage}
+        userLearningLanguage={userLearningLanguage}
         onTTSRequest={args.onTTSRequest}  // Pass action directly
         onCloseRequest={args.onCloseRequest} // Pass action directly
       />
@@ -127,6 +141,8 @@ export const LoadingState = {
         targetLang: args.targetLang,
         pronunciation: args.pronunciation,
         alignment: args.alignment,
+        userNativeLanguage: args.userNativeLanguage,
+        userLearningLanguage: args.userLearningLanguage,
     };
     const { ...accessors } = createAccessorsAndSetters(simplifiedArgsForHelper);
     return <TranslatorWidget {...accessors} onTTSRequest={args.onTTSRequest} onCloseRequest={args.onCloseRequest} />;
@@ -147,12 +163,16 @@ export const EnglishToSpanish = {
     const [isLoading, setIsLoading] = createSignal(args.isLoading || false);
     const [sourceLang, setSourceLang] = createSignal(args.sourceLang || 'en');
     const [targetLang, setTargetLang] = createSignal(args.targetLang || 'es');
+    const [userNativeLanguage, setUserNativeLanguage] = createSignal(args.userNativeLanguage || 'en');
+    const [userLearningLanguage, setUserLearningLanguage] = createSignal(args.userLearningLanguage || 'es');
 
     createEffect(() => setTextToTranslate(args.textToTranslate || ''));
     createEffect(() => setTranslatedText(args.translatedText || ''));
     createEffect(() => setIsLoading(args.isLoading || false));
     createEffect(() => setSourceLang(args.sourceLang || 'en'));
     createEffect(() => setTargetLang(args.targetLang || 'es'));
+    createEffect(() => setUserNativeLanguage(args.userNativeLanguage || 'en'));
+    createEffect(() => setUserLearningLanguage(args.userLearningLanguage || 'es'));
 
     return (
       <TranslatorWidget
@@ -163,6 +183,8 @@ export const EnglishToSpanish = {
         targetLang={targetLang}
         pronunciation={() => args.pronunciation || undefined} // Pass accessor for optional prop
         alignment={() => args.alignment || null}         // Pass accessor for optional prop
+        userNativeLanguage={userNativeLanguage}
+        userLearningLanguage={userLearningLanguage}
         onTTSRequest={args.onTTSRequest}
         onCloseRequest={args.onCloseRequest}
       />
@@ -175,6 +197,8 @@ export const EnglishToSpanish = {
     targetLang: 'es',
     pronunciation: undefined,
     isLoading: false,
+    userNativeLanguage: 'en',
+    userLearningLanguage: 'es',
   },
 };
 
@@ -189,6 +213,8 @@ export const WithAlignmentData = {
         targetLang: initialTargetLang,
         pronunciation: initialPronunciation,
         alignment: initialAlignment,
+        userNativeLanguage: initialUserNativeLanguage,
+        userLearningLanguage: initialUserLearningLanguage,
         onCloseRequest: onCloseRequestArg // onTTSRequest is handled by custom mock
     } = args;
 
@@ -199,6 +225,8 @@ export const WithAlignmentData = {
     const [targetLang, setTargetLang] = createSignal(initialTargetLang || 'zh-CN');
     const [pronunciationSignal, setPronunciationSignal] = createSignal(initialPronunciation || undefined);
     const [alignmentSignal, setAlignmentSignal] = createSignal<AlignmentData | null | undefined>(initialAlignment || null);
+    const [userNativeLanguageSignal, setUserNativeLanguageSignal] = createSignal(initialUserNativeLanguage || 'en');
+    const [userLearningLanguageSignal, setUserLearningLanguageSignal] = createSignal(initialUserLearningLanguage || 'zh-CN');
 
     createEffect(() => setTextToTranslate(args.textToTranslate || ''));
     createEffect(() => setTranslatedText(args.translatedText || ''));
@@ -207,6 +235,8 @@ export const WithAlignmentData = {
     createEffect(() => setTargetLang(args.targetLang || 'zh-CN'));
     createEffect(() => setPronunciationSignal(args.pronunciation || undefined));
     createEffect(() => setAlignmentSignal(args.alignment || null));
+    createEffect(() => setUserNativeLanguageSignal(args.userNativeLanguage || 'en'));
+    createEffect(() => setUserLearningLanguageSignal(args.userLearningLanguage || 'zh-CN'));
 
     const mockOnTTSRequest = async (text: string, lang: string, speed: number) => {
         action('onTTSRequest-WithAlignmentData')(text, lang, speed); // Story-specific action log
@@ -244,6 +274,8 @@ export const WithAlignmentData = {
         targetLang={targetLang}
         pronunciation={pronunciationSignal} // Use signal accessor
         alignment={alignmentSignal}         // Use signal accessor
+        userNativeLanguage={userNativeLanguageSignal}
+        userLearningLanguage={userLearningLanguageSignal}
         onTTSRequest={mockOnTTSRequest} 
         onCloseRequest={onCloseRequestArg}
       />
@@ -257,6 +289,8 @@ export const WithAlignmentData = {
     pronunciation: 'nǐ hǎo shì jiè',
     isLoading: false,
     alignment: null, 
+    userNativeLanguage: 'en',
+    userLearningLanguage: 'zh-CN',
     // onTTSRequest is defined by the custom mock in render
     // onCloseRequest uses the default action from main args
   },
@@ -266,7 +300,8 @@ export const BrowserTTSSimulation = {
   render: (args: FullStoryRenderArgs) => {
     const { 
         textToTranslate: initialText, translatedText: initialTranslated, isLoading: initialIsLoading,
-        sourceLang: initialSourceLang, targetLang: initialTargetLang, onCloseRequest: onCloseRequestArg
+        sourceLang: initialSourceLang, targetLang: initialTargetLang, onCloseRequest: onCloseRequestArg,
+        userNativeLanguage: initialUserNativeLanguage, userLearningLanguage: initialUserLearningLanguage
     } = args;
 
     const [textToTranslate, setTextToTranslate] = createSignal(initialText || '');
@@ -274,12 +309,16 @@ export const BrowserTTSSimulation = {
     const [isLoading, setIsLoading] = createSignal(initialIsLoading || false);
     const [sourceLang, setSourceLang] = createSignal(initialSourceLang || 'en');
     const [targetLang, setTargetLang] = createSignal(initialTargetLang || 'en');
+    const [userNativeLanguage, setUserNativeLanguage] = createSignal(initialUserNativeLanguage || 'en');
+    const [userLearningLanguage, setUserLearningLanguage] = createSignal(initialUserLearningLanguage || 'en');
     
     createEffect(() => setTextToTranslate(args.textToTranslate || ''));
     createEffect(() => setTranslatedText(args.translatedText || ''));
     createEffect(() => setIsLoading(args.isLoading || false));
     createEffect(() => setSourceLang(args.sourceLang || 'en'));
     createEffect(() => setTargetLang(args.targetLang || 'en'));
+    createEffect(() => setUserNativeLanguage(args.userNativeLanguage || 'en'));
+    createEffect(() => setUserLearningLanguage(args.userLearningLanguage || 'en'));
 
     const mockOnTTSRequest = async (text: string, lang: string, speed: number) => {
         action('onTTSRequest-BrowserSim')(text, lang, speed);
@@ -298,6 +337,8 @@ export const BrowserTTSSimulation = {
         targetLang={targetLang}
         pronunciation={() => args.pronunciation || undefined} // Use direct accessor for optional prop based on args
         alignment={() => args.alignment || null}            // Use direct accessor for optional prop based on args
+        userNativeLanguage={userNativeLanguage}
+        userLearningLanguage={userLearningLanguage}
         onTTSRequest={mockOnTTSRequest}
         onCloseRequest={onCloseRequestArg}
       />
@@ -309,6 +350,8 @@ export const BrowserTTSSimulation = {
     sourceLang: 'zh-CN',
     targetLang: 'en',
     isLoading: false,
+    userNativeLanguage: 'en',
+    userLearningLanguage: 'en',
     // onTTSRequest is defined by the custom mock in render
     // onCloseRequest uses the default action from main args
   },
