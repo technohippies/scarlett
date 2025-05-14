@@ -12,6 +12,7 @@ import { checkAndResetStreakIfNeeded } from '../src/services/db/streaks';
 
 // Import handler registration functions
 import { registerContextMenuHandlers } from '../src/background/handlers/context-menu-handler';
+import { setupContextMenu } from '../src/background/setup/context-menu-setup';
 // Import storage to check onboarding status
 import { userConfigurationStorage } from '../src/services/storage/storage';
 // Import DomainDetail for typing
@@ -235,8 +236,15 @@ export default defineBackground({
         registerContextMenuHandlers(); // Registers the onClicked listener
         console.log('[Scarlett BG Entrypoint] Context menu handlers registered.');
 
-        // --- Defer Async Setup to onInstalled ---
-        // The main setup logic is now primarily event-driven via onInstalled
+        // 3. Setup Context Menu Item (called on every SW startup)
+        //    This ensures the menu is present even if the SW restarts without a full install/update.
+        //    setupContextMenu internally calls removeAll first.
+        console.log('[Scarlett BG Entrypoint] Attempting to set up context menu in main()...');
+        setupContextMenu().then(() => {
+          console.log('[Scarlett BG Entrypoint] Context menu setup attempt in main() completed.');
+        }).catch(err => {
+          console.error('[Scarlett BG Entrypoint] Error setting up context menu in main():', err);
+        });
 
     } catch (error) {
       console.error('[Scarlett BG Entrypoint] CRITICAL ERROR during synchronous background setup:', error);
@@ -263,6 +271,11 @@ export default defineBackground({
             console.log('[Scarlett BG Entrypoint] Seeding initial tags...');
             await seedInitialTags();
             console.log('[Scarlett BG Entrypoint] Initial tag seeding attempt complete.');
+
+            // --- Context Menu Setup (on install/update) ---
+            console.log('[Scarlett BG Entrypoint] Setting up context menu in onInstalled...');
+            await setupContextMenu(); 
+            console.log('[Scarlett BG Entrypoint] Context menu setup attempt in onInstalled complete.');
 
             if (details.reason === 'install') {
                 console.log('[Scarlett BG Entrypoint] Reason is "install". Performing first-time setup...');
