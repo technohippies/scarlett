@@ -181,6 +181,27 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
     return words;
   };
   
+  const determineTextAndLangForTTS = (): { text: string | undefined, lang: string } => {
+    const originalText = props.textToTranslate();
+    const translatedTextValue = props.translatedText();
+    let text: string | undefined;
+    let lang: string;
+
+    if (translatedTextValue && translatedTextValue.trim() !== "") {
+        text = translatedTextValue;
+        lang = props.targetLang ? props.targetLang() || 'en' : 'en';
+    } else if (originalText && originalText.trim() !== "") {
+        text = originalText;
+        // Use sourceLang for original text if available, otherwise fallback
+        lang = props.sourceLang ? props.sourceLang() || 'en' : 'en';
+    } else {
+        text = undefined;
+        // Default lang if no text, though it won't be used if text is undefined
+        lang = props.targetLang ? props.targetLang() || 'en' : 'en'; 
+    }
+    return { text, lang };
+  };
+
   const handleTTSAction = async (text: string, lang: string, speed: number) => {
     console.log('[Widget TTS] Requesting TTS for:', `"${text.substring(0,20)}..."`, 'lang:', lang, 'speed:', speed);
     if (!text || !lang) {
@@ -278,8 +299,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   };
 
   const onPlayButtonClick = () => {
-    const textToSpeak = props.translatedText() || props.textToTranslate();
-    const langToSpeak = props.targetLang ? props.targetLang() || 'en' : 'en';
+    const { text: textToSpeak, lang: langCodeForTTS } = determineTextAndLangForTTS();
 
     if (isBrowserTtsActive()) {
         if (typeof browser !== 'undefined' && browser.tts && typeof browser.tts.stop === 'function') {
@@ -287,7 +307,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
         }
         setIsBrowserTtsActive(false);
         if (textToSpeak) {
-            handleTTSAction(textToSpeak, langToSpeak, currentSpeechSpeed());
+            handleTTSAction(textToSpeak, langCodeForTTS, currentSpeechSpeed());
         }
     } else if (currentAudio() && audioDataUrl()) {
         if (isPlayingAudio()) {
@@ -296,23 +316,24 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
             currentAudio()!.play();
         }
     } else if (textToSpeak) {
-        handleTTSAction(textToSpeak, langToSpeak, currentSpeechSpeed());
+        handleTTSAction(textToSpeak, langCodeForTTS, currentSpeechSpeed());
     }
   };
   
   const handlePlaySpeed = (speed: number) => {
     setIsPopoverOpen(false);
     setCurrentSpeechSpeed(speed);
-    const textToSpeak = props.translatedText() || props.textToTranslate();
+    const { text: textToSpeak, lang: langCodeForTTS } = determineTextAndLangForTTS();
     if (textToSpeak) {
-        handleTTSAction(textToSpeak, props.targetLang ? props.targetLang() || 'en' : 'en', speed);
+        handleTTSAction(textToSpeak, langCodeForTTS, speed);
     }
   };
+
   const handleRegenerate = () => {
     setIsPopoverOpen(false);
-    const textToSpeak = props.translatedText() || props.textToTranslate();
+    const { text: textToSpeak, lang: langCodeForTTS } = determineTextAndLangForTTS();
     if (textToSpeak) {
-        handleTTSAction(textToSpeak, props.targetLang ? props.targetLang() || 'en' : 'en', currentSpeechSpeed());
+        handleTTSAction(textToSpeak, langCodeForTTS, currentSpeechSpeed());
     }
   };
 
@@ -404,7 +425,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                     )}
                     title={isBrowserTtsActive() ? "Stop Browser TTS / Replay" : (isPlayingAudio() ? "Pause" : "Play")}
                     onClick={onPlayButtonClick}
-                    disabled={isTranslationLoading() || isGeneratingTTS() || (!props.textToTranslate() && !audioDataUrl())}
+                    disabled={isGeneratingTTS() || ( !(props.translatedText() || props.textToTranslate()) && !audioDataUrl() )}
                 >
                     <Show when={isGeneratingTTS()}>
                         <Spinner />
@@ -418,7 +439,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                     <Popover placement="top-start" gutter={4} open={isPopoverOpen()} onOpenChange={handlePopoverOpenChange}>
                         <Popover.Trigger 
                             aria-label="More options" 
-                            disabled={isTranslationLoading() || isGeneratingTTS()} 
+                            disabled={isGeneratingTTS() || !(props.translatedText() || props.textToTranslate())} 
                             class="inline-flex items-center justify-center whitespace-nowrap rounded-md p-1.5 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input hover:bg-accent hover:text-accent-foreground cursor-pointer"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4"><path d="m6 9 6 6 6-6" /></svg>
@@ -426,9 +447,9 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                         <Show when={isPopoverOpen()}>
                             <Popover.Content class={POPOVER_CONTENT_CLASS} onOpenAutoFocus={(e) => e.preventDefault()}>
                                 <div class="flex flex-col">
-                                    <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.85)} disabled={isTTSBusy() || isTranslationLoading()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.85x </Button>
-                                    <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.70)} disabled={isTTSBusy() || isTranslationLoading()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.70x </Button>
-                                    <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={handleRegenerate} disabled={isTTSBusy() || isTranslationLoading()}> <ArrowClockwise weight="regular" class="mr-2 size-4" /> Regenerate </Button>
+                                    <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.85)} disabled={isTTSBusy()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.85x </Button>
+                                    <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.70)} disabled={isTTSBusy()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.70x </Button>
+                                    <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={handleRegenerate} disabled={isTTSBusy()}> <ArrowClockwise weight="regular" class="mr-2 size-4" /> Regenerate </Button>
                                 </div>
                             </Popover.Content>
                         </Show>

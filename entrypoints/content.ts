@@ -573,7 +573,7 @@ export default defineContentScript({
         });
         const [alignmentData, setAlignmentData] = createSignal<AlignmentData | null>(null);
 
-        let currentWidgetUi: ShadowRootContentScriptUi<() => void | null> | null = null;
+        let currentWidgetUi: ShadowRootContentScriptUi<() => void> | null = null;
         let currentWidgetName: string | null = null;
         let globalClickListener: ((event: MouseEvent) => void) | null = null;
         let currentTranslationOriginalText: string | null = null;
@@ -608,55 +608,33 @@ export default defineContentScript({
             }
         };
 
-        const handleTTSRequest = async (text: string, lang: string, speed: number): Promise<{ audioDataUrl?: string; error?: string, alignment?: AlignmentData | null, browserTtsInitiated?: boolean }> => {
-            console.log(`[Scarlett CS TTS] Request received: Text='${text.substring(0,30)}...', Lang='${lang}', Speed=${speed}`);
+        const handleTTSRequest = async (text: string, lang: string, speed: number): Promise<{ audioDataUrl?: string; error?: string; alignment?: AlignmentData | null }> => {
+            console.log(`[Scarlett CS TTS] Request to BG: Text='${text.substring(0,30)}...', Lang='${lang}', Speed=${speed}`);
             try {
-                const userConfig = await userConfigurationStorage.getValue();
-                const selectedVendor = userConfig?.selectedTtsVendor || 'browser';
-                console.log(`[Scarlett CS TTS] Selected TTS Vendor: ${selectedVendor}`);
+                // Always send to background. Background will handle vendor logic (now forced to ElevenLabs for debug).
+                const response = await messageSender.sendMessage('REQUEST_TTS_FROM_WIDGET', { text, lang, speed }) as {
+                    success: boolean;
+                    audioDataUrl?: string;
+                    alignmentData?: AlignmentData | null; // Expect alignmentData from background
+                    error?: string;
+                    useBrowserTTS?: boolean; // Background might still send this if it couldn't use ElevenLabs
+                };
+                console.log('[Scarlett CS TTS] Response from BG:', response);
 
-                if (selectedVendor === 'browser') {
-                    console.log('[Scarlett CS TTS] Using browser.tts.speak() directly.');
-                    if (!browser.tts || typeof browser.tts.speak !== 'function') {
-                        console.error('[Scarlett CS TTS] browser.tts.speak is not available.');
-                        return { error: 'Browser TTS API is not available.', browserTtsInitiated: true, alignment: null }; 
-                    }
-                    // Return the promise itself
-                    return new Promise((resolve) => { // Simplified: reject removed as we resolve with error object
-                        try {
-                            browser.tts.speak(text, {
-                                lang: lang,
-                                rate: speed, 
-                                onEvent: (event) => {
-                                    if (event.type === 'start') {
-                                        console.log('[Scarlett CS TTS browser.tts.speak] Event: start');
-                                    } else if (event.type === 'end' || event.type === 'interrupted' || event.type === 'cancelled') {
-                                        console.log('[Scarlett CS TTS browser.tts.speak] Event:', event.type);
-                                        resolve({ browserTtsInitiated: true, alignment: null });
-                                    } else if (event.type === 'error') {
-                                        console.error('[Scarlett CS TTS browser.tts.speak] Error event:', event.errorMessage);
-                                        resolve({ error: event.errorMessage || 'Browser TTS failed', browserTtsInitiated: true, alignment: null });
-                                    }
-                                }
-                            });
-                        } catch (speakError: any) {
-                            console.error('[Scarlett CS TTS browser.tts.speak] Synchronous error during speak call:', speakError);
-                            resolve({ error: speakError.message || 'Browser TTS synchronous call failed', browserTtsInitiated: true, alignment: null });
-                        }
-                    });
+                if (response && response.success && response.audioDataUrl) {
+                    return { audioDataUrl: response.audioDataUrl, alignment: response.alignmentData };
+                } else if (response && response.useBrowserTTS) {
+                    // This case should ideally not happen if background is forced to ElevenLabs and EL fails.
+                    // If it does, it means the background explicitly told us to try browser TTS.
+                    // However, per user request, we are removing direct browser.tts calls from content script.
+                    console.warn('[Scarlett CS TTS] Background suggested browser TTS, but direct browser TTS is disabled in content script.');
+                    return { error: response.error || 'Browser TTS suggested by background, but not enabled here.', alignment: null };
                 } else {
-                    console.log(`[Scarlett CS TTS] Relaying to background for vendor: ${selectedVendor}`);
-                    const response = await messageSender.sendMessage('REQUEST_TTS_FROM_WIDGET', { text, lang, speed }) as { success: boolean, audioDataUrl?: string, error?: string, alignment?: AlignmentData | null };
-                    console.log('[Scarlett CS TTS] Response from BG:', response);
-                    if (response && response.success && response.audioDataUrl) {
-                        return { audioDataUrl: response.audioDataUrl, alignment: response.alignment || null };
-                    } else {
-                        return { error: response?.error || 'Unknown TTS error from BG.', alignment: null };
-                    }
+                    return { error: response?.error || 'Unknown TTS error from background.', alignment: null };
                 }
             } catch (error) {
-                console.error('[Scarlett CS TTS] Error in handleTTSRequest:', error);
-                return { error: error instanceof Error ? error.message : 'Failed TTS request.', alignment: null };
+                console.error('[Scarlett CS TTS] Error sending/processing TTS request to background:', error);
+                return { error: error instanceof Error ? error.message : 'Failed to send TTS request to background.', alignment: null };
             }
         };
 

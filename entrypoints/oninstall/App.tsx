@@ -29,10 +29,9 @@ import { DEFAULT_ELEVENLABS_VOICE_ID, DEFAULT_ELEVENLABS_MODEL_ID } from '../../
 
 // --- Import messaging types and function ---
 import { defineExtensionMessaging } from '@webext-core/messaging';
-import type { BackgroundProtocolMap } from '../../src/background/handlers/message-handlers'; // Import the protocol map
-import type { DeckInfoForFiltering } from '../../src/background/handlers/message-handlers'; // Corrected import path
+import type { BackgroundProtocolMap, DeckInfoForFiltering } from '../../src/shared/messaging-types'; // Corrected import path for both types
 
-// --- Define messaging for the frontend context --- 
+// --- Define messaging for the frontend context ---
 // Use the same protocol map as the background
 const { sendMessage: sendBackgroundMessage } = defineExtensionMessaging<BackgroundProtocolMap>();
 // We rename sendMessage to avoid conflicts if App.tsx used a variable named sendMessage elsewhere

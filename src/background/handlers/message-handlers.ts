@@ -39,9 +39,12 @@ import { pageInfoProcessingTimestamps } from '../../services/storage/storage';
 import type { PGlite, Transaction } from '@electric-sql/pglite';
 import { getSummarizationPrompt } from '../../services/llm/prompts/analysis';
 import { userConfigurationStorage } from '../../services/storage/storage';
-import type { FunctionConfig } from '../../services/storage/types';
-import { generateElevenLabsSpeechStream } from '../../services/tts/elevenLabsService';
-import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID as _DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
+import type { FunctionConfig, UserConfiguration } from '../../services/storage/types';
+import { 
+    generateElevenLabsSpeechStream,
+    generateElevenLabsSpeechWithTimestamps
+} from '../../services/tts/elevenLabsService';
+import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
 import {
     getOrInitDailyStudyStats,
     incrementNewItemsStudiedToday
@@ -630,39 +633,52 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
                 return { success: false, error: 'User settings not found' };
             }
 
-            const selectedVendor = settings.selectedTtsVendor || 'browser';
-            console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Selected TTS Vendor: ${selectedVendor}`);
+            // Force ElevenLabs for debugging, bypassing settings for provider ID selection.
+            const ttsProviderId = 'elevenlabs'; 
+            const elevenLabsApiKey = settings.ttsConfig?.apiKey || settings.elevenLabsApiKey;
+            
+            // Correctly determine the Engine Model ID and the specific Voice ID
+            const actualEngineModelId = DEFAULT_ELEVENLABS_MODEL_ID; // This is for the TTS engine model, e.g., 'eleven_multilingual_v2'
+            const actualVoiceId = settings.elevenLabsVoiceId || DEFAULT_ELEVENLABS_VOICE_ID; // This is for the specific voice to use
 
-            if (selectedVendor === 'elevenlabs') {
-                if (!settings.elevenLabsApiKey || !settings.elevenLabsVoiceId) {
-                    const errMsg = 'ElevenLabs API key or Voice ID not configured.';
+            console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] DEBUG: Forcing TTS Provider to: ${ttsProviderId}`);
+            console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Using ElevenLabs. Voice ID: ${actualVoiceId}, Model ID: ${actualEngineModelId}`);
+
+            if (ttsProviderId === 'elevenlabs') {
+                if (!elevenLabsApiKey) {
+                    const errMsg = 'ElevenLabs API key not configured.';
                     console.error(`[Message Handlers REQUEST_TTS_FROM_WIDGET] ${errMsg}`);
                     return { success: false, error: errMsg };
                 }
-                console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Using ElevenLabs. Voice ID: ${settings.elevenLabsVoiceId}`);
-                const audioStream = await generateElevenLabsSpeechStream(
-                    text,
-                    settings.elevenLabsApiKey,
-                    settings.elevenLabsVoiceId,
-                    DEFAULT_ELEVENLABS_MODEL_ID, // Assuming a default model or make it configurable
-                    undefined, // voiceSettings (5th argument)
-                    speed      // speed (6th argument)
-                );
-                // Convert stream to blob, then to data URL to send back
-                const audioBlob = await new Response(audioStream).blob();
-                const audioDataUrl = await blobToDataURL(audioBlob);
-                console.log('[Message Handlers REQUEST_TTS_FROM_WIDGET] ElevenLabs TTS successful, returning data URL.');
-                return { success: true, audioDataUrl };
-            } else if (selectedVendor === 'browser') {
-                // Browser TTS is typically handled client-side, but if we were to do it here:
-                console.log('[Message Handlers REQUEST_TTS_FROM_WIDGET] Using Browser TTS (Note: Typically client-side).');
-                // This handler would need to communicate with a content script or offscreen document
-                // to trigger browser.tts.speak and capture the audio. This is complex.
-                // For now, let's assume if 'browser' is chosen, the client handles it and this message isn't strictly needed for generation.
-                // Or, return an indication that the client should use its own browser.tts.
-                return { success: false, error: 'Browser TTS should be handled client-side.' }; 
+                // console.log(`[Message Handlers REQUEST_TTS_FROM_WIDGET] Using ElevenLabs. Voice ID: ${elevenLabsVoiceId}, Model ID: ${elevenLabsModelId}`);
+                
+                try {
+                    // Call the new function with timestamps
+                    const ttsResult = await generateElevenLabsSpeechWithTimestamps(
+                        elevenLabsApiKey,
+                        text,
+                        actualEngineModelId, 
+                        actualVoiceId,
+                        undefined, // voiceSettings
+                        speed // speed
+                    );
+
+                    // If the above call succeeds, ttsResult contains audioBlob and alignmentData
+                    const audioDataUrl = await blobToDataURL(ttsResult.audioBlob);
+                    console.log('[Message Handlers REQUEST_TTS_FROM_WIDGET] ElevenLabs TTS with timestamps successful, returning data URL and alignment.');
+                    return { success: true, audioDataUrl, alignmentData: ttsResult.alignmentData };
+
+                } catch (elevenLabsError: any) {
+                    // Handle errors thrown by generateElevenLabsSpeechWithTimestamps
+                    console.error('[Message Handlers REQUEST_TTS_FROM_WIDGET] ElevenLabs TTS with timestamps failed:', elevenLabsError);
+                    return { success: false, error: elevenLabsError.message || 'ElevenLabs TTS generation failed' };
+                }
+            } else if (ttsProviderId === 'browser') {
+                console.log('[Message Handlers REQUEST_TTS_FROM_WIDGET] Using Browser TTS. Client should handle this.');
+                // Instruct client to use browser TTS. The content script already has logic for this.
+                return { success: false, error: 'Browser TTS should be handled client-side.', useBrowserTTS: true }; 
             } else {
-                console.warn(`[Message Handlers REQUEST_TTS_FROM_WIDGET] No TTS vendor selected or unsupported vendor: ${selectedVendor}`);
+                console.warn(`[Message Handlers REQUEST_TTS_FROM_WIDGET] No TTS vendor selected or unsupported vendor: ${ttsProviderId}`);
                 return { success: false, error: 'No TTS vendor configured or vendor not supported for background generation.' };
             }
         } catch (error: any) {
