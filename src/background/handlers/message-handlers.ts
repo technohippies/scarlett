@@ -1,38 +1,8 @@
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import type {
     GetDueItemsRequest,
-    GetDueItemsResponse,
-    GetDistractorsRequest,
-    GetDistractorsResponse,
-    SubmitReviewRequest,
-    SubmitReviewResponse,
-    CacheDistractorsRequest,
-    CacheDistractorsResponse,
-    GenerateLLMDistractorsRequest,
-    GenerateLLMDistractorsResponse,
-    GetStudySummaryRequest,
-    GetStudySummaryResponse,
-    SaveBookmarkResponse,
-    LoadBookmarksResponse, 
-    TagListResponse, 
-    TagSuggestResponse,
-    GetPageInfoResponse,
-    GetSelectedTextResponse,
-    GenerateTTSPayload,
-    ExtractMarkdownRequest,
-    ExtractMarkdownResponse,
-    RequestActiveLearningWordsPayload,
-    RequestActiveLearningWordsResponse,
-    GetDailyStudyStatsRequest,
-    GetDailyStudyStatsResponse,
-    IncrementDailyNewItemsStudiedRequest,
-    IncrementDailyNewItemsStudiedResponse,
-    GetStudyStreakDataRequest,
-    GetStudyStreakDataResponse,
-    NotifyDailyGoalCompleteRequest,
-    NotifyDailyGoalCompleteResponse,
-    RecordStudyActivityTodayRequest,
-    RecordStudyActivityTodayResponse
+    BackgroundProtocolMap,
+    DeckInfoForFiltering
 } from '../../shared/messaging-types';
 import { Grade } from 'ts-fsrs';
 import {
@@ -44,7 +14,6 @@ import {
 import { getActiveLearningWordsFromDb, updateCachedDistractors } from '../../services/db/learning';
 import { getDbInstance } from '../../services/db/init';
 import { ollamaChat } from '../../services/llm/providers/ollama/chat';
-import { getLLMDistractorsPrompt } from '../../services/llm/prompts/exercises';
 import type { LLMConfig, LLMChatResponse, LLMProviderId, ChatMessage } from '../../services/llm/types';
 import { handleSaveBookmark, handleLoadBookmarks } from './bookmark-handlers';
 import { handleTagList } from './tag-handlers';
@@ -83,6 +52,7 @@ import {
     checkAndResetStreakIfNeeded,
     recordStudyActivityToday
 } from '../../services/db/streaks';
+import { registerLlmDistractorHandlers } from './llm-distractor-handlers';
 // import type { LearningDirection, StudyItem } from '../../types/study';
 // import type { ITask } from 'pg-promise';
 
@@ -97,6 +67,7 @@ const SUPERCOACH_DECKS_METADATA_TABLE_NAME = 'supercoach_deck_84532_110'; // e.g
 // --- End Tableland Constants ---
 
 // Utility function to get full language name from code
+/* COMMENTING OUT - Replaced by Tableland fetching
 function getFullLanguageName(code: string): string {
     switch (code.toLowerCase()) {
         case 'en': return 'English';
@@ -111,6 +82,7 @@ function getFullLanguageName(code: string): string {
         default: return code; // Fallback to the code itself if no mapping is present
     }
 }
+*/
 
 // Dynamic Chat Helper (Simplified to only handle confirmed non-streaming)
 async function dynamicChat(messages: ChatMessage[], config: FunctionConfig): Promise<LLMChatResponse | null> {
@@ -164,64 +136,15 @@ async function queryTableland(sql: string): Promise<any[]> {
 }
 // --- End Tableland Query Helper ---
 
-// Define and EXPORT DeckInfoForFiltering
-export interface DeckInfoForFiltering {
-  id: string; 
-  name: string;
-  description?: string;
-  cardCount: number;
-  sourceLanguage: string | null;
-  targetLanguage: string | null;
-  pathIdentifier: string;
-}
-
-// Define and EXPORT BackgroundProtocolMap
-export interface BackgroundProtocolMap {
-    getDueItems(data: GetDueItemsRequest): Promise<GetDueItemsResponse>;
-    getDistractorsForItem(data: GetDistractorsRequest): Promise<GetDistractorsResponse>;
-    submitReviewResult(data: SubmitReviewRequest): Promise<SubmitReviewResponse>;
-    cacheDistractors(data: CacheDistractorsRequest): Promise<CacheDistractorsResponse>;
-    generateLLMDistractors(data: GenerateLLMDistractorsRequest): Promise<GenerateLLMDistractorsResponse>;
-    getStudySummary(data: GetStudySummaryRequest): Promise<GetStudySummaryResponse>;
-    saveBookmark(data: { url: string; title?: string | null; tags?: string | null; selectedText?: string | null }): 
-        Promise<SaveBookmarkResponse>;
-    loadBookmarks(): Promise<LoadBookmarksResponse>;
-    'tag:list': () => Promise<TagListResponse>;
-    'tag:suggest': (data: { title: string; url: string; pageContent?: string | null }) => 
-        Promise<TagSuggestResponse>;
-    getPageInfo: () => Promise<GetPageInfoResponse>;
-    getSelectedText: () => Promise<GetSelectedTextResponse>;
-    processPageVisit: (data: { url: string; title: string; htmlContent: string }) => Promise<void>;
-    triggerBatchEmbedding(): Promise<{ 
-        success: boolean; 
-        finalizedCount?: number; 
-        duplicateCount?: number; 
-        errorCount?: number;
-        error?: string;
-    }>;
-    getPendingEmbeddingCount(): Promise<{ count: number }>;
-    generateTTS(data: GenerateTTSPayload): Promise<void>;
-    extractMarkdownFromHtml(data: ExtractMarkdownRequest): Promise<ExtractMarkdownResponse>;
-    REQUEST_TTS_FROM_WIDGET(data: { text: string; lang: string; speed?: number }): 
-        Promise<{ success: boolean; audioDataUrl?: string; error?: string }>;
-    REQUEST_ACTIVE_LEARNING_WORDS(data: RequestActiveLearningWordsPayload): Promise<RequestActiveLearningWordsResponse>;
-    addLearningDeck(data: { deckIdentifier: string }): Promise<{ success: boolean, error?: string }>;
-    GET_LEARNING_WORDS_BY_TRANSLATION_IDS(data: { translationIds: number[] }): Promise<{ success: boolean; words?: any[]; error?: string }>;
-    REQUEST_LEARNING_WORDS_FOR_HIGHLIGHTING(): Promise<{ success: boolean; words?: any[]; error?: string }>;
-    fetchAvailableDeckFiles(): Promise<{ success: boolean; decks?: DeckInfoForFiltering[]; error?: string }>;
-    getDailyStudyStats(data: GetDailyStudyStatsRequest): Promise<GetDailyStudyStatsResponse>;
-    incrementDailyNewItemsStudied(data: IncrementDailyNewItemsStudiedRequest): Promise<IncrementDailyNewItemsStudiedResponse>;
-    getStudyStreakData(data: GetStudyStreakDataRequest): Promise<GetStudyStreakDataResponse>;
-    notifyDailyGoalComplete(data: NotifyDailyGoalCompleteRequest): Promise<NotifyDailyGoalCompleteResponse>;
-    recordStudyActivityToday(data: RecordStudyActivityTodayRequest): Promise<RecordStudyActivityTodayResponse>;
-}
-
 /**
  * Registers message listeners for background script operations (SRS, etc.).
  * @param messaging The messaging instance from the main background script.
  */
 export function registerMessageHandlers(messaging: ReturnType<typeof defineExtensionMessaging<BackgroundProtocolMap>>): void {
     console.log('[Message Handlers] Registering background message listeners using passed instance...');
+
+    // Register the new LLM Distractor Handlers
+    registerLlmDistractorHandlers(messaging);
 
     async function getSummaryFromLLM(text: string): Promise<string | null> {
         if (!text) return null;
@@ -393,161 +316,6 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         } catch (error: any) {
             console.error('[Message Handlers] Error handling cacheDistractors:', error);
             return { success: false, error: error.message || 'Failed to cache distractors.' };
-        }
-    });
-
-    messaging.onMessage('generateLLMDistractors', async (message): Promise<GenerateLLMDistractorsResponse> => {
-        console.log('[Message Handlers] Received generateLLMDistractors request:', message.data);
-        // Use fields from GenerateLLMDistractorsRequest
-        const { sourceText, targetText, count = 3, direction, correctAnswerForFiltering } = message.data;
-        
-        const safeDirection: string = direction || 'EN_TO_NATIVE'; // Default direction
-
-        let llmFunctionConfig: FunctionConfig | null = null;
-        try {
-            const settings = await userConfigurationStorage.getValue();
-            // Removed temporary log: console.log('[Message Handlers generateLLMDistractors] Effective settings for LLM:', JSON.stringify(settings));
-            if (!settings) {
-                console.error('[Message Handlers generateLLMDistractors] User settings not found.');
-                return { distractors: [], error: 'User settings not found.' };
-            }
-
-            // ---- START MODIFICATION ----
-            if (settings.llmConfig && settings.llmConfig.providerId && settings.llmConfig.providerId !== 'none') {
-                const providerId = settings.llmConfig.providerId;
-                
-                llmFunctionConfig = {
-                    providerId: providerId,
-                    modelId: settings.llmConfig.modelId || '', 
-                    baseUrl: settings.llmConfig.baseUrl || '', 
-                    apiKey: settings.llmConfig.apiKey || undefined,
-                };
-
-                switch (providerId) {
-                    case 'ollama':
-                        if (!llmFunctionConfig.modelId || !llmFunctionConfig.baseUrl) {
-                            console.error('[Message Handlers generateLLMDistractors] Ollama configuration in llmConfig incomplete.');
-                            llmFunctionConfig = null;
-                        }
-                        break;
-                    case 'lmstudio':
-                        if (!llmFunctionConfig.modelId || !llmFunctionConfig.baseUrl) {
-                            console.error('[Message Handlers generateLLMDistractors] LMStudio configuration in llmConfig incomplete.');
-                            llmFunctionConfig = null;
-                        }
-                        break;
-                    case 'jan':
-                         if (!llmFunctionConfig.modelId || !llmFunctionConfig.baseUrl) {
-                            console.error('[Message Handlers generateLLMDistractors] Jan configuration in llmConfig incomplete.');
-                            llmFunctionConfig = null;
-                        }
-                        break;
-                    default:
-                        if (!llmFunctionConfig.modelId || !llmFunctionConfig.baseUrl) {
-                             console.error(`[Message Handlers generateLLMDistractors] Basic configuration (modelId, baseUrl) incomplete for provider: ${providerId}`);
-                             llmFunctionConfig = null;
-                        }
-                        break; 
-                }
-            } else if (settings.selectedLlmProvider && settings.selectedLlmProvider !== 'none') {
-                console.warn('[Message Handlers generateLLMDistractors] Using fallback to selectedLlmProvider and flat properties.');
-                llmFunctionConfig = {
-                    providerId: settings.selectedLlmProvider,
-                    modelId: '', 
-                    baseUrl: '', 
-                    apiKey: undefined, 
-                };
-                switch (settings.selectedLlmProvider) {
-                    case 'ollama':
-                        if (settings.ollamaModel && settings.ollamaBaseUrl) {
-                            llmFunctionConfig.modelId = settings.ollamaModel;
-                            llmFunctionConfig.baseUrl = settings.ollamaBaseUrl;
-                        } else {
-                            console.error('[Message Handlers generateLLMDistractors] (Fallback) Ollama configuration incomplete.');
-                            llmFunctionConfig = null;
-                        }
-                        break;
-                    case 'lmstudio':
-                        if (settings.lmStudioModel && settings.lmStudioBaseUrl) {
-                            llmFunctionConfig.modelId = settings.lmStudioModel;
-                            llmFunctionConfig.baseUrl = settings.lmStudioBaseUrl;
-                        } else {
-                            console.error('[Message Handlers generateLLMDistractors] (Fallback) LMStudio configuration incomplete.');
-                            llmFunctionConfig = null;
-                        }
-                        break;
-                    case 'jan':
-                        if (settings.janModel && settings.janBaseUrl) {
-                            llmFunctionConfig.modelId = settings.janModel;
-                            llmFunctionConfig.baseUrl = settings.janBaseUrl;
-                        } else {
-                            console.error('[Message Handlers generateLLMDistractors] (Fallback) Jan configuration incomplete.');
-                            llmFunctionConfig = null;
-                        }
-                        break;
-                    default:
-                        console.error(`[Message Handlers generateLLMDistractors] (Fallback) Unsupported LLM provider: ${settings.selectedLlmProvider}`);
-                        llmFunctionConfig = null;
-                }
-            }
-            // ---- END MODIFICATION ----
-
-            if (!llmFunctionConfig) {
-                const errorMsg = 'LLM configuration is missing, incomplete, or unsupported.';
-                console.error(`[Message Handlers generateLLMDistractors] ${errorMsg}`);
-                return { distractors: [], error: errorMsg };
-            }
-
-            const userActualNativeLang = settings.nativeLanguage || 'en';
-            const userActualTargetLang = settings.targetLanguage || 'vi'; 
-
-            let wordToTranslate: string;
-            let originalWordLanguageName: string;
-            let distractorsLanguageName: string;
-
-            if (safeDirection === 'EN_TO_NATIVE') {
-                wordToTranslate = targetText; 
-                originalWordLanguageName = getFullLanguageName(userActualTargetLang); 
-                distractorsLanguageName = getFullLanguageName(userActualNativeLang);
-            } else { // NATIVE_TO_EN
-                wordToTranslate = sourceText; 
-                originalWordLanguageName = getFullLanguageName(userActualNativeLang);
-                distractorsLanguageName = getFullLanguageName(userActualTargetLang);
-            }
-            console.log(`[Message Handlers generateLLMDistractors Prep] Word: "${wordToTranslate}" (${originalWordLanguageName}). Distractors in: ${distractorsLanguageName}. Correct answer (filter): "${correctAnswerForFiltering}"`);
-            
-            // Corrected call to getLLMDistractorsPrompt
-            const prompt = getLLMDistractorsPrompt(wordToTranslate, originalWordLanguageName, distractorsLanguageName, count);
-            const response = await dynamicChat([{ role: 'user', content: prompt }], llmFunctionConfig);
-
-            if (response && response.choices && response.choices.length > 0 && response.choices[0].message?.content) {
-                let rawContent = response.choices[0].message.content;
-                console.log("[Message Handlers] Raw LLM content for distractors:", rawContent);
-
-                rawContent = rawContent.replace(/^```json\s*|```$/g, '').trim();
-                try {
-                    const parsedJson = JSON.parse(rawContent);
-                    if (Array.isArray(parsedJson) && parsedJson.every(item => typeof item === 'string')) {
-                        console.log("[Message Handlers] Extracted distractors:", parsedJson);
-                        const finalDistractors = parsedJson.filter(d => d.toLowerCase() !== correctAnswerForFiltering.toLowerCase());
-                        return { distractors: finalDistractors.slice(0, count) };
-                    } else {
-                        throw new Error("LLM response is not a JSON array of strings.");
-                    }
-                } catch (parseError) {
-                    console.error("[Message Handlers generateLLMDistractors] Error parsing LLM response:", parseError, "Raw content:", rawContent);
-                    return { distractors: [], error: `Failed to parse LLM response: ${(parseError as Error).message}` };
-                }
-            } else {
-                console.error("[Message Handlers generateLLMDistractors] No content in LLM response or invalid response structure.");
-                return { distractors: [], error: "No content in LLM response or invalid response structure." };
-            }
-        } catch (error: any) {
-            console.error('[Message Handlers] Error handling generateLLMDistractors:', error);
-            if (llmFunctionConfig) {
-                console.error(`[Message Handlers generateLLMDistractors] Failed using config: Provider=${llmFunctionConfig.providerId}, Model=${llmFunctionConfig.modelId}, BaseUrl=${llmFunctionConfig.baseUrl}`);
-            }
-            return { distractors: [], error: error.message || 'Failed to generate distractors.' };
         }
     });
 

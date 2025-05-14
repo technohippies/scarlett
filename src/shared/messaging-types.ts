@@ -296,3 +296,57 @@ export interface RecordStudyActivityTodayResponse {
     error?: string;
 }
 // --- END Study Streak Data ---
+
+// ---- START: BackgroundProtocolMap Definition ----
+// Ensure all request/response types used in this map are defined above or imported.
+
+export interface DeckInfoForFiltering {
+    id: string; 
+    name: string;
+    description?: string;
+    cardCount: number;
+    sourceLanguage: string | null;
+    targetLanguage: string | null;
+    pathIdentifier: string;
+}
+
+export interface BackgroundProtocolMap {
+    getDueItems(data: GetDueItemsRequest): Promise<GetDueItemsResponse>;
+    getDistractorsForItem(data: GetDistractorsRequest): Promise<GetDistractorsResponse>;
+    submitReviewResult(data: SubmitReviewRequest): Promise<SubmitReviewResponse>;
+    cacheDistractors(data: CacheDistractorsRequest): Promise<CacheDistractorsResponse>;
+    generateLLMDistractors(data: GenerateLLMDistractorsRequest): Promise<GenerateLLMDistractorsResponse>;
+    getStudySummary(data: GetStudySummaryRequest): Promise<GetStudySummaryResponse>;
+    saveBookmark(data: { url: string; title?: string | null; tags?: string | null; selectedText?: string | null }): 
+        Promise<SaveBookmarkResponse>;
+    loadBookmarks(): Promise<LoadBookmarksResponse>;
+    'tag:list': () => Promise<TagListResponse>;
+    'tag:suggest': (data: { title: string; url: string; pageContent?: string | null }) => 
+        Promise<TagSuggestResponse>;
+    getPageInfo: () => Promise<GetPageInfoResponse>;
+    getSelectedText: () => Promise<GetSelectedTextResponse>;
+    processPageVisit: (data: { url: string; title: string; htmlContent: string }) => Promise<void>;
+    triggerBatchEmbedding(): Promise<{ 
+        success: boolean; 
+        finalizedCount?: number; 
+        duplicateCount?: number; 
+        errorCount?: number;
+        error?: string;
+    }>;
+    getPendingEmbeddingCount(): Promise<{ count: number }>;
+    generateTTS(data: GenerateTTSPayload): Promise<void>; // Assuming GenerateTTSPayload is defined
+    extractMarkdownFromHtml(data: ExtractMarkdownRequest): Promise<ExtractMarkdownResponse>; // Assuming these are defined
+    REQUEST_TTS_FROM_WIDGET(data: { text: string; lang: string; speed?: number }): 
+        Promise<{ success: boolean; audioDataUrl?: string; error?: string }>;
+    REQUEST_ACTIVE_LEARNING_WORDS(data: RequestActiveLearningWordsPayload): Promise<RequestActiveLearningWordsResponse>;
+    addLearningDeck(data: { deckIdentifier: string }): Promise<{ success: boolean, error?: string }>;
+    GET_LEARNING_WORDS_BY_TRANSLATION_IDS(data: { translationIds: number[] }): Promise<{ success: boolean; words?: any[]; error?: string }>;
+    REQUEST_LEARNING_WORDS_FOR_HIGHLIGHTING(): Promise<{ success: boolean; words?: any[]; error?: string }>;
+    fetchAvailableDeckFiles(): Promise<{ success: boolean; decks?: DeckInfoForFiltering[]; error?: string }>;
+    getDailyStudyStats(data: GetDailyStudyStatsRequest): Promise<GetDailyStudyStatsResponse>;
+    incrementDailyNewItemsStudied(data: IncrementDailyNewItemsStudiedRequest): Promise<IncrementDailyNewItemsStudiedResponse>;
+    getStudyStreakData(data: GetStudyStreakDataRequest): Promise<GetStudyStreakDataResponse>;
+    notifyDailyGoalComplete(data: NotifyDailyGoalCompleteRequest): Promise<NotifyDailyGoalCompleteResponse>;
+    recordStudyActivityToday(data: RecordStudyActivityTodayRequest): Promise<RecordStudyActivityTodayResponse>;
+}
+// ---- END: BackgroundProtocolMap Definition ----
