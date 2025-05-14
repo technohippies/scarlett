@@ -100,6 +100,9 @@ export interface UserConfiguration {
     janEmbeddingModel?: string | null;      // If Jan offers specific embedding models
     // embeddingModelName?: string; // This was generic, provider-specific ones are better for fallbacks
 
+    // New unified TTS config object
+    ttsConfig?: FunctionConfig | null;
+
     lastMoodEntryDate?: string | null; // YYYY-MM-DD -- Allow null
 
     // Added missing properties

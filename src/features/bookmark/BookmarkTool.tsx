@@ -32,23 +32,40 @@ export const BookmarkTool: Component<BookmarkToolProps> = (props) => {
   // Effect to update tagInput string when props change
   createEffect(() => {
     const initial = props.initialTags ?? [];
-    // Get current tags from the input string itself to preserve user edits
-    const currentTagsFromString = tagInput()
+    const currentRawInput = tagInput(); // Store raw input
+
+    const currentTagsFromString = currentRawInput
                                   .split(',')
                                   .map(t => t.trim())
                                   .filter(t => t.startsWith('#') && t.length > 1);
                                   
-    // No more suggested tags to merge, just use initial and current input
+    // If initial tags are empty, current input doesn't parse to valid tags,
+    // but user has typed something, then don't wipe their input.
+    if (initial.length === 0 && currentTagsFromString.length === 0 && currentRawInput.length > 0) {
+      // User is typing new content, no initial tags to merge, input is not yet a "valid tag".
+      // Do not change `tagInput` via this effect.
+      // If parent thought there were tags (props.initialTags was not empty before), notify that they are now effectively empty from user's current input.
+      if (props.initialTags && props.initialTags.length > 0) {
+          props.onTagsChange([]); 
+      }
+      return; // Prevent overwriting user's partial input
+    }
+
     const combined = Array.from(new Set([...currentTagsFromString, ...initial]));
     const newTagString = combined.join(', '); // Create the string representation
 
     // Update the input signal only if the string content changes
-    if (newTagString !== tagInput()) {
-      console.log('[BookmarkTool Effect] Updating tagInput:', newTagString);
+    if (newTagString !== currentRawInput) { // Compare with currentRawInput
+      console.log('[BookmarkTool Effect] Updating tagInput from', `"${currentRawInput}"` , 'to:', `"${newTagString}"`);
       setTagInput(newTagString);
-      // Still notify parent with the array version if change was triggered by props
+      // Still notify parent with the array version if change was triggered by props or input processing
       props.onTagsChange(combined);
     }
+    // If newTagString === currentRawInput, it means the input is already representative of `combined` tags.
+    // The parent should have been notified by a previous call or by processTags.
+    // However, if props.initialTags changed but resulted in the same newTagString, 
+    // we might still need to notify if `combined` is different than `initial` (meaning current input contributed).
+    // For now, the original logic only called onTagsChange if newTagString differed, so we maintain that.
   }, [props.initialTags]);
 
   // Effect to update local selected text when initialSelectedText changes

@@ -103,24 +103,24 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
   };
 
   // --- Focus Mode State and Handlers ---
-  const isFocusModeActiveSignal = () => settings.config.isFocusModeActive ?? false;
-  const focusModeBlockedDomainsSignal = () => settings.config.userBlockedDomains ?? [];
+  const isFocusModeActiveSignal = () => settings.config.enableFocusMode ?? false;
+  const focusModeBlockedDomainsSignal = () => settings.config.focusModeBlockedDomains ?? [];
   // For now, use general loading status. Can be refined if needed.
   const isFocusModeLoadingSignal = () => settings.loadStatus() === 'pending'; 
 
   const handleToggleFocusMode = (isEnabled: boolean) => {
     console.log(`[SettingsPage] Focus Mode Toggled: ${isEnabled}`);
     // Assuming a context method like this exists or will be added:
-    settings.updateUserConfiguration({ isFocusModeActive: isEnabled });
+    settings.updateUserConfiguration({ enableFocusMode: isEnabled });
   };
 
   const handleAddFocusDomain = (domainName: string) => {
     console.log(`[SettingsPage] Add Blocked Domain: ${domainName}`);
-    const currentDomains = settings.config.userBlockedDomains ?? [];
+    const currentDomains = settings.config.focusModeBlockedDomains ?? [];
     if (!currentDomains.some(d => d.name.toLowerCase() === domainName.toLowerCase())) {
       const updatedDomains = [...currentDomains, { name: domainName }];
       // Assuming a context method like this exists or will be added:
-      settings.updateUserConfiguration({ userBlockedDomains: updatedDomains });
+      settings.updateUserConfiguration({ focusModeBlockedDomains: updatedDomains });
     } else {
       console.warn("[SettingsPage] Domain already exists:", domainName);
     }
@@ -128,10 +128,10 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
 
   const handleRemoveFocusDomain = (domainName: string) => {
     console.log(`[SettingsPage] Remove Blocked Domain: ${domainName}`);
-    const currentDomains = settings.config.userBlockedDomains ?? [];
+    const currentDomains = settings.config.focusModeBlockedDomains ?? [];
     const updatedDomains = currentDomains.filter(d => d.name.toLowerCase() !== domainName.toLowerCase());
     // Assuming a context method like this exists or will be added:
-    settings.updateUserConfiguration({ userBlockedDomains: updatedDomains });
+    settings.updateUserConfiguration({ focusModeBlockedDomains: updatedDomains });
   };
   // --- End Focus Mode ---
 
