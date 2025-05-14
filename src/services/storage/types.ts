@@ -78,12 +78,17 @@ export interface UserConfiguration {
     elevenLabsApiKey?: string;
     elevenLabsVoiceId?: string;
     selectedLlmProvider?: LLMProviderId | 'none'; // none means no LLM features enabled
-    ollamaBaseUrl?: string;
-    ollamaModel?: string;
-    lmStudioBaseUrl?: string; // Assuming similar structure for LM Studio if added
-    lmStudioModel?: string;
-    janBaseUrl?: string;
-    janModel?: string;
+    
+    // New unified LLM config object
+    llmConfig?: FunctionConfig | null; 
+
+    // Old flat properties - mark as optional, to be deprecated/removed later
+    ollamaBaseUrl?: string | null;
+    ollamaModel?: string | null;
+    lmStudioBaseUrl?: string | null; 
+    lmStudioModel?: string | null;
+    janBaseUrl?: string | null;
+    janModel?: string | null;
     embeddingModelProvider?: LLMProviderId | 'none'; // Changed EmbeddingProviderType to LLMProviderId
     embeddingModelName?: string; // e.g., 'text-embedding-ada-002' for OpenAI, or local model name
     lastMoodEntryDate?: string | null; // YYYY-MM-DD -- Allow null

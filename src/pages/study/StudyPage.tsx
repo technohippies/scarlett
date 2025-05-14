@@ -42,6 +42,7 @@ const messaging = defineExtensionMessaging<BackgroundProtocol>();
 
 // Define the daily new item limit
 const DAILY_NEW_ITEM_LIMIT = 20;
+const MCQ_INTERLEAVING_THRESHOLD = 3; // Show a pending MCQ after N other main activities
 
 // Utility function to shuffle an array (Fisher-Yates shuffle)
 function shuffleArray<T>(array: T[]): T[] {
@@ -91,11 +92,16 @@ const StudyPage: Component<StudyPageProps> = (props) => {
   const [dailyStatsLoaded, setDailyStatsLoaded] = createSignal(false);
   const [initialLoadComplete, setInitialLoadComplete] = createSignal(false);
 
+  // State for delayed MCQs
+  const [pendingMcqQueue, setPendingMcqQueue] = createSignal<DueLearningItem[]>([]);
+  const [activitiesSinceLastPendingMcq, setActivitiesSinceLastPendingMcq] = createSignal(0);
+
   createEffect(() => console.log(`[StudyPage STATE] currentStudyStep changed to: ${currentStudyStep()}`));
   createEffect(() => console.log(`[StudyPage STATE] isFetchingNextItem changed to: ${isFetchingNextItem()}`));
   createEffect(() => console.log(`[StudyPage STATE] shouldShowLoadingSpinner changed to: ${shouldShowLoadingSpinner()}`));
   createEffect(() => console.log(`[StudyPage STATE] currentItem changed: ${JSON.stringify(currentItem())?.substring(0,100)}...`));
   createEffect(() => console.log(`[StudyPage STATE] dailyNewItemCount changed to: ${dailyNewItemCount()}/${DAILY_NEW_ITEM_LIMIT}, lastResetDate: ${lastResetDateForNewItems()}`));
+  createEffect(() => console.log(`[StudyPage STATE] pendingMcqQueue length: ${pendingMcqQueue().length}, activitiesSinceLastPendingMcq: ${activitiesSinceLastPendingMcq()}`));
 
   // Effect to load daily study stats on component mount
   createEffect(async () => {
@@ -120,26 +126,52 @@ const StudyPage: Component<StudyPageProps> = (props) => {
       setDailyNewItemCount(0);
     } finally {
       setDailyStatsLoaded(true);
-      setInitialLoadComplete(true);
-      console.log('[StudyPage EFFECT dailyStats] Daily stats loading attempt complete. Initial load marked complete.');
+      console.log('[StudyPage EFFECT dailyStats] Daily stats loading attempt complete.');
+      if (!initialLoadComplete()) { // Ensure it only runs once for the very first load
+        fetchNextStudyActivity(); // Start the study flow
+      }
     }
   });
+
+  // Orchestrator for study flow
+  const fetchNextStudyActivity = () => {
+    console.log(`[StudyPage FN_CALL] fetchNextStudyActivity. Pending MCQs: ${pendingMcqQueue().length}, Activities since last: ${activitiesSinceLastPendingMcq()}`);
+    clearTimeout(spinnerTimeoutId);
+    setShouldShowLoadingSpinner(false); // Reset spinner visibility, resource fetch will manage it if needed
+
+    if (pendingMcqQueue().length > 0 && activitiesSinceLastPendingMcq() >= MCQ_INTERLEAVING_THRESHOLD) {
+        const mcqItem = pendingMcqQueue()[0];
+        setPendingMcqQueue(prevQueue => prevQueue.slice(1)); // Dequeue
+
+        setCurrentItem(mcqItem);
+        const direction = Math.random() < 0.5 ? 'EN_TO_NATIVE' : 'NATIVE_TO_EN';
+        setExerciseDirection(direction);
+        setCurrentStudyStep('mcq');
+        setActivitiesSinceLastPendingMcq(0); // Reset counter
+        console.log(`[StudyPage FN_CALL] fetchNextStudyActivity - Presenting pending MCQ for item ${mcqItem.learningId}`);
+        setIsFetchingNextItem(false); // We are not fetching from backend
+        setShouldShowLoadingSpinner(false); // Item is in memory
+    } else {
+        console.log(`[StudyPage FN_CALL] fetchNextStudyActivity - Fetching new due item from backend.`);
+        fetchDueItems(); // Trigger the resource to fetch
+    }
+  };
 
   // --- Fetching Due Item Resource ---
   const [dueItemResource, { refetch: fetchDueItems }] = createResource(
     () => dailyStatsLoaded(), // Depend on dailyStatsLoaded to ensure stats are checked first
     async (statsLoaded) => {
     if (!statsLoaded) {
-      console.log('[StudyPage FN_CALL] fetchDueItems - Waiting for daily stats to load...');
+      console.log('[StudyPage FN_CALL] fetchDueItems (Resource) - Waiting for daily stats to load...');
       return null; // Don't fetch if daily stats aren't loaded yet
     }
-    console.log('[StudyPage FN_CALL] fetchDueItems START (Daily stats loaded)');
+    console.log('[StudyPage FN_CALL] fetchDueItems (Resource) START (Daily stats loaded)');
     setIsFetchingNextItem(true);
     clearTimeout(spinnerTimeoutId);
     setShouldShowLoadingSpinner(false); 
     spinnerTimeoutId = setTimeout(() => {
       if (isFetchingNextItem()) {
-        console.log('[StudyPage FN_CALL] fetchDueItems - Spinner timeout triggered, showing spinner.');
+        console.log('[StudyPage FN_CALL] fetchDueItems (Resource) - Spinner timeout triggered, showing spinner.');
         setShouldShowLoadingSpinner(true);
       }
     }, 200);
@@ -150,62 +182,105 @@ const StudyPage: Component<StudyPageProps> = (props) => {
     // This is a secondary check; primary reset happens in getOrInitDailyStudyStats (BE)
     const todayStrForFetch = new Date().toISOString().split('T')[0];
     if (lastResetDateForNewItems() !== todayStrForFetch) {
-      console.log(`[StudyPage FN_CALL] fetchDueItems - Date changed from ${lastResetDateForNewItems()} to ${todayStrForFetch}. Resetting UI count.`);
+      console.log(`[StudyPage FN_CALL] fetchDueItems (Resource) - Date changed from ${lastResetDateForNewItems()} to ${todayStrForFetch}. Resetting UI count.`);
       setLastResetDateForNewItems(todayStrForFetch);
       setDailyNewItemCount(0); // Reset UI count, BE should have reset DB count via getDailyStudyStats
     }
 
     try {
       const requestData: GetDueItemsRequest = {
-        limit: 1,
-        excludeNewIfLimitReached: true, // Always pass true, scheduler decides based on counts
+        limit: 1, // Still fetch one at a time from backend
+        excludeNewIfLimitReached: true, 
         newItemsStudiedToday: dailyNewItemCount(),
         dailyNewItemLimit: DAILY_NEW_ITEM_LIMIT
       };
-      console.log('[StudyPage FN_CALL] fetchDueItems - Sending getDueItems message:', requestData);
+      console.log('[StudyPage FN_CALL] fetchDueItems (Resource) - Sending getDueItems message:', requestData);
       const response = await messaging.sendMessage('getDueItems', requestData);
-      console.log(`[StudyPage FN_CALL] fetchDueItems - Received getDueItems response (first item): ${JSON.stringify(response?.dueItems?.[0])?.substring(0,100)}...`);
+      console.log(`[StudyPage FN_CALL] fetchDueItems (Resource) - Received getDueItems response (first item): ${JSON.stringify(response?.dueItems?.[0])?.substring(0,100)}...`);
       
       if (response && response.dueItems && response.dueItems.length > 0) {
         const fetchedItem = response.dueItems[0];
         setCurrentItem(fetchedItem);
+        setActivitiesSinceLastPendingMcq(count => count + 1); // Item fetched from backend, increment activity
         const direction = Math.random() < 0.5 ? 'EN_TO_NATIVE' : 'NATIVE_TO_EN';
         setExerciseDirection(direction);
-        console.log(`[StudyPage FN_CALL] fetchDueItems - Set exercise direction: ${direction}`);
-        console.log('[StudyPage FN_CALL] fetchDueItems END - Success, item fetched');
+        setCurrentStudyStep('flashcard'); // New items from backend typically start as flashcards
+        console.log(`[StudyPage FN_CALL] fetchDueItems (Resource) - Set exercise direction: ${direction}`);
+        console.log('[StudyPage FN_CALL] fetchDueItems (Resource) END - Success, item fetched');
         return fetchedItem;
       } else {
-        console.log('[StudyPage FN_CALL] fetchDueItems - No due items returned.');
-        setCurrentItem(null);
-        console.log('[StudyPage FN_CALL] fetchDueItems END - Success, no items');
+        console.log('[StudyPage FN_CALL] fetchDueItems (Resource) - No due items returned from backend.');
+        setCurrentItem(null); // No item from backend
+        // If backend has no items, but we have pending MCQs, fetchNextStudyActivity will handle it
+        // For now, we set step to 'noItem', and the orchestrator will pick up pending items if any
+        // This avoids immediately re-triggering fetchNextStudyActivity from within the resource if the queue isn't ready.
+        // The next user action or completion of an activity will call fetchNextStudyActivity.
+        if (pendingMcqQueue().length > 0 && activitiesSinceLastPendingMcq() >= MCQ_INTERLEAVING_THRESHOLD) {
+             console.log('[StudyPage FN_CALL] fetchDueItems (Resource) - Backend empty, but pending MCQs are ready. fetchNextStudyActivity will be called.');
+             // fetchNextStudyActivity(); // Let the natural flow (e.g. after error/skip/complete) call this.
+             // Or, more proactively:
+             // setTimeout(fetchNextStudyActivity, 0); // Defer to next tick to avoid resource loop issues
+        }
+        setCurrentStudyStep('noItem');
+        console.log('[StudyPage FN_CALL] fetchDueItems (Resource) END - Success, no items');
         return null;
       }
     } catch (err: any) {
-      console.error('[StudyPage FN_CALL] fetchDueItems - Error fetching due items:', err);
+      console.error('[StudyPage FN_CALL] fetchDueItems (Resource) - Error fetching due items:', err);
       setItemError(err.message || 'Failed to fetch due items.');
       setCurrentItem(null);
-      console.log('[StudyPage FN_CALL] fetchDueItems END - Error');
+      setCurrentStudyStep('noItem'); // Ensure step reflects error state
+      console.log('[StudyPage FN_CALL] fetchDueItems (Resource) END - Error');
       return null;
     } finally {
       clearTimeout(spinnerTimeoutId);
       setShouldShowLoadingSpinner(false);
       setIsFetchingNextItem(false);
-      console.log('[StudyPage FN_CALL] fetchDueItems - Finally block executed.');
+      console.log('[StudyPage FN_CALL] fetchDueItems (Resource) - Finally block executed.');
     }
   });
 
   // Effect to manage currentStudyStep based on dueItemResource.loading and currentItem
   createEffect(() => {
-    console.log(`[StudyPage EFFECT item/loading] dueItemResource.loading: ${dueItemResource.loading}, currentItem: ${!!currentItem()}`);
-    if (dueItemResource.loading && !currentItem()) { // Only set to 'noItem' if no item is currently set (avoids flash when refetching with an item already there)
-      console.log("[StudyPage EFFECT item/loading] Setting currentStudyStep to 'noItem' (loading new item initially or after empty set)");
+    console.log(`[StudyPage EFFECT item/loading/step] dueItemResource.loading: ${dueItemResource.loading}, currentItem: ${!!currentItem()}, currentStudyStep: ${currentStudyStep()}`);
+
+    if (currentStudyStep() === 'mcq') {
+      // If step is already MCQ (set by fetchNextStudyActivity), distractor resource will run.
+      return;
+    }
+
+    if (dueItemResource.loading && !currentItem() && currentStudyStep() !== 'mcq') {
+      console.log("[StudyPage EFFECT item/loading/step] Loading new item and no current item, setting to 'noItem' (or will be updated by fetch)");
       setCurrentStudyStep('noItem'); 
-    } else if (currentItem()) {
-      console.log("[StudyPage EFFECT item/loading] Current item exists, setting currentStudyStep to 'flashcard'");
+    } else if (currentItem() && currentStudyStep() !== 'mcq') {
+      console.log("[StudyPage EFFECT item/loading/step] Current item exists, not in MCQ mode, setting currentStudyStep to 'flashcard'");
+      // This is where a newly fetched item from the resource becomes a flashcard.
+      // activitiesSinceLastPendingMcq is incremented inside the resource fetch itself.
       setCurrentStudyStep('flashcard');
-    } else if (!dueItemResource.loading && !currentItem()) {
-      console.log("[StudyPage EFFECT item/loading] No item and not loading, setting currentStudyStep to 'noItem' (e.g. no items due)");
-      setCurrentStudyStep('noItem');
+    } else if (!dueItemResource.loading && !currentItem() && currentStudyStep() !== 'mcq') {
+      console.log("[StudyPage EFFECT item/loading/step] No item and not loading, setting currentStudyStep to 'noItem' (e.g. no items due or error).");
+      // If the resource returned null (no items/error), and we are not in MCQ mode.
+      // Check if there's something in the pendingMcqQueue that could be processed now.
+      // This might be redundant if fetchNextStudyActivity is robustly called after every action.
+      if (pendingMcqQueue().length === 0 || activitiesSinceLastPendingMcq() < MCQ_INTERLEAVING_THRESHOLD) {
+        setCurrentStudyStep('noItem');
+      } else {
+        // Potentially trigger fetchNextStudyActivity here if the queue is ready and wasn't picked up
+        // However, this might lead to complex effect interactions. Better to rely on explicit calls to fetchNextStudyActivity.
+        console.log("[StudyPage EFFECT item/loading/step] No item, but pending MCQs might be ready. Awaiting next call to fetchNextStudyActivity.");
+      }
+    }
+  });
+  
+  // Effect for initialLoadComplete
+  createEffect(() => {
+    if (dailyStatsLoaded() && !initialLoadComplete()) {
+        // Considered initially loaded if stats are ready, and we are either displaying an item
+        // or have confirmed no items are available (and not in the middle of fetching).
+        if (currentItem() || (currentStudyStep() === 'noItem' && !dueItemResource.loading && !isFetchingNextItem())) {
+            setInitialLoadComplete(true);
+            console.log("[StudyPage EFFECT initialLoad] Initial load sequence complete.");
+        }
     }
   });
 
@@ -415,87 +490,72 @@ const StudyPage: Component<StudyPageProps> = (props) => {
 
   const handleFlashcardRated = async (rating: Rating) => {
     console.log(`[StudyPage FN_CALL] handleFlashcardRated START - Rating: ${rating}`);
-    const item = currentItem();
-    if (!item) {
+    const itemJustReviewed = currentItem();
+    if (!itemJustReviewed) {
       console.error("[StudyPage FN_CALL] handleFlashcardRated - No current item found.");
       setItemError("Error submitting review: Item not found.");
-      fetchDueItems();
-      console.log(`[StudyPage FN_CALL] handleFlashcardRated END - No item, fetching next.`);
+      fetchNextStudyActivity();
+      console.log(`[StudyPage FN_CALL] handleFlashcardRated END - No item, fetching next activity.`);
       return;
     }
 
-    // Check if the item was new BEFORE submitting the review
-    // item.currentState comes from getDueLearningItems in scheduler.ts
-    const wasNewItem = item.currentState === FSRSStateEnum.New;
+    const wasNewItem = itemJustReviewed.currentState === FSRSStateEnum.New;
     if (wasNewItem) {
-        console.log(`[StudyPage FN_CALL] handleFlashcardRated - Item ${item.learningId} was new. Current daily new count: ${dailyNewItemCount()}`);
+        console.log(`[StudyPage FN_CALL] handleFlashcardRated - Item ${itemJustReviewed.learningId} was new. Current daily new count: ${dailyNewItemCount()}`);
     }
 
-    console.log(`[StudyPage FN_CALL] handleFlashcardRated - Submitting review for Learning ID: ${item.learningId}`);
+    console.log(`[StudyPage FN_CALL] handleFlashcardRated - Submitting review for Learning ID: ${itemJustReviewed.learningId}`);
     try {
       const response = await messaging.sendMessage('submitReviewResult', {
-        learningId: item.learningId,
+        learningId: itemJustReviewed.learningId,
         grade: rating,
       });
       if (!response.success) {
         setItemError(`Failed to submit review: ${response.error || 'Unknown error'}`);
         console.warn(`[StudyPage FN_CALL] handleFlashcardRated - Review submission failed: ${response.error}`);
       } else {
-        // If review was successful AND the item was new, increment daily count
         if (wasNewItem) {
-          console.log(`[StudyPage FN_CALL] handleFlashcardRated - Incrementing daily new item count for item ${item.learningId}. Current UI count before increment: ${dailyNewItemCount()}`);
+          console.log(`[StudyPage FN_CALL] handleFlashcardRated - Incrementing daily new item count for item ${itemJustReviewed.learningId}.`);
           try {
             const incrementResponse = await messaging.sendMessage('incrementDailyNewItemsStudied', {});
             if (incrementResponse.success && typeof incrementResponse.updatedNewItemsStudiedToday === 'number') {
               setDailyNewItemCount(incrementResponse.updatedNewItemsStudiedToday);
               console.log(`[StudyPage FN_CALL] handleFlashcardRated - Daily new item count updated via backend to: ${incrementResponse.updatedNewItemsStudiedToday}`);
             } else {
-              console.warn('[StudyPage FN_CALL] handleFlashcardRated - Failed to increment daily new item count on backend or received invalid response:', incrementResponse.error);
-              // Fallback: Increment locally if backend fails to respond correctly, though this might lead to discrepancies.
-              // Consider if this is desired or if we should rely solely on the next getDailyStudyStats call to correct it.
-              // For now, let's increment locally to keep UI somewhat responsive if backend call fails, but log it clearly.
-              setDailyNewItemCount(prev => {
-                const newCount = prev + 1;
-                console.warn(`[StudyPage FN_CALL] handleFlashcardRated - Backend increment failed. Fallback: Locally incremented dailyNewItemCount to ${newCount}`);
-                return newCount;
-              });
+              console.warn('[StudyPage FN_CALL] handleFlashcardRated - Failed to increment daily new item count on backend:', incrementResponse.error);
+              setDailyNewItemCount(prev => prev + 1); // Fallback local increment
             }
           } catch (incrementError) {
             console.error('[StudyPage FN_CALL] handleFlashcardRated - Error sending increment message:', incrementError);
-            // Fallback for network error during increment
-            setDailyNewItemCount(prev => {
-                const newCount = prev + 1;
-                console.warn(`[StudyPage FN_CALL] handleFlashcardRated - Network error during increment. Fallback: Locally incremented dailyNewItemCount to ${newCount}`);
-                return newCount;
-              });
+            setDailyNewItemCount(prev => prev + 1); // Fallback local increment
           }
         }
       }
 
-      if (rating === Rating.Again || rating === Rating.Hard) { // Hard is not used by current UI but good to keep
-        console.log('[StudyPage FN_CALL] handleFlashcardRated - Rated Again/Hard, fetching next item.');
-        fetchDueItems();
-      } else {
-        console.log('[StudyPage FN_CALL] handleFlashcardRated - Rated Good/Easy, setting currentStudyStep to mcq.');
-        setCurrentStudyStep('mcq'); 
+      // If it was a new item and rated well, queue it for a later MCQ
+      if ((rating === Rating.Good || rating === Rating.Easy) && wasNewItem) {
+        console.log(`[StudyPage FN_CALL] handleFlashcardRated - New item ${itemJustReviewed.learningId} rated ${rating}. Adding to pending MCQ queue.`);
+        setPendingMcqQueue(prevQueue => [...prevQueue, itemJustReviewed]);
       }
+      // For ALL flashcard outcomes, proceed to the next distinct study activity.
+      fetchNextStudyActivity();
 
     } catch (err: any) {
       console.error('[StudyPage FN_CALL] handleFlashcardRated - Error submitting flashcard review:', err);
       setItemError(`Error submitting review: ${err.message}`);
-      fetchDueItems();
+      fetchNextStudyActivity(); // Attempt to recover by fetching next
     }
     console.log('[StudyPage FN_CALL] handleFlashcardRated END');
   };
 
   const handleMcqComplete = async (selectedOptionId: string | number, isCorrect: boolean) => {
     console.log(`[StudyPage FN_CALL] handleMcqComplete START - Selected: ${selectedOptionId}, Correct: ${isCorrect}`);
-    const item = currentItem();
+    const item = currentItem(); // This is the item that was just used for MCQ
     if (!item) {
       console.error("[StudyPage FN_CALL] handleMcqComplete - No current item found.");
       setItemError("Error submitting review: Item not found.")
-      fetchDueItems();
-      console.log('[StudyPage FN_CALL] handleMcqComplete END - No item, fetching next.');
+      fetchNextStudyActivity();
+      console.log('[StudyPage FN_CALL] handleMcqComplete END - No item, fetching next activity.');
       return;
     }
 
@@ -524,34 +584,37 @@ const StudyPage: Component<StudyPageProps> = (props) => {
       console.error('[StudyPage FN_CALL] handleMcqComplete - Error submitting MCQ review:', err);
       setItemError(`Error submitting review: ${err.message}`);
     } finally {
-      console.log('[StudyPage FN_CALL] handleMcqComplete - Fetching next item.');
-      fetchDueItems(); // Always fetch next item after MCQ
+      console.log('[StudyPage FN_CALL] handleMcqComplete - Fetching next activity.');
+      fetchNextStudyActivity(); // Orchestrate the next activity
     }
     console.log('[StudyPage FN_CALL] handleMcqComplete END');
   }
 
   // Effect to automatically fetch next item if MCQ step is entered but no MCQ can be formed
+  // This might need adjustment based on the new flow where MCQs are explicitly set
   createEffect(() => {
     const step = currentStudyStep();
     const item = currentItem();
     const props = mcqProps(); // This is mcqProps() from StudyPage
     const loadingDistractors = distractorResource.loading;
     const distError = distractorResource()?.error;
-    console.log(`[StudyPage EFFECT mcqGuard] Step: ${step}, Item: ${!!item}, Distractors Loading: ${loadingDistractors}, MCQ Props: ${!!props}, Dist Error: ${distError}, Item Error: ${itemError()}`);
+    const itemErr = itemError(); // Renamed to avoid conflict with `itemError` signal
+    console.log(`[StudyPage EFFECT mcqGuard] Step: ${step}, Item: ${!!item}, Distractors Loading: ${loadingDistractors}, MCQ Props: ${!!props}, Dist Error: ${distError}, Item Error: ${itemErr}`);
 
-    if (step === 'mcq' && item && !loadingDistractors && !props && !itemError()) {
+    if (step === 'mcq' && item && !loadingDistractors && !props && !itemErr) {
         if (distError) {
-            console.warn(`[StudyPage EFFECT mcqGuard] Distractor error for item ${item.learningId}: ${distError}. Fetching next item.`);
+            console.warn(`[StudyPage EFFECT mcqGuard] Distractor error for item ${item.learningId}: ${distError}. Fetching next activity.`);
         } else {
-            console.warn(`[StudyPage EFFECT mcqGuard] In MCQ step for item ${item.learningId}, but no MCQ props. Fetching next item.`);
+            console.warn(`[StudyPage EFFECT mcqGuard] In MCQ step for item ${item.learningId}, but no MCQ props (e.g., distractor issue not caught by resource). Fetching next activity.`);
         }
-        fetchDueItems();
+        fetchNextStudyActivity();
     }
   });
   
   const handleSkipClick = () => {
     console.log('[StudyPage FN_CALL] handleSkipClick');
-    fetchDueItems();
+    // Current item is skipped. Decide what's next.
+    fetchNextStudyActivity();
   }
 
   console.log('[StudyPage LIFECYCLE] Component setup complete, returning view props.');

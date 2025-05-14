@@ -406,13 +406,51 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         let llmFunctionConfig: FunctionConfig | null = null;
         try {
             const settings = await userConfigurationStorage.getValue();
+            // Removed temporary log: console.log('[Message Handlers generateLLMDistractors] Effective settings for LLM:', JSON.stringify(settings));
             if (!settings) {
                 console.error('[Message Handlers generateLLMDistractors] User settings not found.');
                 return { distractors: [], error: 'User settings not found.' };
             }
 
-            // Construct FunctionConfig from individual settings
-            if (settings.selectedLlmProvider && settings.selectedLlmProvider !== 'none') {
+            // ---- START MODIFICATION ----
+            if (settings.llmConfig && settings.llmConfig.providerId && settings.llmConfig.providerId !== 'none') {
+                const providerId = settings.llmConfig.providerId;
+                
+                llmFunctionConfig = {
+                    providerId: providerId,
+                    modelId: settings.llmConfig.modelId || '', 
+                    baseUrl: settings.llmConfig.baseUrl || '', 
+                    apiKey: settings.llmConfig.apiKey || undefined,
+                };
+
+                switch (providerId) {
+                    case 'ollama':
+                        if (!llmFunctionConfig.modelId || !llmFunctionConfig.baseUrl) {
+                            console.error('[Message Handlers generateLLMDistractors] Ollama configuration in llmConfig incomplete.');
+                            llmFunctionConfig = null;
+                        }
+                        break;
+                    case 'lmstudio':
+                        if (!llmFunctionConfig.modelId || !llmFunctionConfig.baseUrl) {
+                            console.error('[Message Handlers generateLLMDistractors] LMStudio configuration in llmConfig incomplete.');
+                            llmFunctionConfig = null;
+                        }
+                        break;
+                    case 'jan':
+                         if (!llmFunctionConfig.modelId || !llmFunctionConfig.baseUrl) {
+                            console.error('[Message Handlers generateLLMDistractors] Jan configuration in llmConfig incomplete.');
+                            llmFunctionConfig = null;
+                        }
+                        break;
+                    default:
+                        if (!llmFunctionConfig.modelId || !llmFunctionConfig.baseUrl) {
+                             console.error(`[Message Handlers generateLLMDistractors] Basic configuration (modelId, baseUrl) incomplete for provider: ${providerId}`);
+                             llmFunctionConfig = null;
+                        }
+                        break; 
+                }
+            } else if (settings.selectedLlmProvider && settings.selectedLlmProvider !== 'none') {
+                console.warn('[Message Handlers generateLLMDistractors] Using fallback to selectedLlmProvider and flat properties.');
                 llmFunctionConfig = {
                     providerId: settings.selectedLlmProvider,
                     modelId: '', 
@@ -425,7 +463,7 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
                             llmFunctionConfig.modelId = settings.ollamaModel;
                             llmFunctionConfig.baseUrl = settings.ollamaBaseUrl;
                         } else {
-                            console.error('[Message Handlers generateLLMDistractors] Ollama configuration incomplete.');
+                            console.error('[Message Handlers generateLLMDistractors] (Fallback) Ollama configuration incomplete.');
                             llmFunctionConfig = null;
                         }
                         break;
@@ -434,7 +472,7 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
                             llmFunctionConfig.modelId = settings.lmStudioModel;
                             llmFunctionConfig.baseUrl = settings.lmStudioBaseUrl;
                         } else {
-                            console.error('[Message Handlers generateLLMDistractors] LMStudio configuration incomplete.');
+                            console.error('[Message Handlers generateLLMDistractors] (Fallback) LMStudio configuration incomplete.');
                             llmFunctionConfig = null;
                         }
                         break;
@@ -443,15 +481,16 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
                             llmFunctionConfig.modelId = settings.janModel;
                             llmFunctionConfig.baseUrl = settings.janBaseUrl;
                         } else {
-                            console.error('[Message Handlers generateLLMDistractors] Jan configuration incomplete.');
+                            console.error('[Message Handlers generateLLMDistractors] (Fallback) Jan configuration incomplete.');
                             llmFunctionConfig = null;
                         }
                         break;
                     default:
-                        console.error(`[Message Handlers generateLLMDistractors] Unsupported LLM provider: ${settings.selectedLlmProvider}`);
+                        console.error(`[Message Handlers generateLLMDistractors] (Fallback) Unsupported LLM provider: ${settings.selectedLlmProvider}`);
                         llmFunctionConfig = null;
                 }
             }
+            // ---- END MODIFICATION ----
 
             if (!llmFunctionConfig) {
                 const errorMsg = 'LLM configuration is missing, incomplete, or unsupported.';
