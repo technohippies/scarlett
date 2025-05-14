@@ -39,9 +39,8 @@ import { pageInfoProcessingTimestamps } from '../../services/storage/storage';
 import type { PGlite, Transaction } from '@electric-sql/pglite';
 import { getSummarizationPrompt } from '../../services/llm/prompts/analysis';
 import { userConfigurationStorage } from '../../services/storage/storage';
-import type { FunctionConfig, UserConfiguration } from '../../services/storage/types';
+import type { FunctionConfig } from '../../services/storage/types';
 import { 
-    generateElevenLabsSpeechStream,
     generateElevenLabsSpeechWithTimestamps
 } from '../../services/tts/elevenLabsService';
 import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';

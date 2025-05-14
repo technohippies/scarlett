@@ -622,18 +622,22 @@ export default defineContentScript({
                 console.log('[Scarlett CS TTS] Response from BG:', response);
 
                 if (response && response.success && response.audioDataUrl) {
+                    setAlignmentData(response.alignmentData || null); // Update signal
                     return { audioDataUrl: response.audioDataUrl, alignment: response.alignmentData };
                 } else if (response && response.useBrowserTTS) {
                     // This case should ideally not happen if background is forced to ElevenLabs and EL fails.
                     // If it does, it means the background explicitly told us to try browser TTS.
                     // However, per user request, we are removing direct browser.tts calls from content script.
                     console.warn('[Scarlett CS TTS] Background suggested browser TTS, but direct browser TTS is disabled in content script.');
+                    setAlignmentData(null); // Clear signal
                     return { error: response.error || 'Browser TTS suggested by background, but not enabled here.', alignment: null };
                 } else {
+                    setAlignmentData(null); // Clear signal
                     return { error: response?.error || 'Unknown TTS error from background.', alignment: null };
                 }
             } catch (error) {
                 console.error('[Scarlett CS TTS] Error sending/processing TTS request to background:', error);
+                setAlignmentData(null); // Clear signal in case of error
                 return { error: error instanceof Error ? error.message : 'Failed to send TTS request to background.', alignment: null };
             }
         };
