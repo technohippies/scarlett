@@ -210,7 +210,6 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
       showMoodSelector={showMoodSelector}
       onMoodSelect={handleMoodSelect}
       currentStreak={() => streakData()?.currentStreak ?? 0}
-      longestStreak={() => streakData()?.longestStreak ?? 0}
       streakLoading={() => streakData.loading}
       isPageReady={isPageReady}
       dailyGoalCompleted={dailyGoalCompleted}

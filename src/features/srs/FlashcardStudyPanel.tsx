@@ -50,12 +50,11 @@ export const FlashcardStudyPanel: Component<FlashcardStudyPanelProps> = (props) 
 
       {/* Study Button */}
       <Button 
-        variant="outline" 
-        size="lg"
-        class={`w-full`}
+        size="xl"
+        class={`w-full flex items-center justify-center gap-2`}
         onClick={props.onStudyClick}
       >
-        <BookOpen size={18} weight="bold" class="mr-2" />
+        <BookOpen size={18} weight="fill" /> 
         {i18n().get('flashcardPanelButtonStudy', 'Study')}
       </Button>
     </div>

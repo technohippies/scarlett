@@ -23,7 +23,6 @@ export default {
     isPageReady: () => true,
     // Add default mock accessors for streak data and loading state
     currentStreak: () => 0,
-    longestStreak: () => 0,
     streakLoading: () => false,
     // Add default mock for other new props if not already present
     summary: () => null,
@@ -61,7 +60,13 @@ export const Error = {
 // Story: Loaded with Data
 export const LoadedWithData = {
   args: {
-    summaryData: { dueCount: 5, reviewCount: 12, newCount: 3 },
+    summary: () => ({ dueCount: 5, reviewCount: 12, newCount: 3 }),
+    summaryLoading: () => false,
+    // Ensure other relevant props for a "loaded" state are set if needed, e.g.:
+    currentStreak: () => 10, 
+    streakLoading: () => false,
+    isPageReady: () => true,
+    dailyGoalCompleted: () => false, // So the study panel is visible
   },
 };
 
@@ -76,5 +81,14 @@ export const LoadedZeroCounts = {
 export const LoadedNoSummaryData = {
   args: {
     summaryData: null, // Explicitly null after loading
+  },
+};
+
+// Story: Daily Goal Completed (Study Panel Hidden)
+export const DailyGoalCompleted = {
+  args: {
+    summaryData: { dueCount: 5, reviewCount: 12, newCount: 3 }, // Provide some summary data for context
+    dailyGoalCompleted: () => true,
+    currentStreak: () => 7, // Example streak data
   },
 }; 
