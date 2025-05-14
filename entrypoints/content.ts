@@ -5,7 +5,7 @@ import {
     type ShadowRootContentScriptUi, 
 } from '#imports'; // Use WXT's auto-imports
 import { defineExtensionMessaging } from '@webext-core/messaging'; // Correct import for messaging
-import type { BackgroundProtocolMap } from '../src/background/handlers/message-handlers';
+import type { BackgroundProtocolMap } from '../src/shared/messaging-types';
 
 // Features
 import LearningWordWidget from '../src/features/learning/LearningWordWidget';
@@ -349,7 +349,6 @@ export default defineContentScript({
                 const textNode = currentNode as Text;
                 const textContent = textNode.nodeValue || '';
                 let match;
-                let currentIndex = 0; // Keep track of position within the nodeValue
 
                  // Reset regex lastIndex for each new node
                 wordRegex.lastIndex = 0; 

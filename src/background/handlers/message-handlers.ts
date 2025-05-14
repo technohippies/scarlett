@@ -53,6 +53,7 @@ import {
     recordStudyActivityToday
 } from '../../services/db/streaks';
 import { registerLlmDistractorHandlers } from './llm-distractor-handlers';
+import type { EmbeddingResult } from '../../services/llm/embedding';
 // import type { LearningDirection, StudyItem } from '../../types/study';
 // import type { ITask } from 'pg-promise';
 
@@ -136,6 +137,29 @@ async function queryTableland(sql: string): Promise<any[]> {
 }
 // --- End Tableland Query Helper ---
 
+// --- START HELPER FUNCTION MOVED EARLIER ---
+// Helper function to call the core getEmbedding service
+async function getEmbeddingForText(text: string, config: FunctionConfig): Promise<EmbeddingResult | null> {
+    if (!text) return null;
+    console.log(`[Message Handlers getEmbeddingForText] Requesting embedding (length: ${text.length}) using provider: ${config.providerId}, model: ${config.modelId}`);
+    try {
+        // Use the imported getEmbedding function from the service
+        const embeddingServiceResult = await getEmbedding(text, config);
+        
+        if (embeddingServiceResult) {
+            console.log('[Message Handlers getEmbeddingForText] Embedding received from service.');
+            return embeddingServiceResult; // This matches the EmbeddingResult interface
+        } else {
+            console.warn('[Message Handlers getEmbeddingForText] Embedding service returned null.');
+            return null;
+        }
+    } catch (error) {
+        console.error('[Message Handlers getEmbeddingForText] Error during embedding generation:', error);
+        return null; // Return null on error to be handled by the caller
+    }
+}
+// --- END HELPER FUNCTION MOVED EARLIER ---
+
 /**
  * Registers message listeners for background script operations (SRS, etc.).
  * @param messaging The messaging instance from the main background script.
@@ -158,49 +182,64 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
                 return null; 
             }
 
-            // Construct FunctionConfig from individual settings
-            if (settings.selectedLlmProvider && settings.selectedLlmProvider !== 'none') {
+            // --- NEW: Prioritize settings.llmConfig --- 
+            if (settings.llmConfig && 
+                settings.llmConfig.providerId && settings.llmConfig.providerId !== 'none' &&
+                settings.llmConfig.modelId && 
+                settings.llmConfig.baseUrl) {
+                
+                console.log('[Message Handlers getSummaryFromLLM] Using nested llmConfig:', settings.llmConfig);
                 llmFunctionConfig = {
-                    providerId: settings.selectedLlmProvider,
-                    // Model and BaseUrl depend on the provider
-                    modelId: '', // Placeholder, to be filled based on provider
-                    baseUrl: '', // Placeholder, to be filled based on provider
-                    apiKey: undefined, // Placeholder, if applicable
+                    providerId: settings.llmConfig.providerId,
+                    modelId: settings.llmConfig.modelId,
+                    baseUrl: settings.llmConfig.baseUrl,
+                    apiKey: settings.llmConfig.apiKey, // Will be undefined if not set, which is fine
                 };
+            } else {
+                // --- FALLBACK: Construct FunctionConfig from individual flat settings --- 
+                console.log('[Message Handlers getSummaryFromLLM] Nested llmConfig not found or incomplete, attempting fallback to flat properties.');
+                if (settings.selectedLlmProvider && settings.selectedLlmProvider !== 'none') {
+                    llmFunctionConfig = {
+                        providerId: settings.selectedLlmProvider,
+                        modelId: '', // Placeholder, to be filled based on provider
+                        baseUrl: '', // Placeholder, to be filled based on provider
+                        apiKey: undefined, // Placeholder, if applicable
+                    };
 
-                switch (settings.selectedLlmProvider) {
-                    case 'ollama':
-                        if (settings.ollamaModel && settings.ollamaBaseUrl) {
-                            llmFunctionConfig.modelId = settings.ollamaModel;
-                            llmFunctionConfig.baseUrl = settings.ollamaBaseUrl;
-                        } else {
-                            console.error('[Message Handlers getSummaryFromLLM] Ollama configuration incomplete.');
+                    switch (settings.selectedLlmProvider) {
+                        case 'ollama':
+                            if (settings.ollamaModel && settings.ollamaBaseUrl) {
+                                llmFunctionConfig.modelId = settings.ollamaModel;
+                                llmFunctionConfig.baseUrl = settings.ollamaBaseUrl;
+                            } else {
+                                console.error('[Message Handlers getSummaryFromLLM] Fallback: Ollama configuration incomplete (flat properties).');
+                                llmFunctionConfig = null; // Invalidate config
+                            }
+                            break;
+                        case 'lmstudio':
+                            if (settings.lmStudioModel && settings.lmStudioBaseUrl) {
+                                llmFunctionConfig.modelId = settings.lmStudioModel;
+                                llmFunctionConfig.baseUrl = settings.lmStudioBaseUrl;
+                            } else {
+                                console.error('[Message Handlers getSummaryFromLLM] Fallback: LMStudio configuration incomplete (flat properties).');
+                                llmFunctionConfig = null; // Invalidate config
+                            }
+                            break;
+                        case 'jan':
+                            if (settings.janModel && settings.janBaseUrl) {
+                                llmFunctionConfig.modelId = settings.janModel;
+                                llmFunctionConfig.baseUrl = settings.janBaseUrl;
+                            } else {
+                                console.error('[Message Handlers getSummaryFromLLM] Fallback: Jan configuration incomplete (flat properties).');
+                                llmFunctionConfig = null; // Invalidate config
+                            }
+                            break;
+                        // Add cases for other providers if they exist (e.g., OpenAI with apiKey)
+                        default:
+                            console.error(`[Message Handlers getSummaryFromLLM] Fallback: Unsupported LLM provider: ${settings.selectedLlmProvider}`);
                             llmFunctionConfig = null; // Invalidate config
-                        }
-                        break;
-                    case 'lmstudio':
-                        if (settings.lmStudioModel && settings.lmStudioBaseUrl) {
-                            llmFunctionConfig.modelId = settings.lmStudioModel;
-                            llmFunctionConfig.baseUrl = settings.lmStudioBaseUrl;
-                        } else {
-                            console.error('[Message Handlers getSummaryFromLLM] LMStudio configuration incomplete.');
-                            llmFunctionConfig = null; // Invalidate config
-                        }
-                        break;
-                    case 'jan':
-                        if (settings.janModel && settings.janBaseUrl) {
-                            llmFunctionConfig.modelId = settings.janModel;
-                            llmFunctionConfig.baseUrl = settings.janBaseUrl;
-                        } else {
-                            console.error('[Message Handlers getSummaryFromLLM] Jan configuration incomplete.');
-                            llmFunctionConfig = null; // Invalidate config
-                        }
-                        break;
-                    // Add cases for other providers if they exist (e.g., OpenAI with apiKey)
-                    default:
-                        console.error(`[Message Handlers getSummaryFromLLM] Unsupported LLM provider: ${settings.selectedLlmProvider}`);
-                        llmFunctionConfig = null; // Invalidate config
-                }
+                    }
+                } // End of fallback construction
             }
 
             if (!llmFunctionConfig) {
@@ -425,54 +464,75 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
 
     messaging.onMessage('triggerBatchEmbedding', async () => {
         console.log('[Message Handlers] Received triggerBatchEmbedding request.');
-        // Declare variables outside the try block to ensure they are in scope for the catch block
-        let embeddingFunctionConfig: FunctionConfig | null = null;
-        let finalizedCount = 0;
-        let duplicateCount = 0;
-        let errorCount = 0; 
+        let pagesProcessedCount = 0;
+        let errorsEncountered = 0;
+        let configErrorMessage: string | null = null;
+        
+        // Declare pagesToEmbed and preliminaryEmbeddingConfig outside try for catch block access
         let pagesToEmbed: PageVersionToEmbed[] = []; 
-        let skippedDuplicatesCount = 0; 
+        let preliminaryEmbeddingConfig: FunctionConfig | null = null;
 
         try {
             const settings = await userConfigurationStorage.getValue();
             if (!settings) {
                 console.error('[Message Handlers triggerBatchEmbedding] User settings not found.');
-                return { success: false, error: 'User settings not found.' };
+                return { success: false, message: 'User settings not found.', pagesProcessed: 0, errors: 1 };
             }
 
-            // Assign to embeddingFunctionConfig declared outside
-            if (settings.embeddingModelProvider && settings.embeddingModelProvider !== 'none') {
-                embeddingFunctionConfig = {
-                    providerId: settings.embeddingModelProvider,
-                    modelId: settings.embeddingModelName || '', 
-                    baseUrl: undefined, 
-                    apiKey: undefined, 
-                };
-                switch (settings.embeddingModelProvider) {
-                    case 'ollama':
-                        embeddingFunctionConfig.baseUrl = settings.ollamaBaseUrl;
-                        break;
-                    case 'lmstudio':
-                        embeddingFunctionConfig.baseUrl = settings.lmStudioBaseUrl;
-                         break;
+            // --- Determine preliminaryEmbeddingConfig ---
+            if (settings.embeddingConfig && settings.embeddingConfig.providerId && settings.embeddingConfig.modelId && settings.embeddingConfig.baseUrl) {
+                preliminaryEmbeddingConfig = settings.embeddingConfig;
+                console.log('[Message Handlers triggerBatchEmbedding] Preliminary check: Using settings.embeddingConfig.');
+            } else {
+                console.log('[Message Handlers triggerBatchEmbedding] Preliminary check: settings.embeddingConfig not found or incomplete. Trying fallback.');
+                if (settings.embeddingModelProvider && settings.embeddingModelProvider !== 'none') {
+                    let modelId: string | null = null;
+                    let baseUrl: string | null = null;
+                    switch (settings.embeddingModelProvider) {
+                        case 'ollama':
+                            modelId = settings.ollamaEmbeddingModel || null;
+                            baseUrl = settings.ollamaBaseUrl || null;
+                            break;
+                        case 'lmstudio':
+                            modelId = settings.lmStudioEmbeddingModel || null;
+                            baseUrl = settings.lmStudioBaseUrl || null;
+                            break;
+                        case 'jan':
+                            modelId = settings.janEmbeddingModel || null;
+                            baseUrl = settings.janBaseUrl || null;
+                            break;
+                        default:
+                            console.error(`[Message Handlers triggerBatchEmbedding] Unsupported embedding provider for fallback: ${settings.embeddingModelProvider}`);
+                    }
+                    if (modelId && baseUrl) {
+                        preliminaryEmbeddingConfig = {
+                            providerId: settings.embeddingModelProvider,
+                            modelId: modelId,
+                            baseUrl: baseUrl,
+                        };
+                        console.log('[Message Handlers triggerBatchEmbedding] Preliminary check: Using flat properties for fallback.');
+                    }
                 }
             }
-
-            if (!embeddingFunctionConfig || !embeddingFunctionConfig.modelId) {
-                const errorMsg = 'Embedding model or provider not configured by user, or configuration is incomplete.';
-                console.error(`[Message Handlers triggerBatchEmbedding] ${errorMsg}`);
-                return { success: false, error: errorMsg };
+            
+            if (!preliminaryEmbeddingConfig) {
+                configErrorMessage = 'Embedding model or provider not configured by user, or configuration is incomplete.';
+                console.error(`[Message Handlers triggerBatchEmbedding] ${configErrorMessage}`);
+                return { success: false, message: configErrorMessage, pagesProcessed: 0, errors: 1 };
             }
 
-            // Call getDbInstance for its potential side effects (e.g., ensuring DB is ready)
-            // The db variable itself was not used directly in this scope.
-            await getDbInstance(); 
+            const db = await getDbInstance();
+            if (!db) {
+                console.error('[Message Handlers triggerBatchEmbedding] Database instance is null.');
+                return { success: false, message: 'Database not initialized.', pagesProcessed: 0, errors: 1 };
+            }
+
             // Assign to pagesToEmbed declared outside
             pagesToEmbed = await getPagesNeedingEmbedding();
 
             if (pagesToEmbed.length === 0) {
                 console.log('[Message Handlers triggerBatchEmbedding] No page versions found needing embedding.');
-                return { success: true, finalizedCount: 0, duplicateCount: 0, errorCount: 0 };
+                return { success: true, pagesProcessed: 0, errors: 0 };
             }
 
             console.log(`[Message Handlers triggerBatchEmbedding] Found ${pagesToEmbed.length} candidate versions to process.`);
@@ -485,7 +545,6 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
                     if (latestEmbeddedVersion && latestEmbeddedVersion.markdown_hash === page.markdown_hash) {
                         console.log(`[Message Handlers triggerBatchEmbedding] Skipping page ${page.url} (version ${page.version_id}) as its content hash matches the latest embedded version.`);
                         await deletePageVersion(page.version_id);
-                        skippedDuplicatesCount++;
                         continue;
                     }
 
@@ -494,12 +553,12 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
                     const summary = await getSummaryFromLLM(page.markdown_content);
                     if (!summary) {
                         console.warn(`[Message Handlers triggerBatchEmbedding] Summarization failed for version_id: ${page.version_id}. Skipping.`);
-                        errorCount++;
+                        errorsEncountered++;
                         continue;
                     }
                     const summaryHash = await calculateHash(summary);
 
-                    const embeddingResult = await getEmbedding(page.markdown_content, embeddingFunctionConfig);
+                    const embeddingResult = await getEmbeddingForText(page.markdown_content, preliminaryEmbeddingConfig);
                     if (embeddingResult && embeddingResult.embedding && embeddingResult.embedding.length > 0) {
                         await updatePageVersionSummaryAndCleanup({ 
                             version_id: page.version_id, 
@@ -512,40 +571,38 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
                                 console.log(`[Message Handlers triggerBatchEmbedding] Exact SUMMARY hash match found... Handling as duplicate.`);
                                 await incrementPageVersionVisitCount(latestEmbeddedVersion.version_id);
                                 await deletePageVersion(page.version_id);
-                                duplicateCount++;
                             } else {
                                 console.log(`[Message Handlers triggerBatchEmbedding] SUMMARY semantically different. Finalizing embedding.`);
                                 await finalizePageVersionEmbedding({ version_id: page.version_id, embeddingInfo: embeddingResult });
-                                finalizedCount++;
                             }
                         } else {
                             console.log(`[Message Handlers triggerBatchEmbedding] No previous embedded version found... Finalizing SUMMARY embedding.`);
                             await finalizePageVersionEmbedding({ version_id: page.version_id, embeddingInfo: embeddingResult });
-                            finalizedCount++;
                         }
+                        pagesProcessedCount++; // Increment after successful processing path
                     } else {
                         console.error(`[Message Handlers triggerBatchEmbedding] Embedding generation failed or returned empty for version_id: ${page.version_id}. Skipping.`);
-                        errorCount++;
+                        errorsEncountered++;
                         continue;
                     }
                 } catch (processingError) {
                     console.error(`[Message Handlers triggerBatchEmbedding] Error processing candidate version_id ${page.version_id}:`, processingError);
-                    errorCount++;
+                    errorsEncountered++;
                 }
             }
 
-            console.log(`[Message Handlers triggerBatchEmbedding] Batch embedding complete. Finalized: ${finalizedCount}, Skipped Duplicates: ${skippedDuplicatesCount}, Matched Summary Duplicates: ${duplicateCount}, Errors: ${errorCount}.`);
-            return { success: true, finalizedCount, duplicateCount: skippedDuplicatesCount + duplicateCount, errorCount };
+            console.log(`[Message Handlers triggerBatchEmbedding] Batch embedding complete. Pages processed: ${pagesProcessedCount}, Errors: ${errorsEncountered}.`);
+            return { success: true, pagesProcessed: pagesProcessedCount, errors: errorsEncountered };
         } catch (error: any) {
             console.error('[Message Handlers triggerBatchEmbedding] Unexpected error during batch embedding:', error);
             // Log embeddingFunctionConfig safely
-            if (embeddingFunctionConfig) { 
-                 console.error(`[Message Handlers triggerBatchEmbedding] Failed using embedding config (if available): ${JSON.stringify(embeddingFunctionConfig)}`);
+            if (preliminaryEmbeddingConfig) { 
+                 console.error(`[Message Handlers triggerBatchEmbedding] Failed using embedding config (if available): ${JSON.stringify(preliminaryEmbeddingConfig)}`);
             } else {
                  console.error('[Message Handlers triggerBatchEmbedding] Embedding configuration was not available or not set at the time of error.');
             }
-            const totalPotentialErrorCount = pagesToEmbed.length > 0 ? pagesToEmbed.length : (finalizedCount + duplicateCount + skippedDuplicatesCount + errorCount + 1);
-            return { success: false, finalizedCount, duplicateCount: skippedDuplicatesCount + duplicateCount, errorCount: totalPotentialErrorCount, error: error.message || 'Batch embedding failed.' };
+            const totalPotentialErrorCount = pagesToEmbed.length > 0 ? pagesToEmbed.length : (errorsEncountered + 1);
+            return { success: false, pagesProcessed: pagesProcessedCount, errors: totalPotentialErrorCount, message: error.message || 'Batch embedding failed.' };
         }
     });
 

@@ -89,8 +89,17 @@ export interface UserConfiguration {
     lmStudioModel?: string | null;
     janBaseUrl?: string | null;
     janModel?: string | null;
-    embeddingModelProvider?: LLMProviderId | 'none'; // Changed EmbeddingProviderType to LLMProviderId
-    embeddingModelName?: string; // e.g., 'text-embedding-ada-002' for OpenAI, or local model name
+
+    // New unified Embedding config object
+    embeddingConfig?: FunctionConfig | null;
+
+    // Old flat properties for embedding - mark as optional, to be deprecated/removed later
+    embeddingModelProvider?: LLMProviderId | 'none'; // LLMProviderId can serve for embedding too
+    ollamaEmbeddingModel?: string | null;
+    lmStudioEmbeddingModel?: string | null; // If LM Studio offers specific embedding models
+    janEmbeddingModel?: string | null;      // If Jan offers specific embedding models
+    // embeddingModelName?: string; // This was generic, provider-specific ones are better for fallbacks
+
     lastMoodEntryDate?: string | null; // YYYY-MM-DD -- Allow null
 
     // Added missing properties

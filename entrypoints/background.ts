@@ -5,8 +5,8 @@
 import { defineBackground } from '#imports';
 import { ensureDbInitialized } from '../src/services/db/init';
 import { seedInitialTags } from '../src/services/db/tags';
-import { setupContextMenu } from '../src/background/setup/context-menu-setup';
-import { registerMessageHandlers, BackgroundProtocolMap } from '../src/background/handlers/message-handlers';
+import { registerMessageHandlers } from '../src/background/handlers/message-handlers';
+import type { BackgroundProtocolMap } from '../src/shared/messaging-types';
 import { defineExtensionMessaging, Logger } from '@webext-core/messaging';
 import { checkAndResetStreakIfNeeded } from '../src/services/db/streaks';
 

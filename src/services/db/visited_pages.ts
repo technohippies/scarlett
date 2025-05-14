@@ -328,109 +328,64 @@ export interface LatestEmbeddedVersion {
     url: string;
     markdown_hash: string | null; // Hash of original markdown
     summary_hash: string | null; // Hash of the summary
-    active_embedding_dimension: number;
-    // Embedding value needs to be fetched based on dimension
+    embedding_model_id?: string | null; // Ensure this is present
+    active_embedding_dimension?: number | null; // Add this field
     embedding_512?: number[];
     embedding_768?: number[];
     embedding_1024?: number[];
 }
 
 /**
- * Finds the most recent successfully embedded version for a given URL.
- * Also retrieves the specific embedding vector based on the active dimension.
- * @param url The URL to search for.
- * @returns A promise resolving to the latest embedded version data, or null if none found.
+ * Finds the most recently successfully embedded version of a page, including its summary hash and specific embedding vectors.
+ * @param url The URL of the page to search for.
+ * @returns A Promise resolving to the latest embedded version data or null if not found.
  */
 export async function findLatestEmbeddedVersion(url: string): Promise<LatestEmbeddedVersion | null> {
     console.log(`[DB VisitedPages] findLatestEmbeddedVersion for URL: ${url}`);
-    if (!url) return null;
+    if (!url) {
+        console.error('[DB VisitedPages] URL is required for findLatestEmbeddedVersion.');
+        return null;
+    }
+
     let db: PGlite | null = null;
     try {
         db = await getDbInstance();
-        // Find the latest embedded version_id and its dimension
-        const findLatestSql = `
-            SELECT version_id, markdown_hash, summary_hash, active_embedding_dimension
+        // Corrected SQL: Removed active_embedding_dimension, select specific embedding columns.
+        // The schema stores embeddings in dimension-specific columns (embedding_512, embedding_768, embedding_1024).
+        // We also need embedding_model_id to know which model was used.
+        // According to user-provided schema, active_embedding_dimension should also be selected.
+        const sql = `
+            SELECT 
+                version_id,
+                url,
+                markdown_hash,
+                summary_hash,
+                embedding_model_id,
+                active_embedding_dimension, -- Added this column
+                embedding_512, 
+                embedding_768, 
+                embedding_1024 
             FROM page_versions
             WHERE url = $1 AND last_embedded_at IS NOT NULL
             ORDER BY last_embedded_at DESC
             LIMIT 1;
         `;
-        const latestResult = await db.query<{ 
-            version_id: number; 
-            markdown_hash: string | null; 
-            summary_hash: string | null; // Fetch summary_hash
-            active_embedding_dimension: number 
-        }>(findLatestSql, [url]);
+        // console.log(`[DB VisitedPages] Executing findLatestEmbeddedVersion SQL: ${sql} with URL: ${url}`);
+        const result = await db.query<LatestEmbeddedVersion>(sql, [url]);
 
-        if (latestResult.rows.length === 0) {
-            console.log(`[DB VisitedPages] No previously embedded version found for URL: ${url}`);
-            return null;
+        if (result.rows.length > 0) {
+            const row = result.rows[0];
+            console.log('[DB VisitedPages] Found latest embedded version:', row);
+            // The row directly matches LatestEmbeddedVersion if types are aligned (pgLite might return strings for arrays)
+            // We might need to parse stringified arrays if that's how pgLite returns them.
+            // For now, assume direct compatibility or that higher layers handle parsing if necessary.
+            return row;
         }
-
-        const latestInfo = latestResult.rows[0];
-        // --- Destructure summary_hash --- 
-        const { version_id, markdown_hash, summary_hash, active_embedding_dimension } = latestInfo;
-        console.log(`[DB VisitedPages] Found latest embedded version_id: ${version_id}, dimension: ${active_embedding_dimension}`);
-
-        // Determine the correct embedding column to select
-        let embeddingCol: string;
-        switch(active_embedding_dimension) {
-            case 512: embeddingCol = 'embedding_512'; break;
-            case 768: embeddingCol = 'embedding_768'; break;
-            case 1024: embeddingCol = 'embedding_1024'; break;
-            default: 
-                console.error(`[DB VisitedPages] Invalid active_embedding_dimension ${active_embedding_dimension} found for version ${version_id}`);
-                return null; // Or throw?
-        }
-
-        // Fetch the actual embedding vector for that version
-        const fetchEmbeddingSql = `SELECT ${embeddingCol} FROM page_versions WHERE version_id = $1;`;
-        // PGlite returns vectors as strings '[1,2,3]', need to parse
-        const embeddingResult = await db.query<{ [key: string]: string }>(fetchEmbeddingSql, [version_id]); 
-
-        if (!embeddingResult.rows[0] || !embeddingResult.rows[0][embeddingCol]) {
-            console.error(`[DB VisitedPages] Could not fetch embedding vector for version ${version_id} from column ${embeddingCol}`);
-            return null; // Embedding column was empty?
-        }
-        
-        // Parse the string representation '[1,2,3]' into number[]
-        let embeddingVector: number[] = [];
-        try {
-            const vectorString = embeddingResult.rows[0][embeddingCol];
-            embeddingVector = JSON.parse(vectorString);
-            if (!Array.isArray(embeddingVector) || !embeddingVector.every(n => typeof n === 'number')){
-                throw new Error('Parsed result is not a number array');
-            }
-        } catch (parseError) {
-             console.error(`[DB VisitedPages] Error parsing embedding vector string for version ${version_id}:`, parseError);
-             console.error(`[DB VisitedPages] Raw vector string: ${embeddingResult.rows[0][embeddingCol]}`);
-             return null; // Failed to parse
-        }
-        
-        // Construct the result object
-        const result: LatestEmbeddedVersion = {
-            version_id,
-            url,
-            markdown_hash,
-            summary_hash, // Include summary_hash
-            active_embedding_dimension
-        };
-
-        // Assign the vector to the correct property based on dimension
-        if (active_embedding_dimension === 512) {
-            result.embedding_512 = embeddingVector;
-        } else if (active_embedding_dimension === 768) {
-            result.embedding_768 = embeddingVector;
-        } else if (active_embedding_dimension === 1024) {
-            result.embedding_1024 = embeddingVector;
-        }
-        
-        console.log(`[DB VisitedPages] Successfully retrieved latest embedded version and vector for URL: ${url}`);
-        return result;
-
+        console.log('[DB VisitedPages] No successfully embedded version found for URL:', url);
+        return null;
     } catch (error: any) {
         console.error('[DB VisitedPages] Error in findLatestEmbeddedVersion:', error);
-        throw error;
+        throw error; // Re-throw to allow caller to handle
     }
 }
 
