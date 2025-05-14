@@ -88,6 +88,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   const [currentSpeechSpeed, setCurrentSpeechSpeed] = createSignal<number>(1.0);
   const [audioDataUrl, setAudioDataUrl] = createSignal<string | null>(null);
   const [ttsTarget, setTtsTarget] = createSignal<'original' | 'translated'>('original');
+  const [animationFrameId, setAnimationFrameId] = createSignal<number | null>(null);
 
   let rootRef: HTMLDivElement | undefined;
   let wordMapContainerRef: HTMLSpanElement | undefined;
@@ -117,6 +118,52 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   const isTTSBusy = () => isGeneratingTTS() || isPlayingAudio() || isBrowserTtsActive();
 
   const handlePopoverOpenChange = (isOpen: boolean) => setIsPopoverOpen(isOpen);
+
+  const updateHighlightLoop = () => {
+    const audio = currentAudio();
+    if (!audio || audio.paused || audio.ended || !wordMap() || wordMap().length === 0) {
+      if (animationFrameId()) {
+        cancelAnimationFrame(animationFrameId()!);
+        setAnimationFrameId(null);
+      }
+      // If audio stopped and highlight is still there (e.g. due to abrupt stop), clear it.
+      // However, onended/onpause should also handle this.
+      // Let's ensure highlight is cleared if loop stops and audio isn't playing.
+      if (!isPlayingAudio() && currentHighlightIndex() !== null) {
+          // console.log("[HighlightLoop] Audio stopped/ended & not playing, clearing highlight.");
+          // setCurrentHighlightIndex(null); // This might be too aggressive if pause is temporary
+      }
+      return;
+    }
+
+    const currentTime = audio.currentTime;
+    let activeIndex = -1;
+
+    for (const word of wordMap()) {
+      if (currentTime >= word.startTime && currentTime < word.endTime) {
+        activeIndex = word.index;
+        break;
+      }
+    }
+
+    if (activeIndex !== -1 && currentHighlightIndex() !== activeIndex) {
+      // console.log(`[HighlightLoop] Setting currentHighlightIndex to: ${activeIndex} (was ${currentHighlightIndex()})`);
+      setCurrentHighlightIndex(activeIndex);
+    } else if (activeIndex === -1 && currentHighlightIndex() !== null) {
+      // Check if past the end or before the start
+      const map = wordMap();
+      if (map.length > 0) {
+        if (currentTime >= (map.at(-1)?.endTime || Infinity)) {
+          // console.log(`[HighlightLoop] Past end of all words. Clearing highlight. CurrentTime: ${currentTime.toFixed(3)}, LastWordEndTime: ${(map.at(-1)?.endTime || Infinity).toFixed(3)}`);
+          setCurrentHighlightIndex(null);
+        } else if (currentTime < (map[0]?.startTime || 0)) {
+          // console.log("[HighlightLoop] Before first word. Clearing highlight.");
+          setCurrentHighlightIndex(null);
+        }
+      }
+    }
+    setAnimationFrameId(requestAnimationFrame(updateHighlightLoop));
+  };
 
   const processAlignment = (text: string, alignmentData: AlignmentData, lang: string): WordInfo[] => {
     console.log(`[processAlignment] lang: ${lang}, text: "${text.substring(0,20)}", alignment chars: ${alignmentData && alignmentData.characters ? alignmentData.characters.length : 'N/A'}`);
@@ -254,50 +301,44 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
 
             const audio = new Audio(result.audioDataUrl);
             setCurrentAudio(audio);
-            audio.onplay = () => setIsPlayingAudio(true);
-            audio.onpause = () => setIsPlayingAudio(false);
+            audio.onplay = () => {
+                setIsPlayingAudio(true);
+                if (animationFrameId()) {
+                    cancelAnimationFrame(animationFrameId()!);
+                }
+                setAnimationFrameId(requestAnimationFrame(updateHighlightLoop));
+            };
+            audio.onpause = () => {
+                setIsPlayingAudio(false);
+                if (animationFrameId()) {
+                    cancelAnimationFrame(animationFrameId()!);
+                    setAnimationFrameId(null);
+                }
+                // If paused by user action, we might want to keep the current highlight.
+                // If paused because it ended, onended will clear it.
+            };
             audio.onended = () => {
                 setIsPlayingAudio(false);
-                setCurrentHighlightIndex(null);
+                setCurrentHighlightIndex(null); // Clear highlight on end
+                if (animationFrameId()) {
+                    cancelAnimationFrame(animationFrameId()!);
+                    setAnimationFrameId(null);
+                }
             };
             audio.onerror = (e) => {
                 console.error('[Widget TTS] HTML Audio playback error:', e);
                 setTtsError('Error playing audio.');
                 setIsPlayingAudio(false);
-                setCurrentAudio(null);
+                // setCurrentAudio(null); // Keep audio for potential re-attempts or error inspection if needed
+                if (animationFrameId()) {
+                    cancelAnimationFrame(animationFrameId()!);
+                    setAnimationFrameId(null);
+                }
             };
             audio.ontimeupdate = () => {
-                if (!wordMap() || wordMap().length === 0) return;
-                const currentTime = audio.currentTime;
-                let activeIndex = -1;
-                // console.log(`[Ontimeupdate] CurrentTime: ${currentTime.toFixed(3)}, isBrowserTtsActive: ${isBrowserTtsActive()}`);
-
-                for (const word of wordMap()) {
-                    // console.log(`[Ontimeupdate] Checking word: "${word.text}", Start: ${word.startTime.toFixed(3)}, End: ${word.endTime.toFixed(3)}, Index: ${word.index}`);
-                    if (currentTime >= word.startTime && currentTime < word.endTime) {
-                        activeIndex = word.index;
-                        // console.log(`[Ontimeupdate] Match found! activeIndex set to: ${activeIndex}`);
-                        break;
-                    }
-                }
-
-                if (activeIndex !== -1 && currentHighlightIndex() !== activeIndex) {
-                    console.log(`[Ontimeupdate] Setting currentHighlightIndex to: ${activeIndex} (was ${currentHighlightIndex()})`);
-                    setCurrentHighlightIndex(activeIndex);
-                } else if (activeIndex === -1 && currentHighlightIndex() !== null && currentTime >= (wordMap().at(-1)?.endTime || Infinity)) {
-                    // If past the last word's end time and highlight is still set, clear it
-                    console.log(`[Ontimeupdate] Past end of all words. Clearing highlight. CurrentTime: ${currentTime.toFixed(3)}, LastWordEndTime: ${(wordMap().at(-1)?.endTime || Infinity).toFixed(3)}`);
-                    setCurrentHighlightIndex(null);
-                } else if (activeIndex !== -1 && currentHighlightIndex() === activeIndex) {
-                    // Already highlighting the correct word, do nothing
-                } else if (activeIndex === -1 && currentHighlightIndex() !== null) {
-                    // No match and highlight is set, but not yet past the end. Potentially in a gap, keep current highlight or clear?
-                    // For now, let's be conservative and only clear if explicitly past the end or at the very start before any word.
-                     if (currentTime < (wordMap()[0]?.startTime || 0)) {
-                        console.log("[Ontimeupdate] Before first word. Clearing highlight.");
-                        setCurrentHighlightIndex(null);
-                     }
-                }
+                // This can be removed or used for other less frequent updates if needed.
+                // For now, the requestAnimationFrame loop handles highlighting.
+                // console.log(`[Ontimeupdate] CurrentTime: ${audio.currentTime.toFixed(3)}, isBrowserTtsActive: ${isBrowserTtsActive()}`);
             };
             await audio.play();
         } else if (result?.error) {
