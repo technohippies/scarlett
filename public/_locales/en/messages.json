@@ -181,5 +181,8 @@
   },
   "embeddingPanelButtonEmbed": {
     "message": "Embed"
+  },
+  "studyPageCompletedMessage": {
+    "message": "Completed!"
   }
 } 

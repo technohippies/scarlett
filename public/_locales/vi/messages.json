@@ -185,5 +185,8 @@
   },
   "deckSelectionPanelNoDecks": {
     "message": "Không có bộ thẻ đề xuất nào cho mục tiêu học tập này."
+  },
+  "studyPageCompletedMessage": {
+    "message": "Hoàn thành!"
   }
 }

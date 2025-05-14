@@ -5,6 +5,7 @@ import type { FlashcardStatus } from '../../services/db/types';
 import { Header } from '../../components/layout/Header';
 import { Spinner } from '../../components/ui/spinner';
 import { Rating } from 'ts-fsrs';
+import type { Messages } from '../../types/i18n';
 
 // Props interface for the StudyPageView
 export interface StudyPageViewProps {
@@ -23,11 +24,20 @@ export interface StudyPageViewProps {
   flashcardStatus: FlashcardStatus;
   onFlashcardRated: (rating: Rating) => void;
   mcqProps: MCQProps | null;
+  messages?: Messages;
 }
 
 // The purely presentational Study Page component
 export const StudyPageView: Component<StudyPageViewProps> = (props) => {
   console.log('[StudyPageView LIFECYCLE] Component rendering/updating');
+
+  // Local i18n helper function
+  const i18n = () => {
+    const msgs = props.messages;
+    return {
+      get: (key: string, fallback: string) => msgs?.[key]?.message || fallback,
+    };
+  };
 
   createEffect(() => {
     console.log(`[StudyPageView PROPS] isFetchingNextItem: ${props.isFetchingNextItem}, spinnerVisible: ${props.spinnerVisible}, currentStudyStep: ${props.currentStudyStep}, itemError: ${props.itemError}`);
@@ -67,7 +77,7 @@ export const StudyPageView: Component<StudyPageViewProps> = (props) => {
     <div class="study-page-container flex flex-col font-sans bg-background min-h-screen">
       <Header onBackClick={props.onNavigateBack} />
 
-      <div class="flex-grow flex flex-col items-center p-4 md:p-8 overflow-y-auto">
+      <div class="flex-grow flex flex-col items-center pt-4 px-4 md:pt-8 md:px-8 pb-0 overflow-y-auto">
         <Switch>
           <Match when={props.spinnerVisible}>
             <div class="h-10 mb-4 text-center flex items-center justify-center text-foreground text-lg">
@@ -90,9 +100,19 @@ export const StudyPageView: Component<StudyPageViewProps> = (props) => {
                 // Fallback for the main exercise switch:
                 // Show "No items due" only if initial load is complete, not loading, no error, and noItem step
                 <Show when={props.initialLoadComplete && !props.isLoadingItem && !props.itemError && props.currentStudyStep === 'noItem'}>
-                     <p class="text-foreground text-lg text-center">
-                        🎉 No items due for review right now! Great job! 🎉
-                     </p>
+                     <div class="flex flex-col items-center justify-end flex-grow text-center">
+                        {/* Speech Bubble */}
+                        <div class="bg-neutral-200 text-neutral-900 px-6 py-3 rounded-lg shadow-md mb-3 max-w-xs">
+                            <p class="text-xl">
+                                {i18n().get('studyPageCompletedMessage', 'Completed!')}
+                            </p>
+                        </div>
+                        <img 
+                            src="/images/scarlett-supercoach/scarlett-proud-512x512.png" 
+                            alt="Scarlett Proud" 
+                            class="w-128 h-128" // Respecting user-defined size
+                        />
+                     </div>
                 </Show>
               }>
                 <Match when={props.currentStudyStep === 'flashcard' && props.itemForFlashcardReviewer !== null}>

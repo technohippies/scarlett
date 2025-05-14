@@ -124,14 +124,6 @@ export interface ModelSelectionPanelProps {
 }
 
 export const ModelSelectionPanel: Component<ModelSelectionPanelProps> = (props) => {
-    
-  // Simplified i18n getter for internal use if needed
-  // const i18n = () => {
-  //   const messages = props.messages ? props.messages() : undefined;
-  //   return {
-  //     get: (key: string, fallback: string) => messages?.[key]?.message || fallback,
-  //   };
-  // };
 
   return (
     <div class="w-full max-w-lg space-y-4">

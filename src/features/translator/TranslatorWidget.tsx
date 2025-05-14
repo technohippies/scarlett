@@ -358,7 +358,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   };
 
   const onPlayButtonClick = () => {
-    const { text: textToSpeak, lang: langCodeForTTS, actualTarget } = determineTextAndLangForTTS();
+    const { text: textToSpeak, lang: langCodeForTTS } = determineTextAndLangForTTS();
 
     if (isBrowserTtsActive()) {
         if (typeof browser !== 'undefined' && browser.tts && typeof browser.tts.stop === 'function') {
@@ -383,7 +383,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   const handlePlaySpeed = (speed: number) => {
     setIsPopoverOpen(false);
     setCurrentSpeechSpeed(speed);
-    const { text: textToSpeak, lang: langCodeForTTS, actualTarget } = determineTextAndLangForTTS();
+    const { text: textToSpeak, lang: langCodeForTTS } = determineTextAndLangForTTS();
     if (textToSpeak) {
         handleTTSAction(textToSpeak, langCodeForTTS, speed);
     }
@@ -391,7 +391,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
 
   const handleRegenerate = () => {
     setIsPopoverOpen(false);
-    const { text: textToSpeak, lang: langCodeForTTS, actualTarget } = determineTextAndLangForTTS();
+    const { text: textToSpeak, lang: langCodeForTTS } = determineTextAndLangForTTS();
     if (textToSpeak) {
         handleTTSAction(textToSpeak, langCodeForTTS, currentSpeechSpeed());
     }
@@ -425,7 +425,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                 <Show when={ttsTarget() === 'original' && wordMap().length > 0 && !isTranslationLoading() } 
                     fallback={props.textToTranslate() || "Original text"}>
                     {/* Render original text with highlighting if it's the TTS target */}
-                    <For each={wordMap()}>{(word: WordInfo, index: Accessor<number>) => (
+                    <For each={wordMap()}>{(word: WordInfo, _index: Accessor<number>) => (
                         <span
                             class="scarlett-word-span"
                             classList={{ 'scarlett-word-highlight': currentHighlightIndex() === word.index && !isBrowserTtsActive() }}
@@ -449,7 +449,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                     >
                         {/* Render translated text with highlighting if it's the TTS target */}
                         <span ref={wordMapContainerRef}>
-                            <For each={wordMap()}>{(word: WordInfo, index: Accessor<number>) => (
+                            <For each={wordMap()}>{(word: WordInfo, _index: Accessor<number>) => (
                                 <span
                                     class="scarlett-word-span"
                                     classList={{ 'scarlett-word-highlight': currentHighlightIndex() === word.index && !isBrowserTtsActive() }}

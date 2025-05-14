@@ -21,6 +21,7 @@ import type { MCQProps } from '../../features/exercises/MCQ';
 import type { ReviewableCardData } from '../../features/exercises/Flashcard';
 import type { FlashcardStatus } from '../../services/db/types';
 import { userConfigurationStorage } from '../../services/storage/storage';
+import type { Messages } from '../../types/i18n'; // For typing messages prop
 
 // Define the protocol map for messages SENT TO the background
 interface BackgroundProtocol {
@@ -35,6 +36,7 @@ interface BackgroundProtocol {
 // Props for StudyPage
 export interface StudyPageProps {
   onNavigateBack: () => void;
+  messages?: Messages; // Added messages prop
 }
 
 // Initialize messaging client
@@ -635,6 +637,7 @@ const StudyPage: Component<StudyPageProps> = (props) => {
         onNavigateBack={props.onNavigateBack}
         currentStudyStep={currentStudyStep()}
         onFlashcardRated={handleFlashcardRated}
+        messages={props.messages} // Pass messages to the view
     />
   );
 };

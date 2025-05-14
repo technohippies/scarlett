@@ -188,5 +188,8 @@
   },
   "deckSelectionPanelNoDecks": {
     "message": "该学习目标暂无推荐的卡组。"
+  },
+  "studyPageCompletedMessage": {
+    "message": "已完成！"
   }
 } 

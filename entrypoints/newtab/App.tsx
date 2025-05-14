@@ -134,7 +134,7 @@ const App: Component = () => {
           <BookmarksPage onNavigateBack={() => navigateTo('newtab')} />
         </Match>
         <Match when={activeView() === 'study'}>
-          <StudyPage onNavigateBack={() => navigateTo('newtab')} />
+          <StudyPage onNavigateBack={() => navigateTo('newtab')} messages={messagesData()} />
         </Match>
         <Match when={activeView() === 'settings'}>
           <SettingsPage onNavigateBack={() => navigateTo('newtab')} /> 
