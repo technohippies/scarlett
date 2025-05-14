@@ -1,4 +1,4 @@
-import { createSignal, createEffect, For, Show, Component } from 'solid-js';
+import { createSignal, createEffect, For, /*Show,*/ Component } from 'solid-js';
 import { Player, type AnimationItem } from 'lottie-solid';
 
 // Define mood types
@@ -51,7 +51,7 @@ export const MoodSelector: Component<MoodSelectorProps> = (props) => {
         {(option) => {
           const isSelected = () => selectedMood() === option.mood;
           // For lottie-solid, we manage lottieRef per player if we need to interact with specific instances
-          let lottiePlayerRef: AnimationItem | undefined;
+          // let lottiePlayerRef: AnimationItem | undefined; // Removed as it's not used
 
           return (
             <button
@@ -75,7 +75,7 @@ export const MoodSelector: Component<MoodSelectorProps> = (props) => {
               }}
             >
               <Player
-                lottieRef={(ref: AnimationItem) => (lottiePlayerRef = ref)} // Store ref if needed for direct control
+                // lottieRef={(ref: AnimationItem) => (lottiePlayerRef = ref)} // Removed as lottiePlayerRef is not used
                 src={option.lottieSrc} 
                 autoplay={true} // Autoplay seems desired
                 loop={isSelected()} // Loop only if selected

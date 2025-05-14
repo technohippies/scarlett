@@ -296,8 +296,8 @@ export const SettingsProvider: ParentComponent = (props) => {
                 }
             };
 
-            addProviderTask('LLM', effectiveConfig.llmConfig, llmProviderOptions);
-            addProviderTask('Embedding', effectiveConfig.embeddingConfig, embeddingProviderOptions);
+            addProviderTask('LLM', effectiveConfig.llmConfig ?? null, llmProviderOptions);
+            addProviderTask('Embedding', effectiveConfig.embeddingConfig ?? null, embeddingProviderOptions);
             // TODO: Add check for TTS
 
             if (providersToFetch.size > 0) {

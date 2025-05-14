@@ -2,7 +2,7 @@ import { Component, createResource, createSignal, createEffect, createMemo } fro
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import NewTabPageView from './NewTabPageView';
 import type { StudySummary } from '../../services/srs/types';
-import type { BackgroundProtocolMap } from '../../background/handlers/message-handlers';
+import type { BackgroundProtocolMap } from '../../shared/messaging-types';
 import type { GetStudyStreakDataResponse, GetDailyStudyStatsResponse } from '../../shared/messaging-types';
 import type { Messages } from '../../types/i18n'; // Import Messages type
 import { useSettings } from '../../context/SettingsContext'; // <-- Import useSettings

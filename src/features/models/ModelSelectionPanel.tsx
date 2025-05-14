@@ -1,4 +1,4 @@
-import { Component, Show, For, Switch, Match } from 'solid-js';
+import { Component, Show, Switch, Match } from 'solid-js';
 import { Callout, CalloutContent } from '../../components/ui/callout';
 import { CodeBlock } from '../../components/ui/CodeBlock';
 import { Label } from '../../components/ui/label';
@@ -15,7 +15,6 @@ import {
   ComboboxTrigger 
 } from '../../components/ui/combobox';
 import type { ProviderOption } from './ProviderSelectionPanel'; // Import from sibling
-import { getOS } from '../../lib/os';
 import { Motion, Presence } from 'solid-motionone';
 
 // --- Import the new external component --- 

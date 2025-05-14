@@ -105,22 +105,3 @@ export async function getDbInstance(): Promise<PGlite> {
          throw error; // Propagate the error
     }
 }
-
-const FULL_SCHEMA = `
-  -- Bookmarks Table
-  CREATE TABLE IF NOT EXISTS bookmarks (
-  CREATE INDEX IF NOT EXISTS idx_page_versions_page_id ON page_versions(page_id);
-  CREATE INDEX IF NOT EXISTS idx_page_versions_markdown_hash ON page_versions(markdown_hash);
-  CREATE INDEX IF NOT EXISTS idx_page_versions_embedding_model_id ON page_versions(embedding_model_id);
-
-  -- Mood Entries Table
-  CREATE TABLE IF NOT EXISTS mood_entries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    mood TEXT NOT NULL,
-    entry_date TEXT NOT NULL, -- Format YYYY-MM-DD
-    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(entry_date) -- Optional: If only one mood entry per day is allowed, this enforces it.
-                       -- Remove if multiple entries per day are desired, then querying will need to be more specific (e.g., latest for date).
-  );
-  CREATE INDEX IF NOT EXISTS idx_mood_entries_entry_date ON mood_entries(entry_date);
-`;

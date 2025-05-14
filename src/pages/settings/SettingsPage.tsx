@@ -2,7 +2,7 @@ import { Component, createSignal, createEffect } from 'solid-js';
 import SettingsPageView from './SettingsPageView';
 import { useSettings } from '../../context/SettingsContext';
 import type { TtsProviderOption } from '../../features/models/TtsProviderPanel';
-import type { FunctionConfig, DomainDetail } from '../../services/storage/types';
+import type { FunctionConfig /*, DomainDetail*/ } from '../../services/storage/types';
 import { DEFAULT_ELEVENLABS_MODEL_ID } from '../../shared/constants';
 
 // Assume mock provider options are fetched or defined elsewhere if needed for the container
