@@ -647,6 +647,9 @@ export default defineContentScript({
             console.log(`[Scarlett CS displayTranslationWidget] Received. isLoading: ${isLoading}, CurrentOrig: "${currentTranslationOriginalText ? currentTranslationOriginalText.substring(0,10): 'null'}", NewOrig: "${originalText ? originalText.substring(0,10): 'null'}"`);
             console.log(`[Scarlett CS displayTranslationWidget] currentWidgetUi present: ${!!currentWidgetUi}, isVisible(): ${isVisible()}`);
 
+            // Fetch user configuration here, outside of onMount
+            const userConfig = await userConfigurationStorage.getValue();
+
             if (currentTranslationOriginalText !== originalText || !currentWidgetUi || !isVisible()) {
                 console.log('[Scarlett CS displayTranslationWidget] New interaction or widget not fully active/different text. Will hide and recreate/show.');
                 await hideWidget(); 
@@ -687,6 +690,7 @@ export default defineContentScript({
                         let unmountSolid: (() => void) | null = null;
                         if (currentWidgetUi?.shadow) { 
                             try {
+                                // userConfig is now available from the outer scope
                                 unmountSolid = render(() => {
                                     return TranslatorWidget({
                                         textToTranslate: () => widgetProps().textToTranslate,
@@ -697,7 +701,9 @@ export default defineContentScript({
                                         targetLang: () => widgetProps().targetLang,
                                         alignment: () => alignmentData(), 
                                         onTTSRequest: handleTTSRequest,
-                                        onCloseRequest: () => { console.log("[Scarlett CS onCloseRequest] User requested close."); hideWidget(); }
+                                        onCloseRequest: () => { console.log("[Scarlett CS onCloseRequest] User requested close."); hideWidget(); },
+                                        userNativeLanguage: () => userConfig?.nativeLanguage || undefined,
+                                        userLearningLanguage: () => userConfig?.targetLanguage || undefined
                                     });
                                 }, currentWidgetUi.shadow 
                                 );

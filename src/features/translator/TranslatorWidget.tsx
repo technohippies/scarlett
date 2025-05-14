@@ -1,12 +1,11 @@
-import { Component, Show, For, createSignal, createEffect, on, Accessor, ErrorBoundary } from 'solid-js';
+import { Component, Show, For, createSignal, createEffect, Accessor, ErrorBoundary } from 'solid-js';
 import { Motion } from 'solid-motionone';
 import { Button } from '../../components/ui/button';
 import { Spinner } from '../../components/ui/spinner';
 import { Popover } from '@kobalte/core/popover';
-import { Play, ArrowClockwise, PauseCircle, PlayCircle } from 'phosphor-solid';
+import { Play, ArrowClockwise } from 'phosphor-solid';
 import { Dynamic } from 'solid-js/web';
 import 'virtual:uno.css';
-import { cn } from '../../lib/utils';
 
 // --- Alignment Data Structure (Example based on ElevenLabs) ---
 export interface AlignmentData {
@@ -26,6 +25,8 @@ export interface TranslatorWidgetProps {
   onTTSRequest: (text: string, lang: string, speed: number) => Promise<{ audioDataUrl?: string; error?: string, alignment?: AlignmentData | null, browserTtsInitiated?: boolean }>;
   alignment?: Accessor<AlignmentData | null | undefined>; 
   onCloseRequest?: () => void;
+  userNativeLanguage: Accessor<string | undefined>;
+  userLearningLanguage: Accessor<string | undefined>;
 }
 
 // --- Word Data Structure ---
@@ -47,7 +48,10 @@ const HIGHLIGHT_CSS = `
   .scarlett-word-span {
     /* Base styles for all words, Motion.span will handle transitions for its own props like scale */
     background-color: transparent; /* Start transparent, classList will apply highlight color */
-    border-radius: 3px; padding: 0 0.1em; margin: 0 0.02em; display: inline-block;
+    border-radius: 3px; 
+    /* padding: 0 0.1em; */ /* REMOVED to prevent awkward spacing */
+    /* margin: 0 0.02em; */  /* REMOVED to prevent awkward spacing */
+    display: inline-block; /* Still needed for individual background/highlight */
     /* The transition for background-color is implicitly handled by classList change if Motion.span doesn't override it. */
     /* Or, if we want Motion to handle it, remove transition from here and add to Motion.span's transition prop. */
     /* For now, let's assume CSS handles background, Motion handles scale. */
@@ -83,129 +87,127 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   const [isPopoverOpen, setIsPopoverOpen] = createSignal(false);
   const [currentSpeechSpeed, setCurrentSpeechSpeed] = createSignal<number>(1.0);
   const [audioDataUrl, setAudioDataUrl] = createSignal<string | null>(null);
+  const [ttsTarget, setTtsTarget] = createSignal<'original' | 'translated'>('original');
 
   let rootRef: HTMLDivElement | undefined;
   let wordMapContainerRef: HTMLSpanElement | undefined;
+
+  // Effect to set smart default for TTS target
+  createEffect(() => {
+    const nativeLang = props.userNativeLanguage ? props.userNativeLanguage() : undefined;
+    const learningLang = props.userLearningLanguage ? props.userLearningLanguage() : undefined;
+    const pageLang = props.sourceLang ? props.sourceLang() : undefined; // Language of the text on the page
+
+    if (nativeLang && learningLang && pageLang && pageLang !== 'auto') {
+      if (pageLang.startsWith(learningLang)) {
+        setTtsTarget('original');
+      } else if (pageLang.startsWith(nativeLang)) {
+        setTtsTarget('translated');
+      } else {
+        setTtsTarget('original'); 
+      }
+    } else {
+      setTtsTarget('original'); 
+    }
+    // Logging moved to after potential setTtsTarget calls to reflect the final state for the effect run
+    console.log(`[TranslatorWidget SmartTTS] Native: ${nativeLang}, Learning: ${learningLang}, Page: ${pageLang}. TTS Target set to: ${ttsTarget()}`);
+  });
 
   const isTranslationLoading = () => props.isLoading();
   const isTTSBusy = () => isGeneratingTTS() || isPlayingAudio() || isBrowserTtsActive();
 
   const handlePopoverOpenChange = (isOpen: boolean) => setIsPopoverOpen(isOpen);
 
-  // Restore processAlignment logic for wordMap
-  createEffect(on(
-    [
-      () => props.translatedText(), 
-      // Guard against props.alignment itself being undefined
-      () => props.alignment ? props.alignment() : undefined 
-    ],
-    ([translatedTextValue, alignmentValue]) => {
-    console.log(`[WordMap Effect - Restored] Input Translated Text: "${translatedTextValue ? translatedTextValue.substring(0,20) : 'N/A'}...", Alignment present: ${!!alignmentValue}`);
-    if (alignmentValue && translatedTextValue && alignmentValue.characters && alignmentValue.character_start_times_seconds && alignmentValue.character_end_times_seconds) {
-        const processedWords = processAlignment(translatedTextValue, alignmentValue);
-        setWordMap(processedWords);
-        console.log('[WordMap Effect - Restored] Set wordMap using processAlignment. Word count:', processedWords.length, 'First 5:', JSON.parse(JSON.stringify(processedWords.slice(0,5))));
-    } else if (typeof translatedTextValue === 'string' && translatedTextValue.trim().length > 0) {
-        // Fallback: If no alignment, split by space. 
-        // This provides basic word segmentation but no timing for highlighting.
-        const wordsFromText = translatedTextValue.split(/(\s+)/).filter(s => s.trim().length > 0).map((text, index) => ({
-            text,
-            index,
-            startTime: 0, // No timing info available
-            endTime: 0    // No timing info available
-        }));
-        setWordMap(wordsFromText);
-        console.log('[WordMap Effect - Restored] Set wordMap by splitting text (no alignment). Word count:', wordsFromText.length, 'First 5:', JSON.parse(JSON.stringify(wordsFromText.slice(0,5))));
-    } else {
-        setWordMap([]);
-        console.log('[WordMap Effect - Restored] Set wordMap to empty array (no text or invalid alignment).');
-    }
-  }));
-
-  const processAlignment = (text: string, alignmentData: AlignmentData): WordInfo[] => {
+  const processAlignment = (text: string, alignmentData: AlignmentData, lang: string): WordInfo[] => {
+    console.log(`[processAlignment] lang: ${lang}, text: "${text.substring(0,20)}", alignment chars: ${alignmentData && alignmentData.characters ? alignmentData.characters.length : 'N/A'}`);
     const words: WordInfo[] = [];
-    const textSegments = text.split(/(\s+)/).filter(s => s.trim().length > 0);
-    let charIdx = 0;
-    let textSegmentIdx = 0;
 
-    while (textSegmentIdx < textSegments.length && charIdx < alignmentData.characters.length) {
-        const currentTextSegment = textSegments[textSegmentIdx];
-        let segmentStartTime = -1;
-        let segmentEndTime = -1;
-        let firstCharOfSegmentMatched = false;
-
-        let tempCharIdx = charIdx;
-        let searchOffset = 0;
-        while(tempCharIdx < alignmentData.characters.length && searchOffset < currentTextSegment.length) {
-            if (alignmentData.characters[tempCharIdx] === currentTextSegment[searchOffset]) {
-                if (!firstCharOfSegmentMatched) {
-                    segmentStartTime = alignmentData.character_start_times_seconds[tempCharIdx];
-                    firstCharOfSegmentMatched = true;
-                }
-                if (searchOffset === currentTextSegment.length - 1) {
-                    segmentEndTime = alignmentData.character_end_times_seconds[tempCharIdx];
-                    charIdx = tempCharIdx + 1;
-                    break; 
-                }
-                searchOffset++;
-            } else if (firstCharOfSegmentMatched) {
-                segmentEndTime = alignmentData.character_end_times_seconds[tempCharIdx -1] || segmentStartTime;
-                charIdx = tempCharIdx;
-                break;
-            }
-            tempCharIdx++;
-            if(tempCharIdx >= alignmentData.characters.length && firstCharOfSegmentMatched && segmentEndTime === -1){
-                segmentEndTime = alignmentData.character_end_times_seconds[alignmentData.characters.length -1];
-                charIdx = tempCharIdx;
-                break;
-            }
-        }
-
-        if (firstCharOfSegmentMatched && segmentStartTime !== -1 && segmentEndTime !== -1) {
+    if (alignmentData && alignmentData.characters && alignmentData.character_start_times_seconds && alignmentData.character_end_times_seconds &&
+        alignmentData.characters.length === alignmentData.character_start_times_seconds.length &&
+        alignmentData.characters.length === alignmentData.character_end_times_seconds.length) {
+        
+        console.log('[processAlignment] Using character-by-character strategy based on provided alignment.');
+        for (let i = 0; i < alignmentData.characters.length; i++) {
+            // Note: We are including spaces if they have timings. 
+            // If pure whitespace characters with zero duration should be skipped, add: 
+            // if (alignmentData.characters[i].trim() === '' && alignmentData.character_start_times_seconds[i] === alignmentData.character_end_times_seconds[i]) continue;
             words.push({
-                text: currentTextSegment,
-                startTime: segmentStartTime,
-                endTime: segmentEndTime,
-                index: textSegmentIdx
+                text: alignmentData.characters[i],
+                startTime: alignmentData.character_start_times_seconds[i],
+                endTime: alignmentData.character_end_times_seconds[i],
+                index: i 
             });
-        } else {
-            words.push({ text: currentTextSegment, startTime: 0, endTime: 0, index: textSegmentIdx });
         }
-        textSegmentIdx++;
-    }
-    
-    while (textSegmentIdx < textSegments.length) {
-        words.push({ text: textSegments[textSegmentIdx], startTime: 0, endTime: 0, index: textSegmentIdx });
-        textSegmentIdx++;
+        if (words.length > 0) {
+             console.log('[processAlignment Char] Processed characters. Count:', words.length, 'First char info:', JSON.parse(JSON.stringify(words[0])));
+        } else {
+            console.log('[processAlignment Char] No characters found in alignment data (or all were skipped).');
+        }
+    } else { 
+        console.warn('[processAlignment] Character alignment data missing, incomplete, or mismatched lengths. Falling back to splitting input text by character (no timing). Text:', text);
+        // Fallback: If no valid character alignment, split the input text by character for basic display
+        for (let i = 0; i < text.length; i++) {
+            words.push({
+                text: text[i],
+                startTime: 0, 
+                endTime: 0,   
+                index: i
+            });
+        }
+        if (words.length > 0) {
+            console.log('[processAlignment FallbackChar] Processed text by character split. Count:', words.length, 'First char:', JSON.parse(JSON.stringify(words[0])));
+        }
     }
     return words;
   };
   
-  const determineTextAndLangForTTS = (): { text: string | undefined, lang: string } => {
+  const determineTextAndLangForTTS = (): { text: string | undefined, lang: string, actualTarget: 'original' | 'translated' } => {
     const originalText = props.textToTranslate();
     const translatedTextValue = props.translatedText();
+    const sLang = props.sourceLang ? props.sourceLang() || 'en' : 'en';
+    const tLang = props.targetLang ? props.targetLang() || 'en' : 'en';
+    const currentTarget = ttsTarget(); // 'original' or 'translated'
+
     let text: string | undefined;
     let lang: string;
+    let actualTarget = currentTarget; // Track which text is actually chosen
 
-    if (translatedTextValue && translatedTextValue.trim() !== "") {
-        text = translatedTextValue;
-        lang = props.targetLang ? props.targetLang() || 'en' : 'en';
-    } else if (originalText && originalText.trim() !== "") {
+    if (currentTarget === 'original') {
+      if (originalText && originalText.trim() !== "") {
         text = originalText;
-        // Use sourceLang for original text if available, otherwise fallback
-        lang = props.sourceLang ? props.sourceLang() || 'en' : 'en';
-    } else {
+        lang = sLang;
+      } else if (translatedTextValue && translatedTextValue.trim() !== "") { // Fallback to translated if original is empty
+        text = translatedTextValue;
+        lang = tLang;
+        actualTarget = 'translated'; // Indicate fallback
+        console.log('[TranslatorWidget TTS] Original preferred but empty, fell back to translated.');
+      } else {
         text = undefined;
-        // Default lang if no text, though it won't be used if text is undefined
-        lang = props.targetLang ? props.targetLang() || 'en' : 'en'; 
+        lang = sLang; // Default to source lang even if text is undefined
+      }
+    } else { // currentTarget === 'translated'
+      if (translatedTextValue && translatedTextValue.trim() !== "") {
+        text = translatedTextValue;
+        lang = tLang;
+      } else if (originalText && originalText.trim() !== "") { // Fallback to original if translated is empty
+        text = originalText;
+        lang = sLang;
+        actualTarget = 'original'; // Indicate fallback
+        console.log('[TranslatorWidget TTS] Translated preferred but empty, fell back to original.');
+      } else {
+        text = undefined;
+        lang = tLang; // Default to target lang
+      }
     }
-    return { text, lang };
+    console.log(`[TranslatorWidget determineTTS] Preferred: ${currentTarget}, Actual: ${actualTarget}, Text: "${text ? text.substring(0,15) : 'N/A'}...", Lang: ${lang}`);
+    return { text, lang, actualTarget };
   };
 
   const handleTTSAction = async (text: string, lang: string, speed: number) => {
     console.log('[Widget TTS] Requesting TTS for:', `"${text.substring(0,20)}..."`, 'lang:', lang, 'speed:', speed);
     if (!text || !lang) {
         setTtsError("Text or language is missing for TTS request.");
+        setWordMap([]); // Clear wordMap on error
         return;
     }
 
@@ -214,7 +216,6 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
         setCurrentAudio(null);
     }
     setIsPlayingAudio(false);
-    // Guard against 'browser' not being defined in non-extension environments (like Storybook)
     if (typeof browser !== 'undefined' && browser.tts && typeof browser.tts.stop === 'function') {
         browser.tts.stop();
     }
@@ -222,6 +223,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
     setAudioDataUrl(null);
     setTtsError(null);
     setCurrentHighlightIndex(null); 
+    setWordMap([]); // Clear wordMap initially before new TTS
     setIsGeneratingTTS(true);
 
     try {
@@ -230,19 +232,32 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
 
         if (result?.browserTtsInitiated) {
             setIsBrowserTtsActive(true);
+            // For browser TTS, we don't get alignment, so split the text for basic word display
+            const wordsFromText = text.split(/(\s+)/).filter(s => s.trim().length > 0).map((t, idx) => ({ text: t, index: idx, startTime: 0, endTime: 0 }));
+            setWordMap(wordsFromText);
             if (result.error) {
                 setTtsError(result.error);
                 setIsBrowserTtsActive(false);
+                setWordMap([]); // Clear on error
             }
         } else if (result?.audioDataUrl) {
             setAudioDataUrl(result.audioDataUrl);
+            // Process wordMap with alignment if available, for the *actually spoken text*
+            if (result.alignment) {
+                const processedWords = processAlignment(text, result.alignment, lang);
+                setWordMap(processedWords);
+            } else {
+                // Fallback: If no alignment, split the spoken text by space.
+                const wordsFromText = text.split(/(\s+)/).filter(s => s.trim().length > 0).map((t, idx) => ({ text: t, index: idx, startTime: 0, endTime: 0 }));
+                setWordMap(wordsFromText);
+            }
+
             const audio = new Audio(result.audioDataUrl);
             setCurrentAudio(audio);
             audio.onplay = () => setIsPlayingAudio(true);
             audio.onpause = () => setIsPlayingAudio(false);
             audio.onended = () => {
                 setIsPlayingAudio(false);
-                setCurrentAudio(null);
                 setCurrentHighlightIndex(null);
             };
             audio.onerror = (e) => {
@@ -287,19 +302,22 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
             await audio.play();
         } else if (result?.error) {
             setTtsError(result.error);
+            setWordMap([]); // Clear on error
         } else {
             setTtsError('TTS generation failed to produce audio or an error.');
+            setWordMap([]); // Clear on failure
         }
     } catch (error: any) {
         console.error('[Widget TTS] Error in handleTTSAction catch block:', error);
         setTtsError(error.message || 'Failed to handle TTS action.');
+        setWordMap([]); // Clear on catch
     } finally {
         setIsGeneratingTTS(false);
     }
   };
 
   const onPlayButtonClick = () => {
-    const { text: textToSpeak, lang: langCodeForTTS } = determineTextAndLangForTTS();
+    const { text: textToSpeak, lang: langCodeForTTS, actualTarget } = determineTextAndLangForTTS();
 
     if (isBrowserTtsActive()) {
         if (typeof browser !== 'undefined' && browser.tts && typeof browser.tts.stop === 'function') {
@@ -313,6 +331,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
         if (isPlayingAudio()) {
             currentAudio()!.pause();
         } else {
+            currentAudio()!.currentTime = 0; // Reset to start for replaying
             currentAudio()!.play();
         }
     } else if (textToSpeak) {
@@ -323,7 +342,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
   const handlePlaySpeed = (speed: number) => {
     setIsPopoverOpen(false);
     setCurrentSpeechSpeed(speed);
-    const { text: textToSpeak, lang: langCodeForTTS } = determineTextAndLangForTTS();
+    const { text: textToSpeak, lang: langCodeForTTS, actualTarget } = determineTextAndLangForTTS();
     if (textToSpeak) {
         handleTTSAction(textToSpeak, langCodeForTTS, speed);
     }
@@ -331,7 +350,7 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
 
   const handleRegenerate = () => {
     setIsPopoverOpen(false);
-    const { text: textToSpeak, lang: langCodeForTTS } = determineTextAndLangForTTS();
+    const { text: textToSpeak, lang: langCodeForTTS, actualTarget } = determineTextAndLangForTTS();
     if (textToSpeak) {
         handleTTSAction(textToSpeak, langCodeForTTS, currentSpeechSpeed());
     }
@@ -360,44 +379,47 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                 <Button size="sm" onClick={reset} class="mt-2">Try to reset</Button>
             </div>
         )}>
-            {/* Row 1: Original Text (textToTranslate) - Larger base size, muted */}
-            <div class="text-lg text-muted-foreground mb-1 min-h-[1.5em] flex items-center flex-wrap">
-                {props.textToTranslate() || "Original text"}
+            {/* Row 1: Original Text (textToTranslate) */}
+            <div class="text-lg py-2 mb-1 flex items-center flex-wrap">
+                <Show when={ttsTarget() === 'original' && wordMap().length > 0 && !isTranslationLoading() } 
+                    fallback={props.textToTranslate() || "Original text"}>
+                    {/* Render original text with highlighting if it's the TTS target */}
+                    <For each={wordMap()}>{(word: WordInfo, index: Accessor<number>) => (
+                        <span
+                            class="scarlett-word-span"
+                            classList={{ 'scarlett-word-highlight': currentHighlightIndex() === word.index && !isBrowserTtsActive() }}
+                            data-word-index={word.index}
+                        >
+                            {word.text.replace(/ /g, '\u00A0')}
+                        </span>
+                    )}
+                    </For>
+                </Show>
             </div>
 
-            {/* Row 2: Translated Text / Loading State - Larger, prominent, highlightable */}
-            <div class="text-2xl font-semibold text-foreground mb-1 min-h-[2em] flex items-center flex-wrap">
+            {/* Row 2: Translated Text / Loading State */}
+            <div class="text-lg py-2 mb-1 flex items-center flex-wrap">
                 <Show 
                     when={!isTranslationLoading()} 
                     fallback={<span class="text-muted-foreground/80">{isTranslationLoading() ? "Translating..." : (props.translatedText() ? " " : "Enter text for translation output")}</span>}
                 >
-                    {/* wordMapContainerRef is on the span that will contain the highlightable words */}
-                    <span ref={wordMapContainerRef}>
-                        {(() => {
-                            console.log('[TranslatorWidget Row 2] Before <For>, wordMap() is:', JSON.parse(JSON.stringify(wordMap())));
-                            return null; 
-                        })()}
-                        <Show when={wordMap() && wordMap().length > 0}>
-                            <For each={wordMap()}>{(word: WordInfo, index: Accessor<number>) => {
-                                if (index() === 0) {
-                                    console.log('[TranslatorWidget Row 2] <For> loop, first word object:', JSON.parse(JSON.stringify(word)));
-                                    console.log('[TranslatorWidget Row 2] <For> loop, first word.text type:', typeof word.text);
-                                    console.log('[TranslatorWidget Row 2] <For> loop, first word.text value:', word.text);
-                                }
-                                const textToDisplay = (typeof word.text === 'string') ? word.text.replace(/ /g, '\u00A0') : '[INVALID_TEXT]';
-                                return (
-                                    <span
-                                        class="scarlett-word-span"
-                                        classList={{ 'scarlett-word-highlight': currentHighlightIndex() === word.index && !isBrowserTtsActive() }}
-                                        data-word-index={word.index}
-                                    >
-                                        {textToDisplay}
-                                    </span>
-                                );
-                            }}
+                    <Show when={ttsTarget() === 'translated' && wordMap().length > 0}
+                        fallback={props.translatedText() || ""} // Show plain translated text if not target or no wordMap
+                    >
+                        {/* Render translated text with highlighting if it's the TTS target */}
+                        <span ref={wordMapContainerRef}>
+                            <For each={wordMap()}>{(word: WordInfo, index: Accessor<number>) => (
+                                <span
+                                    class="scarlett-word-span"
+                                    classList={{ 'scarlett-word-highlight': currentHighlightIndex() === word.index && !isBrowserTtsActive() }}
+                                    data-word-index={word.index}
+                                >
+                                    {word.text.replace(/ /g, '\u00A0')}
+                                </span>
+                            )}
                             </For>
-                        </Show>
-                    </span>
+                        </span>
+                    </Show>
                 </Show>
             </div>
 
@@ -415,46 +437,58 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
 
         {/* Row 4: TTS Controls */}
         <Show when={showTTSFeature()}> 
-            <div class="mt-auto pt-1 flex items-center gap-2"> 
-                <Button
-                    variant="ghost"
-                    size="icon"
-                    class={cn(
-                        "p-1.5 rounded-md hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
-                        (isPlayingAudio() || isBrowserTtsActive()) ? "text-primary" : "text-muted-foreground hover:text-foreground"
-                    )}
-                    title={isBrowserTtsActive() ? "Stop Browser TTS / Replay" : (isPlayingAudio() ? "Pause" : "Play")}
-                    onClick={onPlayButtonClick}
-                    disabled={isGeneratingTTS() || ( !(props.translatedText() || props.textToTranslate()) && !audioDataUrl() )}
-                >
-                    <Show when={isGeneratingTTS()}>
-                        <Spinner />
-                    </Show>
-                    <Show when={!isGeneratingTTS()}>
-                        {(isPlayingAudio() || isBrowserTtsActive()) ? <PauseCircle size={22} /> : <PlayCircle size={22} />}
-                    </Show>
-                </Button>
-                
-                <div class="relative">
-                    <Popover placement="top-start" gutter={4} open={isPopoverOpen()} onOpenChange={handlePopoverOpenChange}>
-                        <Popover.Trigger 
-                            aria-label="More options" 
-                            disabled={isGeneratingTTS() || !(props.translatedText() || props.textToTranslate())} 
-                            class="inline-flex items-center justify-center whitespace-nowrap rounded-md p-1.5 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4"><path d="m6 9 6 6 6-6" /></svg>
-                        </Popover.Trigger>
-                        <Show when={isPopoverOpen()}>
-                            <Popover.Content class={POPOVER_CONTENT_CLASS} onOpenAutoFocus={(e) => e.preventDefault()}>
-                                <div class="flex flex-col">
-                                    <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.85)} disabled={isTTSBusy()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.85x </Button>
-                                    <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.70)} disabled={isTTSBusy()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.70x </Button>
-                                    <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={handleRegenerate} disabled={isTTSBusy()}> <ArrowClockwise weight="regular" class="mr-2 size-4" /> Regenerate </Button>
-                                </div>
-                            </Popover.Content>
+            <div class="mt-auto pt-1"> {/* Full width container for the button area */} 
+              <Show when={isGeneratingTTS()}
+                fallback={
+                  <Show when={audioDataUrl()} /* Audio has been generated / is ready */
+                    fallback={ /* No audio generated yet -> "Generate Audio" button */
+                      <Button variant="outline" size="lg" onClick={onPlayButtonClick} class="w-full"
+                        disabled={isGeneratingTTS() || isTranslationLoading() || !(props.translatedText() || props.textToTranslate())}
+                      >
+                        Generate Audio
+                      </Button>
+                    }
+                  >
+                    {/* Audio is ready -> "Play Again/Playing..." button with popover */} 
+                    <div class="flex items-center">
+                      <Button variant="outline" size="lg" onClick={onPlayButtonClick}
+                        class="flex-grow rounded-r-none" 
+                        disabled={isGeneratingTTS() || isTranslationLoading()} 
+                      >
+                        <Show when={isPlayingAudio()} fallback="Play Again">
+                           Playing...
                         </Show>
-                    </Popover>
-                </div>
+                      </Button>
+                      {/* Popover for speed/regenerate */} 
+                      <div class="relative">
+                        <Popover placement="top-end" gutter={4} open={isPopoverOpen()} onOpenChange={handlePopoverOpenChange}>
+                          <Popover.Trigger
+                            aria-label="More options"
+                            disabled={isGeneratingTTS() || isTranslationLoading()} 
+                            class="inline-flex items-center justify-center whitespace-nowrap rounded-l-none rounded-r-md border-l-0 w-11 h-11 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4"><path d="m6 9 6 6 6-6" /></svg>
+                          </Popover.Trigger>
+                          <Show when={isPopoverOpen()}>
+                            <Popover.Content class={POPOVER_CONTENT_CLASS} onOpenAutoFocus={(e) => e.preventDefault()}>
+                              <div class="flex flex-col">
+                                <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.85)} disabled={isTTSBusy()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.85x </Button>
+                                <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.70)} disabled={isTTSBusy()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.70x </Button>
+                                <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={handleRegenerate} disabled={isTTSBusy()}> <ArrowClockwise weight="regular" class="mr-2 size-4" /> Regenerate </Button>
+                              </div>
+                            </Popover.Content>
+                          </Show>
+                        </Popover>
+                      </div>
+                    </div>
+                  </Show>
+                }
+              >
+                {/* Generating TTS -> Spinner button */} 
+                <Button variant="outline" size="lg" disabled class="w-full">
+                  <Spinner class="mr-2" /> Generating...
+                </Button>
+              </Show>
             </div>
         </Show>
     </Motion.div>
