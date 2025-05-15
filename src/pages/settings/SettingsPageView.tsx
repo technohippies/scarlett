@@ -2,7 +2,7 @@ import type { Component, Accessor } from "solid-js";
 import { For, Show } from "solid-js";
 import { Button } from "../../components/ui/button";
 import { 
-  Brain, ChartLine, SpeakerHigh,
+  Brain, ChartLine, SpeakerHigh, Microphone,
   TrendUp, EyeSlash
 } from "phosphor-solid";
 import {
@@ -26,6 +26,7 @@ import ProviderSelectionPanel from "../../features/models/ProviderSelectionPanel
 import ModelSelectionPanel from "../../features/models/ModelSelectionPanel";
 import ConnectionTestPanel from "../../features/models/ConnectionTestPanel";
 import { TtsProviderPanel, type TtsProviderOption } from "../../features/models/TtsProviderPanel";
+import { VadPanel, type VadOption } from "../../features/models/VadPanel";
 import { Header } from '../../components/layout/Header';
 
 // Menu Items
@@ -33,6 +34,7 @@ const settingsMenuItems = [
   { title: "LLM", url: "/settings/models/llm", icon: Brain, sectionKey: 'llm' },
   { title: "Embedding", url: "/settings/models/embedding", icon: ChartLine, sectionKey: 'embedding' },
   { title: "TTS", url: "/settings/models/tts", icon: SpeakerHigh, sectionKey: 'tts' },
+  { title: "VAD", url: "/settings/models/vad", icon: Microphone, sectionKey: 'vad' },
 ];
 
 const censorshipMenuItems = [
@@ -103,6 +105,17 @@ interface SettingsPageViewProps {
   onFocusModeToggle: (isEnabled: boolean) => void;
   onFocusModeAddDomain: (domainName: string) => void;
   onFocusModeRemoveDomain: (domainName: string) => void;
+
+  // --- VAD Props ---
+  availableVadOptions: VadOption[];
+  selectedVadId: Accessor<string | undefined>;
+  onSelectVad: (vadId: string | undefined) => void;
+  isVadTesting: Accessor<boolean>;
+  onTestVad: () => void;
+  onStopVadTest?: () => void;
+  vadStatusMessage: Accessor<string | null>;
+  vadTestError: Accessor<Error | null>;
+  isVadLoading: Accessor<boolean>;
 }
 
 
@@ -308,6 +321,24 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                         onPlayTestAudio={props.onTtsPlayAudio}
                         testError={props.ttsTestError}
                       />
+                    </Show>
+
+                    {/* --- VAD Section --- */}
+                    <Show when={props.activeSection() === 'vad'}>
+                      <div class="space-y-4">
+                        <h2 class="text-xl font-semibold text-foreground">Voice Activity Detection (VAD)</h2>
+                        <VadPanel
+                          availableVadOptions={props.availableVadOptions}
+                          selectedVadId={props.selectedVadId}
+                          onSelectVad={props.onSelectVad}
+                          isVadTesting={props.isVadTesting}
+                          onTestVad={props.onTestVad}
+                          onStopVadTest={props.onStopVadTest}
+                          vadStatusMessage={props.vadStatusMessage}
+                          vadTestError={props.vadTestError}
+                          isVadLoading={props.isVadLoading}
+                        />
+                      </div>
                     </Show>
 
                     {/* --- Redirects Section --- */} 

@@ -22,6 +22,7 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.2.17",
     "@mozilla/readability": "^0.6.0",
+    "@ricky0123/vad-web": "^0.0.24",
     "@solid-primitives/scheduled": "^1.5.1",
     "@solidjs/router": "^0.15.3",
     "@types/highlight.js": "^10.1.0",

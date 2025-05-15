@@ -75,9 +75,25 @@ export default defineConfig({
         resources: [
             "postgres.wasm",
             "postgres.data",
-            "vector.tar.gz"
-            // 'entrypoints/blockpage/index.html' removed from here
+            "vector.tar.gz",
+            "models/silero_vad.onnx" // Your original VAD model
         ],
+      },
+      {
+        matches: ["<all_urls>"], // For VAD library assets
+        resources: [
+            "vad-assets/vad.worklet.bundle.min.js",
+            "vad-assets/silero_vad_legacy.onnx",
+            "vad-assets/silero_vad_v5.onnx",
+            "vad-assets/ort-wasm.wasm",
+            "vad-assets/ort-wasm-simd.wasm",
+            "vad-assets/ort-wasm-threaded.wasm",
+            "vad-assets/ort-wasm-simd-threaded.wasm",
+            "vad-assets/ort-wasm.js",
+            "vad-assets/ort-wasm-simd.js",
+            "vad-assets/ort-wasm-threaded.js",
+            "vad-assets/ort-wasm-simd-threaded.js"
+        ]
       }
     ],
     // Add back other manifest sections like side_panel, action, commands if needed
