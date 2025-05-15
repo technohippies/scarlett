@@ -2,7 +2,7 @@ import { Component, Show, For, Accessor, createSignal, createEffect } from 'soli
 import { Button } from '../../components/ui/button';
 import { Label } from '../../components/ui/label';
 import { cn } from '../../lib/utils';
-import { SpeakerSimpleHigh, Record as RecordIcon, StopCircle } from 'phosphor-solid';
+import { SpeakerSimpleHigh, Record as RecordIcon, StopCircle, PlayCircle } from 'phosphor-solid';
 import { Spinner } from '../../components/ui/spinner';
 // import * as ort from 'onnxruntime-web'; // Commented out
 // import { browser } from 'wxt/browser'; // Commented out
@@ -50,6 +50,10 @@ export interface VadPanelProps {
     vadStatusMessage: Accessor<string | null>;
     vadTestError: Accessor<Error | null>;
     isVadLoading?: Accessor<boolean>;
+
+    // New props for playback
+    lastRecordedAudioUrl: Accessor<string | null>;
+    onPlayLastRecording: () => void;
 }
 
 
@@ -59,6 +63,7 @@ export const VadPanel: Component<VadPanelProps> = (props) => {
     const selectedVad = () => props.selectedVadId();
     const isSileroSelected = () => selectedVad() === 'silero_vad';
     const isLoading = () => props.isVadLoading && props.isVadLoading();
+    const canPlayRecording = () => !!props.lastRecordedAudioUrl();
 
     return (
         <div class="w-full max-w-lg space-y-6">
@@ -139,6 +144,14 @@ export const VadPanel: Component<VadPanelProps> = (props) => {
                         <p class="text-sm text-muted-foreground">Status: {props.vadStatusMessage()}</p>
                     </Show>
                     
+                    {/* Optional: Display <audio> element for direct control */}
+                    <Show when={canPlayRecording() && !props.isVadTesting() && !isLoading()}>
+                        <div class="mt-2">
+                            <Label class="text-xs mb-1 block">Last Captured Audio:</Label>
+                            <audio controls src={props.lastRecordedAudioUrl()!} class="w-full h-10"></audio>
+                        </div>
+                    </Show>
+
                     <Show when={props.vadTestError() && !isLoading()}>
                         <p class="text-destructive">Error: {props.vadTestError()?.message}</p>
                     </Show>

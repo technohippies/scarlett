@@ -116,6 +116,8 @@ interface SettingsPageViewProps {
   vadStatusMessage: Accessor<string | null>;
   vadTestError: Accessor<Error | null>;
   isVadLoading: Accessor<boolean>;
+  lastRecordedAudioUrl: Accessor<string | null>;
+  onPlayLastRecording: () => void;
 }
 
 
@@ -337,6 +339,8 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                           vadStatusMessage={props.vadStatusMessage}
                           vadTestError={props.vadTestError}
                           isVadLoading={props.isVadLoading}
+                          lastRecordedAudioUrl={props.lastRecordedAudioUrl}
+                          onPlayLastRecording={props.onPlayLastRecording}
                         />
                       </div>
                     </Show>
