@@ -162,6 +162,12 @@ async function getEmbeddingForText(text: string, config: FunctionConfig): Promis
 }
 // --- END HELPER FUNCTION MOVED EARLIER ---
 
+// --- LRCLIB and Lyrics DB Imports ---
+import { Client as LrcLibClient } from 'lrclib-api';
+import { saveLyrics, type SongLyricsRecord } from '../../services/db/lyrics';
+import type { SongDetectedMessagePayload } from '../../shared/messaging-types';
+// --- End LRCLIB Imports ---
+
 /**
  * Registers message listeners for background script operations (SRS, etc.).
  * @param messaging The messaging instance from the main background script.
@@ -171,6 +177,76 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
 
     // Register the new LLM Distractor Handlers
     registerLlmDistractorHandlers(messaging);
+
+    // --- BEGIN songDetected Handler ---
+    messaging.onMessage('songDetected', async (message) => {
+        const { trackName, artistName, albumName } = message.data;
+        console.log(`[Message Handlers songDetected] Received song: ${trackName} by ${artistName} (Album: ${albumName || 'N/A'})`);
+
+        const lrcClient = new LrcLibClient();
+        try {
+            const query = {
+                track_name: trackName,
+                artist_name: artistName,
+                album_name: albumName || undefined, // API expects undefined for missing album, not null
+            };
+            console.log('[Message Handlers songDetected] Querying lrclib.net with:', query);
+            const lyricsData = await lrcClient.findLyrics(query);
+
+            if (lyricsData) {
+                console.log('[Message Handlers songDetected] Lyrics found on lrclib.net:', lyricsData);
+                const recordToSave: Omit<SongLyricsRecord, 'id' | 'created_at' | 'updated_at'> = {
+                    lrclib_id: lyricsData.id || null,
+                    track_name: lyricsData.trackName,
+                    artist_name: lyricsData.artistName,
+                    album_name: lyricsData.albumName || null,
+                    duration: lyricsData.duration || null,
+                    instrumental: lyricsData.instrumental || false,
+                    plain_lyrics: lyricsData.plainLyrics || null,
+                    synced_lyrics: lyricsData.syncedLyrics || null,
+                    has_synced_lyrics: !!lyricsData.syncedLyrics,
+                };
+
+                console.log('[Message Handlers songDetected] Attempting to save to DB:', recordToSave);
+                const savedId = await saveLyrics(recordToSave);
+                if (savedId) {
+                    console.log(`[Message Handlers songDetected] Successfully saved/updated lyrics for "${trackName}", DB ID: ${savedId}`);
+                } else {
+                    console.error(`[Message Handlers songDetected] Failed to save lyrics for "${trackName}" to DB.`);
+                }
+            } else {
+                console.log(`[Message Handlers songDetected] No lyrics found on lrclib.net for "${trackName}" by "${artistName}".`);
+                // Optionally, save a record indicating no lyrics were found, or it's instrumental
+                // This depends on whether you want to cache "not found" results to avoid re-querying.
+                // For now, we'll only save if lyricsData is present.
+                // If it's instrumental and not found by API, we might still want to save the basic track info.
+                if (trackName && artistName) { // Basic check to at least have track and artist
+                    const instrumentalRecord: Omit<SongLyricsRecord, 'id' | 'created_at' | 'updated_at'> = {
+                        lrclib_id: null, // No lrclib ID
+                        track_name: trackName,
+                        artist_name: artistName,
+                        album_name: albumName || null,
+                        duration: null, // Unknown duration
+                        instrumental: true, // Assume instrumental if no lyrics found, or refine this logic
+                        plain_lyrics: null,
+                        synced_lyrics: null,
+                        has_synced_lyrics: false,
+                    };
+                    // Check if we already have a basic entry for this to avoid spamming instrumentals
+                    const existing = await saveLyrics(instrumentalRecord); // saveLyrics handles upsert
+                     if (existing) {
+                        console.log(`[Message Handlers songDetected] Saved/updated (assumed) instrumental track info for "${trackName}", DB ID: ${existing}`);
+                    } else {
+                        console.log(`[Message Handlers songDetected] Did not save instrumental info for "${trackName}" as it might already exist or failed.`);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error(`[Message Handlers songDetected] Error fetching or processing lyrics for "${trackName}":`, error);
+        }
+        // No explicit return value needed for this handler as per BackgroundProtocolMap Promise<void>
+    });
+    // --- END songDetected Handler ---
 
     async function getSummaryFromLLM(text: string): Promise<string | null> {
         if (!text) return null;

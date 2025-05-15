@@ -34,6 +34,7 @@
     "highlight.js": "^11.11.1",
     "lottie-solid": "^1.2.0",
     "lottie-web": "^5.12.2",
+    "lrclib-api": "^2.0.0",
     "phosphor-solid": "^1.1.5",
     "solid-js": "^1.9.6",
     "solid-motionone": "^1.0.4",

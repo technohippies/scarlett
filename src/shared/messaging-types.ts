@@ -348,5 +348,45 @@ export interface BackgroundProtocolMap {
     getStudyStreakData(data: GetStudyStreakDataRequest): Promise<GetStudyStreakDataResponse>;
     notifyDailyGoalComplete(data: NotifyDailyGoalCompleteRequest): Promise<NotifyDailyGoalCompleteResponse>;
     recordStudyActivityToday(data: RecordStudyActivityTodayRequest): Promise<RecordStudyActivityTodayResponse>;
+    songDetected(data: SongDetectedMessagePayload): Promise<void>;
 }
 // ---- END: BackgroundProtocolMap Definition ----
+
+/**
+ * Defines the structure for messages related to song detection.
+ */
+export interface SongDetectedMessagePayload {
+  trackName: string;
+  artistName: string;
+  albumName: string | null; // Album name can sometimes be null
+}
+
+export interface SongDetectedMessage {
+  type: 'songDetected';
+  payload: SongDetectedMessagePayload;
+}
+
+/**
+ * Defines the structure for lyrics data fetched from lrclib.
+ */
+export interface LyricsInfo {
+  lrclibId: number;
+  trackName: string;
+  artistName: string;
+  albumName: string | null;
+  duration?: number;
+  instrumental: boolean;
+  plainLyrics: string | null;
+  syncedLyrics: string | null; // JSON string of synced lyrics, or null
+  hasSyncedLyrics: boolean;
+}
+
+// You can expand this union type as you add more message types
+export type BackgroundMessage = SongDetectedMessage;
+
+// Example of how you might define messages sent *from* background *to* content scripts or UI
+// export interface LyricsStoredMessage {
+//   type: 'lyricsStored';
+//   payload: { lrclibId: number; success: boolean };
+// }
+// export type UIMessage = LyricsStoredMessage;

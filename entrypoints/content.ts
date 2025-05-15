@@ -60,6 +60,72 @@ export default defineContentScript({
 
     async main(ctx) {
         console.log('[Scarlett CS] Main function started.');
+        // --- Song Detection Setup ---
+        let currentTrack = '';
+        let currentArtist = '';
+        let currentAlbum: string | null = null;
+
+        async function handleSongDetection() {
+          // console.debug('[Scarlett CS][SongDetection] handleSongDetection() called by interval.'); // Keep for now
+          if (!navigator.mediaSession) {
+            // console.debug('[Scarlett CS][SongDetection] MediaSession API not available or null inside handleSongDetection.');
+            return;
+          }
+
+          const metadata = navigator.mediaSession.metadata;
+          const playbackState = navigator.mediaSession.playbackState;
+          // console.debug('[Scarlett CS][SongDetection] state:', playbackState, 'metadata:', metadata); // Keep for now
+
+          // If metadata exists, and either playbackState is 'playing' OR new metadata is different from current
+          if (metadata && (playbackState === 'playing' || (metadata.title && metadata.artist))) {
+            const trackName = metadata.title || '';
+            const artistName = metadata.artist || '';
+            const albumName = metadata.album || null;
+
+            if (
+              trackName &&
+              artistName &&
+              (trackName !== currentTrack ||
+                artistName !== currentArtist ||
+                albumName !== currentAlbum)
+            ) {
+              console.log('[Scarlett CS][SongDetection] Song detected (state: ', playbackState, '):', trackName, 'by', artistName);
+              currentTrack = trackName;
+              currentArtist = artistName;
+              currentAlbum = albumName;
+              try {
+                await messageSender.sendMessage('songDetected', { trackName, artistName, albumName });
+                console.debug('[Scarlett CS][SongDetection] Sent songDetected message to background.');
+              } catch (error) {
+                console.error('[Scarlett CS][SongDetection] Error sending songDetected:', error);
+              }
+            } else if (trackName && artistName && !(trackName !== currentTrack || artistName !== currentArtist || albumName !== currentAlbum)) {
+              // console.debug('[Scarlett CS][SongDetection] Song is the same as current, state:', playbackState, '. No action.');
+            }
+          } else {
+            // console.debug('[Scarlett CS][SongDetection] No new song detected or not playing. State:', playbackState, 'Metadata:', metadata);
+          }
+        }
+
+        function setupSongDetection() {
+          // console.debug('[Scarlett CS][SongDetection] setupSongDetection() called.'); // Keep for now
+          if (!navigator.mediaSession) {
+            // console.debug('[Scarlett CS][SongDetection] MediaSession API not available in setupSongDetection.');
+            return;
+          }
+          // Initial detection
+          // console.debug('[Scarlett CS][SongDetection] Calling initial handleSongDetection from setup.');
+          handleSongDetection();
+          // Polling fallback every 5 seconds
+          // console.debug('[Scarlett CS][SongDetection] Setting up polling interval for handleSongDetection.'); // Keep for now
+          setInterval(() => {
+            // console.debug('[Scarlett CS][SongDetection] Polling interval fired. Calling handleSongDetection...'); // Keep for now
+            handleSongDetection();
+          }, 5000); // Check every 5 seconds
+        }
+
+        // Restore the original setup call
+        setTimeout(setupSongDetection, 500);
 
         // --- Timer for Page Visit Processing ---
         let pageVisitTimerId: number | null = null;

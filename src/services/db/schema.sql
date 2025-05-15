@@ -299,3 +299,31 @@ WHERE NOT EXISTS (SELECT 1 FROM study_streak WHERE id = 1);
 -- --- END Study Streak Table ---
 
 -- Note: Removed incomplete user_configuration table placeholder
+
+-- --- Song Lyrics Table ---
+CREATE TABLE IF NOT EXISTS song_lyrics (
+    id SERIAL PRIMARY KEY,
+    lrclib_id INTEGER UNIQUE, -- ID from lrclib.net to prevent duplicates
+    track_name TEXT NOT NULL,
+    artist_name TEXT NOT NULL,
+    album_name TEXT,
+    duration INTEGER, -- Song duration in seconds
+    instrumental BOOLEAN DEFAULT FALSE,
+    plain_lyrics TEXT,
+    synced_lyrics TEXT, -- Storing as JSON string or TEXT; parsing will be done in application code
+    has_synced_lyrics BOOLEAN NOT NULL DEFAULT FALSE, -- True if synced_lyrics are available and valid
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Trigger to update updated_at timestamp for song_lyrics
+DROP TRIGGER IF EXISTS update_song_lyrics_modtime ON song_lyrics;
+CREATE TRIGGER update_song_lyrics_modtime
+BEFORE UPDATE ON song_lyrics
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
+
+-- Indices for song_lyrics table
+CREATE INDEX IF NOT EXISTS idx_song_lyrics_lrclib_id ON song_lyrics(lrclib_id);
+CREATE INDEX IF NOT EXISTS idx_song_lyrics_track_artist ON song_lyrics(track_name, artist_name);
+-- --- END Song Lyrics Table ---
