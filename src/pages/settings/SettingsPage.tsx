@@ -7,8 +7,6 @@ import { MicVAD } from '@ricky0123/vad-web';
 import type { FunctionConfig } from '../../services/storage/types';
 import { DEFAULT_ELEVENLABS_MODEL_ID } from '../../shared/constants';
 import { browser } from "wxt/browser";
-// import { IconMicrophone, IconSettings, IconSpeakerHigh, IconPalette, IconWrench, IconLink, IconFocus, IconBookOpen, IconMoodHappy, IconSparkle, IconBookmark, IconTag, IconClock } from "@/components/icons/AllIcons"; // Commented out due to persistent error
-import { useNavigate } from "@solidjs/router";
 import { pcmToWavBlob } from '../../lib/utils'; // Import the new utility
 import { transcribeElevenLabsAudio, type ElevenLabsTranscriptionResponse } from '../../services/stt/elevenLabsSttService'; // Import STT service
 
@@ -104,7 +102,7 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
 
   // --- VAD State and Handlers ---
   const availableVadOptions: VadOption[] = [
-    { id: 'silero_vad', name: 'Silero VAD (Local)' } 
+    { id: 'silero_vad', name: 'ElevenLabs' }
   ];
   const [selectedVadId, setSelectedVadId] = createSignal<string | undefined>(availableVadOptions[0].id);
   const [vadInstance, setVadInstance] = createSignal<MicVAD | null>(null);
@@ -141,7 +139,6 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
     }
     console.log("[SettingsPage VAD] Initializing VAD...");
     try {
-      setVadStatusMessage("Initializing VAD...");
       setIsVadLoading(true);
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -169,11 +166,9 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
         },
         // Speech callbacks
         onSpeechStart: () => {
-          setVadStatusMessage("Listening...");
           cleanupLastRecording(); // Clear previous recording & STT text
         },
         onSpeechEnd: (_audio) => { 
-          setVadStatusMessage("Speech ended. Processing audio...");
           setIsVadTestingSignal(false);
           
           const sampleRate = 16000;
@@ -181,21 +176,20 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
           
           cleanupLastRecording(); // Clean up any existing blob/URL before setting new one
           setLastRecordedBlob(wavBlob);
-          setVadStatusMessage("Audio captured. Starting transcription...");
+          setVadStatusMessage(null); // Explicitly clear status before transcription
           
           // Automatically start transcription
           void handleTranscription(); // Call handleTranscription here
         },
         onVADMisfire: () => {
-          setVadStatusMessage("VAD misfire (potential non-speech sound).");
+          setVadStatusMessage("Potential non-speech sound detected.");
         },
       });
       setVadInstance(newVad);
-      setVadStatusMessage('VAD initialized. Ready to test.');
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
-      setVadTestError(new Error("Failed to initialize VAD: " + errorMsg));
-      setVadStatusMessage("Error: " + errorMsg);
+      setVadTestError(new Error("Failed to initialize audio capture: " + errorMsg));
+      setVadStatusMessage("Error initializing audio capture: " + errorMsg);
     } finally {
       setIsVadLoading(false);
     }
@@ -222,7 +216,7 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
   
   const handleTestVad = async () => {
     if (selectedVadId() !== 'silero_vad') {
-      setVadTestError(new Error("Silero VAD not selected."));
+      setVadTestError(new Error("Audio capture method not selected."));
       return;
     }
     let currentVad = vadInstance();
@@ -230,14 +224,14 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       await initVad();
       currentVad = vadInstance();
       if (!currentVad) {
-        setVadStatusMessage("VAD could not be initialized for testing.");
+        setVadStatusMessage("Audio capture could not be initialized for testing.");
         return;
       }
     } else if (isVadLoading()) {
-        setVadStatusMessage("VAD is still initializing...");
+        setVadStatusMessage("Still initializing...");
         return;
     } else if (!currentVad) {
-        setVadStatusMessage("VAD instance not available.");
+        setVadStatusMessage("Audio capture not available.");
         return;
     }
 
@@ -252,8 +246,8 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
         setVadStatusMessage("Listening for speech...");
       } catch (e) {
         const errorMsg = e instanceof Error ? e.message : String(e);
-        setVadTestError(new Error("Error starting VAD: " + errorMsg));
-        setVadStatusMessage("Error: " + errorMsg);
+        setVadTestError(new Error("Error starting audio capture: " + errorMsg));
+        setVadStatusMessage("Error starting audio capture: " + errorMsg);
         setIsVadTestingSignal(false);
       }
     }
@@ -263,7 +257,6 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
     if (vadInstance() && isVadTestingSignal()) { 
       vadInstance()!.pause();
       setIsVadTestingSignal(false);
-      setVadStatusMessage("Test explicitly stopped.");
     }
   };
 
@@ -306,11 +299,9 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       // Using default model 'scribe_v1' for now. Can be made configurable.
       const result: ElevenLabsTranscriptionResponse = await transcribeElevenLabsAudio(apiKey, audioBlob);
       setTranscribedText(result.text);
-      setVadStatusMessage("Transcription successful.");
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : String(e);
       setSttError(new Error("Transcription failed: " + errorMsg));
-      setVadStatusMessage("Transcription failed.");
       console.error("[SettingsPage STT] Transcription error:", e);
     } finally {
       setIsTranscribing(false);

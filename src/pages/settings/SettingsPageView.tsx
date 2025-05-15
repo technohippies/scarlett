@@ -333,7 +333,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                     {/* --- VAD Section --- */}
                     <Show when={props.activeSection() === 'vad'}>
                       <div class="space-y-4">
-                        <h2 class="text-xl font-semibold text-foreground">Voice Activity Detection (VAD)</h2>
+                        <h2 class="text-xl font-semibold text-foreground">Speech to Text</h2>
                         <VadPanel
                           availableVadOptions={props.availableVadOptions}
                           selectedVadId={props.selectedVadId}

@@ -27,6 +27,13 @@ import { TtsProviderPanel, type TtsProviderOption as OnboardingTtsProviderOption
 import { generateElevenLabsSpeechStream } from '../../src/services/tts/elevenLabsService';
 import { DEFAULT_ELEVENLABS_VOICE_ID, DEFAULT_ELEVENLABS_MODEL_ID } from '../../src/shared/constants'; // Assuming ELEVENLABS_TEST_TEXT might be moved here or defined locally
 
+// --- VAD and STT related imports ---
+import { VadPanel, type VadOption } from '../../src/features/models/VadPanel';
+import { MicVAD } from '@ricky0123/vad-web';
+import { pcmToWavBlob } from '../../src/lib/utils';
+import { transcribeElevenLabsAudio } from '../../src/services/stt/elevenLabsSttService';
+import { browser } from 'wxt/browser'; // For browser.runtime.getURL in VAD ortConfig
+
 // --- Import messaging types and function ---
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import type { BackgroundProtocolMap, DeckInfoForFiltering } from '../../src/shared/messaging-types'; // Corrected import path for both types
@@ -93,7 +100,7 @@ const onboardingTtsProviderOptions: OnboardingTtsProviderOption[] = [
 ];
 
 // Simplified Step type for the new flow
-type Step = 'language' | 'learningGoal' | 'deckSelection' | 'setupLLM' | 'setupEmbedding' | 'setupTTS' | 'redirects';
+type Step = 'language' | 'learningGoal' | 'deckSelection' | 'setupLLM' | 'setupEmbedding' | 'setupTTS' | 'setupVAD' | 'redirects';
 
 // Helper function modified to return the best determined language code
 function getBestInitialLangCode(): string {
@@ -159,7 +166,7 @@ const fetchMessages = async (langCode: string): Promise<Messages> => {
 };
 
 // Keep steps definition for progress calculation
-const onboardingSteps: Step[] = ['language', 'learningGoal', 'deckSelection', 'setupLLM', 'setupEmbedding', 'setupTTS', 'redirects'];
+const onboardingSteps: Step[] = ['language', 'learningGoal', 'deckSelection', 'setupLLM', 'setupEmbedding', 'setupTTS', 'setupVAD', 'redirects'];
 
 const App: Component = () => {
 
@@ -285,6 +292,38 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
 
   // REMOVE onMount for WebGPU check
   // onMount(() => { ... });
+
+  // --- VAD & STT State for Onboarding ---
+  const availableVadOptionsOnboarding: VadOption[] = [
+    { id: 'silero_vad', name: 'Silero VAD (Local)' }
+  ];
+  const [selectedVadIdOnboarding, setSelectedVadIdOnboarding] = createSignal<string | undefined>(availableVadOptionsOnboarding[0].id);
+  const [vadInstanceOnboarding, setVadInstanceOnboarding] = createSignal<MicVAD | null>(null);
+  const [isVadLoadingOnboarding, setIsVadLoadingOnboarding] = createSignal(false);
+  const [isVadTestingOnboarding, setIsVadTestingOnboarding] = createSignal(false);
+  const [vadStatusMessageOnboarding, setVadStatusMessageOnboarding] = createSignal<string | null>(null);
+  const [vadTestErrorOnboarding, setVadTestErrorOnboarding] = createSignal<Error | null>(null);
+  const [lastRecordedBlobOnboarding, setLastRecordedBlobOnboarding] = createSignal<Blob | null>(null);
+  const lastRecordedAudioUrlOnboarding = () => {
+    const blob = lastRecordedBlobOnboarding();
+    return blob ? URL.createObjectURL(blob) : null;
+  };
+  // STT State for Onboarding VAD
+  const [transcribedTextOnboarding, setTranscribedTextOnboarding] = createSignal<string | null>(null);
+  const [sttErrorOnboarding, setSttErrorOnboarding] = createSignal<Error | null>(null);
+  const [isTranscribingOnboarding, setIsTranscribingOnboarding] = createSignal(false);
+
+  const cleanupLastRecordingOnboarding = () => {
+    const currentUrl = lastRecordedAudioUrlOnboarding();
+    if (currentUrl) {
+      URL.revokeObjectURL(currentUrl);
+    }
+    setLastRecordedBlobOnboarding(null);
+    setTranscribedTextOnboarding(null);
+    setSttErrorOnboarding(null);
+  };
+  
+  // --- End VAD & STT State ---
 
   // --- TTS Panel Handlers for Onboarding (Kokoro handlers removed) ---
   const handleSelectTtsProviderOnboarding = (providerId: string | undefined) => {
@@ -557,7 +596,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         console.log('[App Onboarding] Cleared TTS config as setup was incomplete.');
       }
     }
-    setCurrentStep('redirects'); // Proceed to redirects
+    setCurrentStep('setupVAD'); // Proceed to VAD setup
   };
 
   // --- New Handler for Skipping TTS Setup ---
@@ -578,9 +617,181 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     await userConfigurationStorage.setValue(configWithSkippedTTS);
     console.log('[App Onboarding] TTS configuration explicitly set to null due to skip.');
 
-    setCurrentStep('redirects'); // Proceed to the next step
+    setCurrentStep('setupVAD'); // Proceed to VAD setup
   };
   // --- End New Handler ---
+
+  // --- VAD Handlers for Onboarding ---
+  const handleTranscriptionOnboarding = async () => {
+    const apiKey = elevenLabsApiKeyOnboarding(); // Use the API key from TTS setup
+    const audioBlob = lastRecordedBlobOnboarding();
+
+    if (!apiKey) {
+      setSttErrorOnboarding(new Error("ElevenLabs API key is not set. Please configure it in the TTS step."));
+      setVadStatusMessageOnboarding("STT disabled: API key missing.");
+      return;
+    }
+    if (!audioBlob) {
+      setSttErrorOnboarding(new Error("No audio has been recorded to transcribe."));
+      return;
+    }
+
+    setIsTranscribingOnboarding(true);
+    setTranscribedTextOnboarding(null);
+    setSttErrorOnboarding(null);
+    setVadStatusMessageOnboarding("Transcribing audio...");
+
+    try {
+      const result = await transcribeElevenLabsAudio(apiKey, audioBlob);
+      setTranscribedTextOnboarding(result.text);
+      setVadStatusMessageOnboarding("Transcription successful.");
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      setSttErrorOnboarding(new Error("Transcription failed: " + errorMsg));
+      setVadStatusMessageOnboarding("Transcription failed.");
+    } finally {
+      setIsTranscribingOnboarding(false);
+    }
+  };
+
+  const initVadOnboarding = async () => {
+    if (vadInstanceOnboarding()) return;
+    console.log("[App Onboarding VAD] Initializing VAD...");
+    try {
+      setVadStatusMessageOnboarding("Initializing VAD...");
+      setIsVadLoadingOnboarding(true);
+      setVadTestErrorOnboarding(null);
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("MediaDevices API or getUserMedia not supported.");
+      }
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      const newVad = await MicVAD.new({
+        baseAssetPath: "/vad-assets/",
+        onnxWASMBasePath: "/vad-assets/",
+        model: "v5",
+        ortConfig: (ortInstance: any) => {
+          ortInstance.env.wasm.proxy = false;
+          ortInstance.env.wasm.simd = false;
+          ortInstance.env.wasm.numThreads = 1;
+          ortInstance.env.wasm.workerPath = browser.runtime.getURL("/vad-assets/ort-wasm.js" as any);
+        },
+        onSpeechStart: () => {
+          setVadStatusMessageOnboarding("Listening...");
+          cleanupLastRecordingOnboarding();
+        },
+        onSpeechEnd: (audio) => {
+          setVadStatusMessageOnboarding("Speech ended. Processing audio...");
+          setIsVadTestingOnboarding(false);
+          const wavBlob = pcmToWavBlob(audio, 16000);
+          cleanupLastRecordingOnboarding();
+          setLastRecordedBlobOnboarding(wavBlob);
+          setVadStatusMessageOnboarding("Audio captured. Starting transcription...");
+          void handleTranscriptionOnboarding(); // Auto-transcribe
+        },
+        onVADMisfire: () => setVadStatusMessageOnboarding("VAD misfire."),
+      });
+      setVadInstanceOnboarding(newVad);
+      setVadStatusMessageOnboarding(null); // Explicitly set to null on successful VAD init
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      setVadTestErrorOnboarding(new Error("Failed to initialize VAD: " + errorMsg));
+      setVadStatusMessageOnboarding("VAD Error: " + errorMsg);
+    } finally {
+      setIsVadLoadingOnboarding(false);
+    }
+  };
+  
+  // Effect to initialize VAD when the step becomes active or Silero VAD is selected (default)
+  createEffect(() => {
+    if (currentStep() === 'setupVAD' && selectedVadIdOnboarding() === 'silero_vad' && !vadInstanceOnboarding() && !isVadLoadingOnboarding()) {
+      void initVadOnboarding();
+    }
+  });
+
+  const handleTestVadOnboarding = async () => {
+    if (selectedVadIdOnboarding() !== 'silero_vad') {
+      setVadTestErrorOnboarding(new Error("Silero VAD not selected."));
+      return;
+    }
+    let currentVad = vadInstanceOnboarding();
+    if (!currentVad && !isVadLoadingOnboarding()) {
+      await initVadOnboarding();
+      currentVad = vadInstanceOnboarding();
+      if (!currentVad) return;
+    } else if (isVadLoadingOnboarding() || !currentVad) return;
+
+    if (isVadTestingOnboarding()) {
+      currentVad.pause();
+      setIsVadTestingOnboarding(false);
+      setVadStatusMessageOnboarding("Test stopped.");
+    } else {
+      try {
+        setVadTestErrorOnboarding(null); // Clear previous errors
+        await currentVad.start();
+        setIsVadTestingOnboarding(true);
+        setVadStatusMessageOnboarding("Listening for speech...");
+      } catch (e) {
+        const errorMsg = e instanceof Error ? e.message : String(e);
+        setVadTestErrorOnboarding(new Error("Error starting VAD: " + errorMsg));
+        setVadStatusMessageOnboarding("VAD Error: " + errorMsg);
+        setIsVadTestingOnboarding(false);
+      }
+    }
+  };
+  
+  const handleStopVadTestOnboarding = () => {
+      if (vadInstanceOnboarding() && isVadTestingOnboarding()) {
+          vadInstanceOnboarding()!.pause();
+          setIsVadTestingOnboarding(false);
+          setVadStatusMessageOnboarding("Test explicitly stopped.");
+      }
+  };
+
+  // Cleanup VAD instance when component unmounts or step changes
+  createEffect(() => {
+    const step = currentStep();
+    const vadInstance = vadInstanceOnboarding();
+    if (step !== 'setupVAD' && vadInstance) {
+      console.log("[App Onboarding VAD] Cleaning up VAD instance due to step change.");
+      vadInstance.pause();
+      setVadInstanceOnboarding(null);
+      cleanupLastRecordingOnboarding(); // Also clear any recording
+      // Reset VAD state signals if needed
+      setIsVadTestingOnboarding(false);
+      setVadStatusMessageOnboarding(null);
+      setVadTestErrorOnboarding(null);
+      setIsVadLoadingOnboarding(false);
+    }
+  });
+  // --- End VAD Handlers ---
+
+  // --- Handler for completing VAD step ---
+  const handleVADComplete = () => {
+    // No specific VAD config to save to userConfigurationStorage for this step.
+    // User has seen the panel and potentially tested it.
+    console.log("[App Onboarding] VAD setup/test step complete.");
+    setCurrentStep('redirects');
+  };
+
+  // --- Handler for skipping VAD step ---
+  const handleSkipVAD = () => {
+    console.log("[App Onboarding] VAD setup skipped by user.");
+    if (vadInstanceOnboarding()) {
+        vadInstanceOnboarding()!.pause();
+        setVadInstanceOnboarding(null);
+    }
+    cleanupLastRecordingOnboarding();
+    // Reset other VAD state if necessary
+    setIsVadTestingOnboarding(false);
+    setVadStatusMessageOnboarding(null);
+    setVadTestErrorOnboarding(null);
+    setIsVadLoadingOnboarding(false);
+    setTranscribedTextOnboarding(null);
+    setSttErrorOnboarding(null);
+    setCurrentStep('redirects');
+  };
 
   // --- Redirects Handlers (Keep as is) ---
   const handleRedirectsComplete = async () => {
@@ -634,8 +845,11 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       case 'setupTTS':
         setCurrentStep('setupEmbedding');
         break;
-      case 'redirects': 
+      case 'setupVAD': // New back navigation
         setCurrentStep('setupTTS');
+        break;
+      case 'redirects': 
+        setCurrentStep('setupVAD'); // Updated from setupTTS to setupVAD
         break;
       default:
         console.warn('[App] Back requested from unhandled step:', step);
@@ -696,6 +910,22 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       // Default for TTS (no provider selected, or no API key for EL)
       return i18n().get('onboardingContinue', 'Continue');
     }
+    // --- VAD Step Footer Button Logic ---
+    if (step === 'setupVAD') {
+        if (isVadLoadingOnboarding()) return i18n().get('onboardingInitializing', 'Initializing...');
+        if (isVadTestingOnboarding()) return i18n().get('onboardingStopTest', 'Stop Test');
+        if (lastRecordedAudioUrlOnboarding() && isTranscribingOnboarding()) return i18n().get('onboardingTranscribing', 'Transcribing...');
+        // If VAD is initialized and not testing, or if there's audio, allow "Test" or "Continue"
+        if (vadInstanceOnboarding() && !isVadTestingOnboarding() || lastRecordedAudioUrlOnboarding()) {
+             // If there's a recording or transcription, prioritize Continue
+            if (lastRecordedAudioUrlOnboarding() || transcribedTextOnboarding() || sttErrorOnboarding()) {
+                return i18n().get('onboardingContinue', 'Continue');
+            }
+            return i18n().get('onboardingTest', 'Test');
+        }
+        // Default for VAD before initialization or if an error occurred preventing test
+        return i18n().get('onboardingTest', 'Test');
+    }
     if (step === 'redirects') return i18n().get('onboardingFinishSetup', 'Finish Setup');
     return i18n().get('onboardingContinue', 'Continue');
   };
@@ -734,6 +964,15 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         if (isTtsTestingOnboarding()) return true; // Disabled if currently testing
         // No other specific disabling condition here, footerButtonLabel handles "Test" vs "Continue"
         return false; 
+      }
+      // --- VAD Step Disable Logic ---
+      case 'setupVAD': {
+        if (isVadLoadingOnboarding()) return true; // Disabled while VAD is loading
+        // No explicit disable during transcription for the main button, status is shown elsewhere.
+        // Button actions (Test/Stop/Continue) are handled by footerButtonLabel logic.
+        // If VAD init failed, testing should be disabled (though initVadOnboarding sets error message)
+        if (vadTestErrorOnboarding() && !vadInstanceOnboarding()) return true; 
+        return false;
       }
       case 'redirects':
         return props.initialRedirectLoading();
@@ -783,6 +1022,24 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         } else {
           // Otherwise (test successful, or user wants to skip test, or different provider) -> proceed to complete
           handleTTSComplete();
+        }
+        break;
+      // --- VAD Step Footer Button Action ---
+      case 'setupVAD':
+        if (isVadTestingOnboarding()) {
+          handleStopVadTestOnboarding();
+        } else if (vadInstanceOnboarding() || !vadTestErrorOnboarding()) { // Allow test if instance exists or no critical init error
+            // If there's audio or transcription result, "Continue" was pressed
+            if (lastRecordedAudioUrlOnboarding() || transcribedTextOnboarding() || sttErrorOnboarding()) {
+                handleVADComplete();
+            } else { // Otherwise, "Test" was pressed
+                handleTestVadOnboarding();
+            }
+        }
+        // If VAD failed to initialize and instance is null with an error, button might be "Test" but disabled.
+        // Or, if user clicks "Continue" directly without testing (e.g. if audio was somehow present from a quick succession of interactions)
+        else if (lastRecordedAudioUrlOnboarding() || transcribedTextOnboarding() || sttErrorOnboarding()){
+             handleVADComplete(); // Allow continue if there's some state to proceed from
         }
         break;
       case 'redirects':
@@ -1008,6 +1265,42 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         );
       }
 
+      case 'setupVAD': {
+        // Ensure API key is passed for STT functionality within VadPanel
+        const sttEnabled = () => elevenLabsApiKeyOnboarding().length > 0;
+        return (
+          <div class="w-full max-w-lg">
+            <p class="text-xl md:text-2xl mb-2">
+              {i18n().get('onboardingSetupVADTitle', 'Test Voice Input & Transcription')}
+            </p>
+            <p class="text-lg text-muted-foreground mb-6">
+              {i18n().get('onboardingSetupVADDescription', 'Test your microphone and ElevenLabs speech to text.')}
+              <Show when={!sttEnabled()}>
+                <span class="block mt-1 text-sm text-amber-500">{i18n().get('onboardingVADNoApiKeyForSTT', 'ElevenLabs API key not provided in TTS step; transcription will be disabled.')}</span>
+              </Show>
+            </p>
+            <VadPanel
+              availableVadOptions={availableVadOptionsOnboarding}
+              selectedVadId={selectedVadIdOnboarding}
+              onSelectVad={(id) => { /* Silero is only option for now */ setSelectedVadIdOnboarding(id); }}
+              isVadTesting={isVadTestingOnboarding}
+              onTestVad={handleTestVadOnboarding}
+              onStopVadTest={handleStopVadTestOnboarding}
+              vadStatusMessage={vadStatusMessageOnboarding}
+              vadTestError={vadTestErrorOnboarding}
+              isVadLoading={isVadLoadingOnboarding}
+              lastRecordedAudioUrl={lastRecordedAudioUrlOnboarding}
+              onPlayLastRecording={() => { /* Playback is via HTML5 controls */ }}
+              // STT Props for Onboarding
+              onTranscribe={async () => {if(sttEnabled()) await handleTranscriptionOnboarding(); }} // Manual call not used due to auto-transcribe
+              transcribedText={transcribedTextOnboarding}
+              isTranscribing={isTranscribingOnboarding}
+              sttError={sttErrorOnboarding}
+            />
+          </div>
+        );
+      }
+
       case 'redirects':
         return (
           <div class="w-full max-w-lg">
@@ -1054,6 +1347,19 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
                 size="default"
                 class="absolute top-12 right-4 text-muted-foreground hover:text-foreground z-10"
                 aria-label={i18n().get('onboardingSkipTTSAriaLabel', 'Skip TTS setup and continue')}
+            >
+                {i18n().get('onboardingSkipButton', 'Skip')}
+            </Button>
+        </Show>
+        
+        {/* Skip Button for VAD Step */}
+        <Show when={currentStep() === 'setupVAD'}>
+            <Button
+                onClick={handleSkipVAD}
+                variant="ghost"
+                size="default"
+                class="absolute top-12 right-4 text-muted-foreground hover:text-foreground z-10"
+                aria-label={i18n().get('onboardingSkipVADAriaLabel', 'Skip VAD setup and continue')}
             >
                 {i18n().get('onboardingSkipButton', 'Skip')}
             </Button>
