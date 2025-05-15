@@ -6,8 +6,8 @@ import fs from 'fs-extra'; // Use fs-extra for reliable copying
 export function copyPgliteAssets(): Plugin {
   let viteConfig: ResolvedConfig;
   const assetsToCopy = [
-    { src: 'postgres.wasm', dest: 'postgres.wasm' },
-    { src: 'postgres.data', dest: 'postgres.data' },
+    { src: 'pglite.wasm', dest: 'pglite.wasm' },
+    { src: 'pglite.data', dest: 'pglite.data' },
     { src: 'vector.tar.gz', dest: 'vector/vector.tar.gz' },
     { src: 'vector.tar.gz', dest: 'vector.tar.gz' },
   ];

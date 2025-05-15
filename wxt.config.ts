@@ -71,10 +71,10 @@ export default defineConfig({
     // --- End Chrome URL Overrides ---
     web_accessible_resources: [
       {
-        matches: ["<all_urls>"], // Or restrict further if needed
+        matches: ["<all_urls>"],
         resources: [
-            "postgres.wasm",
-            "postgres.data",
+            "pglite.wasm",
+            "pglite.data",
             "vector.tar.gz",
             "models/silero_vad.onnx" // Your original VAD model
         ],
