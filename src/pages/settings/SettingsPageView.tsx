@@ -106,7 +106,7 @@ interface SettingsPageViewProps {
   onFocusModeAddDomain: (domainName: string) => void;
   onFocusModeRemoveDomain: (domainName: string) => void;
 
-  // --- VAD Props ---
+  // --- VAD & STT Props ---
   availableVadOptions: VadOption[];
   selectedVadId: Accessor<string | undefined>;
   onSelectVad: (vadId: string | undefined) => void;
@@ -118,6 +118,11 @@ interface SettingsPageViewProps {
   isVadLoading: Accessor<boolean>;
   lastRecordedAudioUrl: Accessor<string | null>;
   onPlayLastRecording: () => void;
+  // STT specific props
+  onTranscribe: () => Promise<void>; // Or appropriate type for the handler
+  transcribedText: Accessor<string | null>;
+  isTranscribing: Accessor<boolean>;
+  sttError: Accessor<Error | null>;
 }
 
 
@@ -341,6 +346,11 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                           isVadLoading={props.isVadLoading}
                           lastRecordedAudioUrl={props.lastRecordedAudioUrl}
                           onPlayLastRecording={props.onPlayLastRecording}
+                          // STT Props
+                          onTranscribe={props.onTranscribe}
+                          transcribedText={props.transcribedText}
+                          isTranscribing={props.isTranscribing}
+                          sttError={props.sttError}
                         />
                       </div>
                     </Show>

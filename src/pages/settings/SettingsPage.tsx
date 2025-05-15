@@ -10,6 +10,7 @@ import { browser } from "wxt/browser";
 // import { IconMicrophone, IconSettings, IconSpeakerHigh, IconPalette, IconWrench, IconLink, IconFocus, IconBookOpen, IconMoodHappy, IconSparkle, IconBookmark, IconTag, IconClock } from "@/components/icons/AllIcons"; // Commented out due to persistent error
 import { useNavigate } from "@solidjs/router";
 import { pcmToWavBlob } from '../../lib/utils'; // Import the new utility
+import { transcribeElevenLabsAudio, type ElevenLabsTranscriptionResponse } from '../../services/stt/elevenLabsSttService'; // Import STT service
 
 interface SettingsPageProps {
   onNavigateBack?: () => void;
@@ -111,7 +112,27 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
   const [isVadTestingSignal, setIsVadTestingSignal] = createSignal(false);
   const [vadStatusMessage, setVadStatusMessage] = createSignal<string | null>(null);
   const [vadTestError, setVadTestError] = createSignal<Error | null>(null);
-  const [lastRecordedAudioUrl, setLastRecordedAudioUrl] = createSignal<string | null>(null); // New signal for audio playback
+  // Store the Blob directly, and derive URL when needed
+  const [lastRecordedBlob, setLastRecordedBlob] = createSignal<Blob | null>(null);
+  const lastRecordedAudioUrl = () => {
+    const blob = lastRecordedBlob();
+    return blob ? URL.createObjectURL(blob) : null;
+  };
+
+  // STT State
+  const [transcribedText, setTranscribedText] = createSignal<string | null>(null);
+  const [sttError, setSttError] = createSignal<Error | null>(null);
+  const [isTranscribing, setIsTranscribing] = createSignal(false);
+
+  const cleanupLastRecording = () => {
+    const currentUrl = lastRecordedAudioUrl();
+    if (currentUrl) {
+      URL.revokeObjectURL(currentUrl);
+    }
+    setLastRecordedBlob(null);
+    setTranscribedText(null); // Clear transcription when recording is cleared
+    setSttError(null);
+  };
 
   const initVad = async () => {
     if (vadInstance()) {
@@ -149,30 +170,21 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
         // Speech callbacks
         onSpeechStart: () => {
           setVadStatusMessage("Listening...");
-          // Clear previous recording URL when new speech starts
-          if (lastRecordedAudioUrl()) {
-            URL.revokeObjectURL(lastRecordedAudioUrl()!);
-            setLastRecordedAudioUrl(null);
-          }
+          cleanupLastRecording(); // Clear previous recording & STT text
         },
         onSpeechEnd: (_audio) => { 
           setVadStatusMessage("Speech ended. Processing audio...");
-          setIsVadTestingSignal(false); // Stop the visual indicator of testing
+          setIsVadTestingSignal(false);
           
-          const sampleRate = 16000; // VAD default sample rate
+          const sampleRate = 16000;
           const wavBlob = pcmToWavBlob(_audio, sampleRate);
-          const newUrl = URL.createObjectURL(wavBlob);
           
-          // Revoke previous URL if it exists
-          if (lastRecordedAudioUrl()) {
-            URL.revokeObjectURL(lastRecordedAudioUrl()!);
-          }
-          setLastRecordedAudioUrl(newUrl);
-          setVadStatusMessage("Audio captured. Ready for playback.");
+          cleanupLastRecording(); // Clean up any existing blob/URL before setting new one
+          setLastRecordedBlob(wavBlob);
+          setVadStatusMessage("Audio captured. Starting transcription...");
           
-          // Optional: Immediate playback (can be removed if only button playback is desired)
-          // const audio = new Audio(newUrl);
-          // audio.play().catch(e => console.error("Error playing audio automatically:", e));
+          // Automatically start transcription
+          void handleTranscription(); // Call handleTranscription here
         },
         onVADMisfire: () => {
           setVadStatusMessage("VAD misfire (potential non-speech sound).");
@@ -260,20 +272,48 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       vadInstance()!.pause();
       setVadInstance(null); 
     }
-    // Revoke audio URL on cleanup
-    if (lastRecordedAudioUrl()) {
-      URL.revokeObjectURL(lastRecordedAudioUrl()!);
-      setLastRecordedAudioUrl(null);
-    }
+    cleanupLastRecording(); // Use the centralized cleanup
   });
 
-  // Function to play the last recorded audio
   const playLastRecordedAudio = () => {
-    if (lastRecordedAudioUrl()) {
-      const audio = new Audio(lastRecordedAudioUrl()!);
+    const url = lastRecordedAudioUrl();
+    if (url) {
+      const audio = new Audio(url);
       audio.play().catch(e => console.error("Error playing recorded audio:", e));
     } else {
       console.log("No recorded audio to play.");
+    }
+  };
+
+  const handleTranscription = async () => {
+    const apiKey = settings.config.ttsConfig?.apiKey; // Assuming STT uses same API key as TTS
+    const audioBlob = lastRecordedBlob();
+
+    if (!apiKey) {
+      setSttError(new Error("ElevenLabs API key is not set. Please configure it in TTS settings."));
+      return;
+    }
+    if (!audioBlob) {
+      setSttError(new Error("No audio has been recorded to transcribe."));
+      return;
+    }
+
+    setIsTranscribing(true);
+    setTranscribedText(null);
+    setSttError(null);
+
+    try {
+      // Using default model 'scribe_v1' for now. Can be made configurable.
+      const result: ElevenLabsTranscriptionResponse = await transcribeElevenLabsAudio(apiKey, audioBlob);
+      setTranscribedText(result.text);
+      setVadStatusMessage("Transcription successful.");
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      setSttError(new Error("Transcription failed: " + errorMsg));
+      setVadStatusMessage("Transcription failed.");
+      console.error("[SettingsPage STT] Transcription error:", e);
+    } finally {
+      setIsTranscribing(false);
     }
   };
 
@@ -320,8 +360,13 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       vadStatusMessage={vadStatusMessage}
       vadTestError={vadTestError}
       isVadLoading={isVadLoading}
-      lastRecordedAudioUrl={lastRecordedAudioUrl} // Pass the URL
-      onPlayLastRecording={playLastRecordedAudio} // Pass the playback function
+      lastRecordedAudioUrl={lastRecordedAudioUrl} 
+      onPlayLastRecording={playLastRecordedAudio}
+      // STT Props
+      onTranscribe={handleTranscription}
+      transcribedText={transcribedText}
+      isTranscribing={isTranscribing}
+      sttError={sttError}
     />
   );
 };

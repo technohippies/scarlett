@@ -2,7 +2,7 @@ import { Component, Show, For, Accessor, createSignal, createEffect } from 'soli
 import { Button } from '../../components/ui/button';
 import { Label } from '../../components/ui/label';
 import { cn } from '../../lib/utils';
-import { SpeakerSimpleHigh, Record as RecordIcon, StopCircle, PlayCircle } from 'phosphor-solid';
+import { SpeakerSimpleHigh, Record as RecordIcon, StopCircle, PlayCircle, TextAa } from 'phosphor-solid';
 import { Spinner } from '../../components/ui/spinner';
 // import * as ort from 'onnxruntime-web'; // Commented out
 // import { browser } from 'wxt/browser'; // Commented out
@@ -51,9 +51,15 @@ export interface VadPanelProps {
     vadTestError: Accessor<Error | null>;
     isVadLoading?: Accessor<boolean>;
 
-    // New props for playback
+    // Playback props
     lastRecordedAudioUrl: Accessor<string | null>;
     onPlayLastRecording: () => void;
+
+    // STT props
+    onTranscribe: () => Promise<void>;
+    transcribedText: Accessor<string | null>;
+    isTranscribing: Accessor<boolean>;
+    sttError: Accessor<Error | null>;
 }
 
 
@@ -64,6 +70,7 @@ export const VadPanel: Component<VadPanelProps> = (props) => {
     const isSileroSelected = () => selectedVad() === 'silero_vad';
     const isLoading = () => props.isVadLoading && props.isVadLoading();
     const canPlayRecording = () => !!props.lastRecordedAudioUrl();
+    const canTranscribe = () => canPlayRecording() && !props.isTranscribing() && !props.isVadTesting();
 
     return (
         <div class="w-full max-w-lg space-y-6">
@@ -131,7 +138,7 @@ export const VadPanel: Component<VadPanelProps> = (props) => {
                                 }
                             }} 
                             variant="outline"
-                            disabled={!isSileroSelected() || isLoading()}
+                            disabled={!isSileroSelected() || isLoading() || props.isTranscribing()}
                         >
                             <Show when={props.isVadTesting()} fallback={<RecordIcon class="h-4 w-4 mr-1.5" />}>
                                 <StopCircle class="h-4 w-4 mr-1.5" />
@@ -140,20 +147,38 @@ export const VadPanel: Component<VadPanelProps> = (props) => {
                         </Button>
                     </div>
 
-                    <Show when={props.vadStatusMessage() && !isLoading()}>
+                    <Show when={props.vadStatusMessage() && !isLoading() && !props.isTranscribing()}>
                         <p class="text-sm text-muted-foreground">Status: {props.vadStatusMessage()}</p>
                     </Show>
                     
-                    {/* Optional: Display <audio> element for direct control */}
-                    <Show when={canPlayRecording() && !props.isVadTesting() && !isLoading()}>
-                        <div class="mt-2">
+                    <Show when={canPlayRecording() && !props.isVadTesting() && !isLoading() && !props.isTranscribing()}>
+                        <div class="mt-2 space-y-2">
                             <Label class="text-xs mb-1 block">Last Captured Audio:</Label>
                             <audio controls src={props.lastRecordedAudioUrl()!} class="w-full h-10"></audio>
                         </div>
                     </Show>
 
-                    <Show when={props.vadTestError() && !isLoading()}>
-                        <p class="text-destructive">Error: {props.vadTestError()?.message}</p>
+                    {/* STT Status and Results */}
+                    <Show when={props.isTranscribing()}> 
+                        <div class="mt-2 flex items-center space-x-2 text-sm text-muted-foreground">
+                            <Spinner class="h-4 w-4" />
+                            <span>Transcribing audio...</span>
+                        </div>
+                    </Show>
+
+                    <Show when={props.transcribedText() && !props.isTranscribing()}> 
+                        <div class="mt-2 space-y-1">
+                            <Label class="text-xs mb-1 block">Transcription:</Label>
+                            <p class="text-sm p-2 border border-neutral-700 rounded-md bg-neutral-800 whitespace-pre-wrap">{props.transcribedText()}</p>
+                        </div>
+                    </Show>
+
+                    <Show when={props.sttError() && !props.isTranscribing()}> 
+                        <p class="text-destructive mt-2">STT Error: {props.sttError()?.message}</p>
+                    </Show>
+
+                    <Show when={props.vadTestError() && !isLoading() && !props.isTranscribing()}> 
+                        <p class="text-destructive">VAD Error: {props.vadTestError()?.message}</p>
                     </Show>
                 </div>
             </Show>

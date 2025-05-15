@@ -5,7 +5,6 @@ import { VadPanel, type VadOption, type VadPanelProps } from '../../../src/featu
 const mockSileroVadOption: VadOption = {
     id: 'silero_vad',
     name: 'Silero VAD (Local)',
-    // logoUrl: '/images/vad/silero.png' // Example if we add a logo
 };
 
 // --- Story Definition (Default Export) ---
@@ -14,81 +13,104 @@ export default {
   component: VadPanel,
   tags: ['autodocs'],
   argTypes: {
-    availableVadOptions: { control: 'object', description: 'List of available VAD options' },
-    selectedVadId: { control: 'object', description: 'Accessor for the selected VAD ID' },
-    onSelectVad: { action: 'onSelectVad', description: 'Handler for VAD option selection' },
-
-    isVadTesting: { control: 'object', description: 'Accessor for VAD test status (true if testing)' },
-    onTestVad: { action: 'onTestVad', description: 'Handler to toggle VAD test (start/stop)' },
-    onStopVadTest: { action: 'onStopVadTest', description: 'Handler to explicitly stop VAD test' },
-
-    vadStatusMessage: { control: 'object', description: 'Accessor for VAD status message' },
-    vadTestError: { control: 'object', description: 'Accessor for VAD test error' },
-    isVadLoading: { control: 'object', description: 'Accessor for VAD loading state' },
-
-    // New props for playback
-    lastRecordedAudioUrl: { control: 'object', description: 'Accessor for the URL of the last recorded audio' },
-    onPlayLastRecording: { action: 'onPlayLastRecording', description: 'Handler to play the last recorded audio' },
+    availableVadOptions: { control: 'object' },
+    selectedVadId: { control: 'object' },
+    onSelectVad: { action: 'onSelectVad' },
+    isVadTesting: { control: 'object' },
+    onTestVad: { action: 'onTestVad' },
+    onStopVadTest: { action: 'onStopVadTest' },
+    vadStatusMessage: { control: 'object' },
+    vadTestError: { control: 'object' },
+    isVadLoading: { control: 'object' },
+    lastRecordedAudioUrl: { control: 'object' },
+    onPlayLastRecording: { action: 'onPlayLastRecording' }, // Kept for consistency, though button removed
+    // STT Props
+    onTranscribe: { action: 'onTranscribe', description: 'Handler to initiate transcription' },
+    transcribedText: { control: 'object', description: 'Accessor for the transcribed text' },
+    isTranscribing: { control: 'object', description: 'Accessor for STT loading state' },
+    sttError: { control: 'object', description: 'Accessor for STT error' },
   },
   args: { // Default args
     availableVadOptions: [mockSileroVadOption],
-    selectedVadId: () => undefined, // No VAD selected initially
+    selectedVadId: () => undefined,
     isVadTesting: () => false,
     vadStatusMessage: () => null,
     vadTestError: () => null,
     isVadLoading: () => false,
-    lastRecordedAudioUrl: () => null, // Initially no audio recorded
+    lastRecordedAudioUrl: () => null,
+    // STT Default Args
+    transcribedText: () => null,
+    isTranscribing: () => false,
+    sttError: () => null,
   },
 };
 
 // --- Base Render Function --- 
 const BaseRender = (args: VadPanelProps) => {
-    // Create signals for props that can change
     const [selectedVad, setSelectedVad] = createSignal<string | undefined>(args.selectedVadId());
     const [isTesting, setIsTesting] = createSignal<boolean>(args.isVadTesting());
     const [statusMsg, setStatusMsg] = createSignal<string | null>(args.vadStatusMessage());
-    const [error, setError] = createSignal<Error | null>(args.vadTestError());
+    const [vadError, setVadError] = createSignal<Error | null>(args.vadTestError());
     const [isLoading, setIsLoading] = createSignal<boolean>(args.isVadLoading ? args.isVadLoading() : false);
     const [audioUrl, setAudioUrl] = createSignal<string | null>(args.lastRecordedAudioUrl());
 
-    // Effects to update signals if Storybook controls change them
+    // STT State Signals for Story
+    const [transcribedTextSignal, setTranscribedTextSignal] = createSignal<string | null>(args.transcribedText());
+    const [isTranscribingSignal, setIsTranscribingSignal] = createSignal<boolean>(args.isTranscribing());
+    const [sttErrorSignal, setSttErrorSignal] = createSignal<Error | null>(args.sttError());
+
     createEffect(() => setSelectedVad(args.selectedVadId()));
     createEffect(() => setIsTesting(args.isVadTesting()));
     createEffect(() => setStatusMsg(args.vadStatusMessage()));
-    createEffect(() => setError(args.vadTestError()));
+    createEffect(() => setVadError(args.vadTestError()));
     createEffect(() => setIsLoading(args.isVadLoading ? args.isVadLoading() : false));
     createEffect(() => setAudioUrl(args.lastRecordedAudioUrl()));
+    // Effects for STT props
+    createEffect(() => setTranscribedTextSignal(args.transcribedText()));
+    createEffect(() => setIsTranscribingSignal(args.isTranscribing()));
+    createEffect(() => setSttErrorSignal(args.sttError()));
 
     const handleSelectVad = (vadId: string | undefined) => {
         args.onSelectVad(vadId);
         setSelectedVad(vadId);
-        // Reset audio URL when VAD option changes
         setAudioUrl(null);
-        args.lastRecordedAudioUrl = () => null; // Also update the arg for Storybook control consistency
+        args.lastRecordedAudioUrl = () => null;
+        setTranscribedTextSignal(null); // Reset STT text
+        setSttErrorSignal(null);
     };
 
     const handleTestVad = () => {
         args.onTestVad();
         const currentlyTesting = isTesting();
         setIsTesting(!currentlyTesting);
+        setTranscribedTextSignal(null); // Clear STT text on new VAD test
+        setSttErrorSignal(null);
+        // setAudioUrl(null); // Clear previous audio immediately
+        // args.lastRecordedAudioUrl = () => null;
+
         if (!currentlyTesting) {
             setStatusMsg("Listening...");
-            setAudioUrl(null); // Clear previous audio when starting a new test
+            setAudioUrl(null); // Ensure no old audio URL is lingering
             args.lastRecordedAudioUrl = () => null;
-            // Simulate receiving speech or no speech after a delay
+            // Simulate VAD processing and audio capture
             setTimeout(() => {
-                if (isTesting()) {
+                if (isTesting()) { // Check if still in "testing" state (i.e., VAD was started)
                     const gotSpeech = Math.random() > 0.3;
-                    setStatusMsg(gotSpeech ? "Speech detected. Ready for playback." : "No speech detected during test.");
                     if (gotSpeech) {
-                        // Simulate audio being captured by providing a test URL
+                        setStatusMsg("Audio captured. Starting transcription...");
                         setAudioUrl('/audio/test-voice.mp3'); 
                         args.lastRecordedAudioUrl = () => '/audio/test-voice.mp3';
+                        // Simulate automatic transcription starting immediately after audio capture
+                        void handleTranscribe(); // Call the mock transcribe handler
+                    } else {
+                        setStatusMsg("No speech detected during test.");
+                        setIsTesting(false); // Stop VAD test if no speech
                     }
                 }
-            }, 2500);
+            }, 2500); // Simulate VAD processing time
         } else {
             setStatusMsg("Test stopped.");
+            // No need to explicitly stop VAD here, as setIsTesting(false) is handled by onStopVadTest or this branch
         }
     };
     
@@ -99,16 +121,28 @@ const BaseRender = (args: VadPanelProps) => {
     };
 
     const handlePlayLastRecording = () => {
-        // This will be logged by Storybook's action logger if onPlayLastRecording is set in args
-        if (args.onPlayLastRecording) {
-            args.onPlayLastRecording(); 
-        }
-        // For actual playback in the story, the <audio controls> element will handle it.
-        // If direct playback via this function is needed, one could:
-        // const audio = new Audio(audioUrl()); audio.play();
-        // But this might conflict with the user interacting with the <audio> element itself.
-        // It's often better to let the native controls handle it or have a single source of truth for playback state.
+        if (args.onPlayLastRecording) args.onPlayLastRecording(); 
         console.log("Story: Play last recording called. URL:", audioUrl());
+    };
+
+    const handleTranscribe = async () => {
+        if (args.onTranscribe) args.onTranscribe(); // Log action
+        setIsTranscribingSignal(true);
+        setTranscribedTextSignal(null);
+        setSttErrorSignal(null);
+        setStatusMsg("Transcription in progress..."); // Update VAD status too
+
+        // Simulate API call
+        setTimeout(() => {
+            if (Math.random() > 0.25) { // Simulate success
+                setTranscribedTextSignal("This is a simulated transcription of the captured audio. Hello world!");
+                setStatusMsg("Transcription successful.");
+            } else { // Simulate error
+                setSttErrorSignal(new Error("Simulated STT API error. Failed to transcribe."));
+                setStatusMsg("Transcription failed.");
+            }
+            setIsTranscribingSignal(false);
+        }, 2000);
     };
 
     return (
@@ -117,17 +151,19 @@ const BaseRender = (args: VadPanelProps) => {
                 availableVadOptions={args.availableVadOptions}
                 selectedVadId={selectedVad} 
                 onSelectVad={handleSelectVad}
-                
                 isVadTesting={isTesting} 
                 onTestVad={handleTestVad} 
                 onStopVadTest={handleStopVadTest}
-
                 vadStatusMessage={statusMsg} 
-                vadTestError={error}
+                vadTestError={vadError} 
                 isVadLoading={isLoading}
-
-                lastRecordedAudioUrl={audioUrl} // Pass signal accessor
-                onPlayLastRecording={handlePlayLastRecording} // Pass mock handler
+                lastRecordedAudioUrl={audioUrl}
+                onPlayLastRecording={handlePlayLastRecording}
+                // STT Props
+                onTranscribe={handleTranscribe} // Pass mock STT handler
+                transcribedText={transcribedTextSignal}
+                isTranscribing={isTranscribingSignal}
+                sttError={sttErrorSignal}
             />
         </div>
     );
@@ -135,57 +171,58 @@ const BaseRender = (args: VadPanelProps) => {
 
 // --- Stories ---
 
-export const DefaultNoSelection = {
-  render: BaseRender,
-  args: {
-    selectedVadId: () => undefined,
-    lastRecordedAudioUrl: () => null,
-  }
-};
+export const DefaultNoSelection = { render: BaseRender, args: { selectedVadId: () => undefined, lastRecordedAudioUrl: () => null } };
+export const SileroVadSelectedNoAudio = { render: BaseRender, args: { selectedVadId: () => mockSileroVadOption.id, lastRecordedAudioUrl: () => null } };
+export const SileroVadLoading = { render: BaseRender, args: { selectedVadId: () => mockSileroVadOption.id, isVadLoading: () => true, vadStatusMessage: () => "Initializing VAD...", lastRecordedAudioUrl: () => null } };
+export const SileroVadTesting = { render: BaseRender, args: { selectedVadId: () => mockSileroVadOption.id, isVadTesting: () => true, vadStatusMessage: () => "Listening... (simulated)", lastRecordedAudioUrl: () => null } };
 
-export const SileroVadSelectedNoAudio = {
-  render: BaseRender,
-  args: {
-    selectedVadId: () => mockSileroVadOption.id,
-    lastRecordedAudioUrl: () => null,
-  }
-};
-
-export const SileroVadTesting = {
+// Story for when audio is captured and immediately starts transcription
+export const SileroVadAudioCapturedAndTranscribing = {
   render: BaseRender,
   args: {
     selectedVadId: () => mockSileroVadOption.id,
-    isVadTesting: () => true,
-    vadStatusMessage: () => "Listening... (simulated)",
-    lastRecordedAudioUrl: () => null,
+    isVadTesting: () => false, // VAD test itself would have finished
+    vadStatusMessage: () => "Audio captured. Starting transcription...",
+    lastRecordedAudioUrl: () => '/audio/test-voice.mp3', // Audio is present
+    transcribedText: () => null,
+    isTranscribing: () => true, // Transcription should be active
+    sttError: () => null,
   }
 };
 
-export const SileroVadCapturedAudio = {
+// Story for STT success (remains largely the same, but follows automatic flow)
+export const SileroVadTranscriptionSuccess = {
   render: BaseRender,
   args: {
     selectedVadId: () => mockSileroVadOption.id,
     isVadTesting: () => false, 
-    vadStatusMessage: () => "Audio captured. Ready for playback.",
-    lastRecordedAudioUrl: () => '/audio/test-voice.mp3', // Provide a test audio URL
+    vadStatusMessage: () => "Transcription successful.",
+    lastRecordedAudioUrl: () => '/audio/test-voice.mp3',
+    transcribedText: () => "This is the transcribed text from the audio. It was successful!",
+    isTranscribing: () => false,
+    sttError: () => null,
   }
 };
 
-export const SileroVadError = {
+// Story for STT error (remains largely the same, but follows automatic flow)
+export const SileroVadTranscriptionError = {
   render: BaseRender,
   args: {
     selectedVadId: () => mockSileroVadOption.id,
-    vadTestError: () => new Error("Simulated VAD initialization failed."),
-    lastRecordedAudioUrl: () => null,
+    isVadTesting: () => false, 
+    vadStatusMessage: () => "Transcription failed.", // VAD status reflects STT failure
+    lastRecordedAudioUrl: () => '/audio/test-voice.mp3',
+    transcribedText: () => null,
+    isTranscribing: () => false,
+    sttError: () => new Error("Simulated ElevenLabs STT API Error: The audio format was not recognized."),
   }
 };
 
-export const SileroVadLoading = {
-    render: BaseRender,
-    args: {
-        selectedVadId: () => mockSileroVadOption.id,
-        isVadLoading: () => true,
-        vadStatusMessage: () => "Initializing VAD...",
-        lastRecordedAudioUrl: () => null,
-    }
-}; 
+export const SileroVadDeviceError = { // Renamed from SileroVadError to be more specific
+  render: BaseRender,
+  args: {
+    selectedVadId: () => mockSileroVadOption.id,
+    vadTestError: () => new Error("Simulated VAD initialization failed due to microphone access."),
+    lastRecordedAudioUrl: () => null,
+  }
+};
