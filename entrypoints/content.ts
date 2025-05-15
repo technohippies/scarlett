@@ -65,6 +65,10 @@ export default defineContentScript({
         let currentArtist = '';
         let currentAlbum: string | null = null;
 
+        let pendingSongTimerId: number | null = null;
+        let pendingSongData: { trackName: string; artistName: string; albumName: string | null } | null = null;
+        const SONG_QUALIFICATION_DELAY_MS = 15000; // 15 seconds
+
         async function handleSongDetection() {
           // console.debug('[Scarlett CS][SongDetection] handleSongDetection() called by interval.'); // Keep for now
           if (!navigator.mediaSession) {
@@ -85,22 +89,53 @@ export default defineContentScript({
             if (
               trackName &&
               artistName &&
-              (trackName !== currentTrack ||
+              (trackName !== currentTrack || // If it's different from the last *sent* song
                 artistName !== currentArtist ||
-                albumName !== currentAlbum)
+                albumName !== currentAlbum) &&
+              (trackName !== pendingSongData?.trackName || // And also different from any currently pending song
+                artistName !== pendingSongData?.artistName ||
+                albumName !== pendingSongData?.albumName)
             ) {
-              console.log('[Scarlett CS][SongDetection] Song detected (state: ', playbackState, '):', trackName, 'by', artistName);
-              currentTrack = trackName;
-              currentArtist = artistName;
-              currentAlbum = albumName;
-              try {
-                await messageSender.sendMessage('songDetected', { trackName, artistName, albumName });
-                console.debug('[Scarlett CS][SongDetection] Sent songDetected message to background.');
-              } catch (error) {
-                console.error('[Scarlett CS][SongDetection] Error sending songDetected:', error);
+              // NEW SONG CANDIDATE DETECTED
+              // console.log('[Scarlett CS][SongDetection] New song candidate:', trackName, 'by', artistName, '(state:', playbackState, ')');
+
+              if (pendingSongTimerId) {
+                clearTimeout(pendingSongTimerId);
+                // console.log('[Scarlett CS][SongDetection] Cleared pending timer for previous candidate:', pendingSongData?.trackName);
               }
-            } else if (trackName && artistName && !(trackName !== currentTrack || artistName !== currentArtist || albumName !== currentAlbum)) {
-              // console.debug('[Scarlett CS][SongDetection] Song is the same as current, state:', playbackState, '. No action.');
+
+              pendingSongData = { trackName, artistName, albumName };
+
+              pendingSongTimerId = window.setTimeout(async () => {
+                if (pendingSongData && pendingSongData.trackName === trackName && pendingSongData.artistName === artistName) {
+                  console.log('[Scarlett CS][SongDetection] Song qualified after delay:', trackName, 'by', artistName);
+                  currentTrack = trackName; // Update last *sent* song details
+                  currentArtist = artistName;
+                  currentAlbum = albumName;
+                  try {
+                    await messageSender.sendMessage('songDetected', { trackName, artistName, albumName });
+                    console.debug('[Scarlett CS][SongDetection] Sent songDetected message to background for qualified song.');
+                  } catch (error) {
+                    console.error('[Scarlett CS][SongDetection] Error sending songDetected for qualified song:', error);
+                  }
+                } else {
+                  // console.log('[Scarlett CS][SongDetection] Timer fired, but pending song data mismatch or null. Current pending:', pendingSongData, 'Track at timer start:', trackName);
+                }
+                pendingSongTimerId = null;
+                // Do not clear pendingSongData here, let the next detection cycle handle it or overwrite it.
+              }, SONG_QUALIFICATION_DELAY_MS);
+              // console.log(`[Scarlett CS][SongDetection] Timer set for ${trackName} (${SONG_QUALIFICATION_DELAY_MS / 1000}s)`);
+
+            } else if (trackName && artistName && 
+                (trackName === currentTrack && artistName === currentArtist && albumName === currentAlbum)) {
+              // Song is exactly the same as the one already processed and sent. Clear any pending timers for this exact song if one somehow exists.
+              if (pendingSongTimerId && pendingSongData?.trackName === trackName && pendingSongData?.artistName === artistName) {
+                // console.log('[Scarlett CS][SongDetection] Song is same as current & pending. Clearing its pending timer as it must have been processed.');
+                clearTimeout(pendingSongTimerId);
+                pendingSongTimerId = null;
+                // pendingSongData = null; // Keep pendingSongData to avoid re-triggering a new timer for it immediately if state is flapping
+              }
+              // console.debug('[Scarlett CS][SongDetection] Song is the same as current *sent* song. State:', playbackState, '. No new timer action.');
             }
           } else {
             // console.debug('[Scarlett CS][SongDetection] No new song detected or not playing. State:', playbackState, 'Metadata:', metadata);
