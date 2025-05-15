@@ -75,15 +75,13 @@ export default defineConfig({
         resources: [
             "pglite.wasm",
             "pglite.data",
-            "vector.tar.gz",
-            "models/silero_vad.onnx" // Your original VAD model
+            "vector.tar.gz"
         ],
       },
       {
         matches: ["<all_urls>"], // For VAD library assets
         resources: [
             "vad-assets/vad.worklet.bundle.min.js",
-            "vad-assets/silero_vad_legacy.onnx",
             "vad-assets/silero_vad_v5.onnx",
             "vad-assets/ort-wasm.wasm",
             "vad-assets/ort-wasm-simd.wasm",
