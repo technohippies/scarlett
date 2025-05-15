@@ -34,6 +34,10 @@ export const defaultUserConfiguration: UserConfiguration = {
   lmStudioModel: undefined,
   janBaseUrl: undefined,
   janModel: undefined,
+  // Unified LLM and embedding config (new consolidated fields)
+  llmConfig: null,
+  embeddingConfig: null,
+  ttsConfig: null,
   
   // Embedding related fields
   embeddingModelProvider: 'none',

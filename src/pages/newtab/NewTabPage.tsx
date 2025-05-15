@@ -23,6 +23,7 @@ interface NewTabPageProps {
   onNavigateToBookmarks: () => void;
   onNavigateToStudy: () => void;
   onNavigateToSettings: () => void;
+  onNavigateToRoleplay: () => void;
   messages: Messages | undefined;
   messagesLoading: boolean;
 }
@@ -204,6 +205,7 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
       onNavigateToBookmarks={props.onNavigateToBookmarks}
       onNavigateToStudy={props.onNavigateToStudy}
       onNavigateToSettings={props.onNavigateToSettings}
+      onNavigateToRoleplay={props.onNavigateToRoleplay}
       messages={props.messages}
       isFocusModeActive={isFocusModeActive}
       onToggleFocusMode={handleToggleFocusMode}

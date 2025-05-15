@@ -3,7 +3,7 @@ import { Button } from '../../components/ui/button';
 import { Spinner } from '../../components/ui/spinner';
 import { FlashcardStudyPanel } from '../../features/srs/FlashcardStudyPanel';
 import { EmbeddingProcessingPanel } from '../../features/embedding/EmbeddingProcessingPanel';
-import { BookmarkSimple, Gear, Shield } from 'phosphor-solid';
+import { BookmarkSimple, Gear, Shield, Chat } from 'phosphor-solid';
 import type { StudySummary } from '../../services/srs/types';
 import type { Messages } from '../../types/i18n';
 import { MoodSelector, type Mood } from '../../features/mood/MoodSelector';
@@ -23,6 +23,7 @@ export interface NewTabPageViewProps {
   onNavigateToBookmarks: () => void;
   onNavigateToStudy: () => void;
   onNavigateToSettings: () => void;
+  onNavigateToRoleplay: () => void;
   messages: Messages | undefined;
   isFocusModeActive: Accessor<boolean>;
   onToggleFocusMode: () => void;
@@ -108,30 +109,35 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
       </Show>
 
       <div class="mt-auto ml-auto flex flex-col gap-2 items-end">
-          {/* Focus Button first in this stack */}
-          <Button onClick={props.onToggleFocusMode} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
-            <Shield weight="fill" size={18} />
-            {props.isFocusModeActive()
-              ? i18n().get('newTabPageButtonStopFocus', 'Stop Focus')
-              : i18n().get('newTabPageButtonStartFocus', 'Start Focus')}
-          </Button>
+        {/* Chat / Roleplay button */}
+        <Button onClick={props.onNavigateToRoleplay} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
+          <Chat weight="fill" size={18} />
+          Chat
+        </Button>
+        {/* Focus Button first in this stack */}
+        <Button onClick={props.onToggleFocusMode} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
+          <Shield weight="fill" size={18} />
+          {props.isFocusModeActive()
+            ? i18n().get('newTabPageButtonStopFocus', 'Stop Focus')
+            : i18n().get('newTabPageButtonStartFocus', 'Start Focus')}
+        </Button>
 
-          <EmbeddingProcessingPanel
-            pendingEmbeddingCount={props.pendingEmbeddingCount}
-            isEmbedding={props.isEmbedding}
-            embedStatusMessage={props.embedStatusMessage}
-            onProcessClick={props.onEmbedClick}
-            messages={props.messages}
-          />
-          
-          <Button onClick={props.onNavigateToBookmarks} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
-              <BookmarkSimple weight="fill" size={18} />
-              {i18n().get('newTabPageButtonBookmarks', 'Bookmarks')}
-          </Button>
-          <Button onClick={props.onNavigateToSettings} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
-              <Gear weight="fill" size={18} />
-              {i18n().get('newTabPageButtonSettings', 'Settings')}
-          </Button>
+        <EmbeddingProcessingPanel
+          pendingEmbeddingCount={props.pendingEmbeddingCount}
+          isEmbedding={props.isEmbedding}
+          embedStatusMessage={props.embedStatusMessage}
+          onProcessClick={props.onEmbedClick}
+          messages={props.messages}
+        />
+        
+        <Button onClick={props.onNavigateToBookmarks} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
+            <BookmarkSimple weight="fill" size={18} />
+            {i18n().get('newTabPageButtonBookmarks', 'Bookmarks')}
+        </Button>
+        <Button onClick={props.onNavigateToSettings} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
+            <Gear weight="fill" size={18} />
+            {i18n().get('newTabPageButtonSettings', 'Settings')}
+        </Button>
       </div>
 
     </Motion>

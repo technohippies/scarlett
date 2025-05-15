@@ -14,9 +14,11 @@ export default {
     summaryData: { control: 'object' }, // Basic object control
     error: { control: 'text' },
     onStudyClick: { action: 'studyClicked' },
+    onNavigateToRoleplay: { action: 'navigateToRoleplay' },
   },
   args: { // Default args for all stories unless overridden
     onStudyClick: action('studyClicked'),
+    onNavigateToRoleplay: action('navigateToRoleplay'),
     isLoading: false,
     error: null,
     summaryData: null, // Default to no data

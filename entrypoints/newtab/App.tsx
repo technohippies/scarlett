@@ -3,6 +3,7 @@ import NewTabPage from '../../src/pages/newtab/NewTabPage';
 import BookmarksPage from '../../src/pages/bookmarks/BookmarksPage';
 import StudyPage from '../../src/pages/study/StudyPage';
 import SettingsPage from '../../src/pages/settings/SettingsPage';
+import RoleplayPage from '../../src/pages/roleplay/RoleplayPage';
 import { SettingsProvider } from '../../src/context/SettingsContext';
 import type { Messages } from '../../src/types/i18n';
 import { userConfigurationStorage } from '../../src/services/storage/storage';
@@ -55,7 +56,7 @@ const fetchMessages = async (langCode: string): Promise<Messages> => {
   }
 };
 
-type ActiveView = 'newtab' | 'bookmarks' | 'study' | 'settings';
+type ActiveView = 'newtab' | 'bookmarks' | 'study' | 'settings' | 'roleplay';
 
 const App: Component = () => {
   const [activeView, setActiveView] = createSignal<ActiveView>('newtab');
@@ -108,6 +109,7 @@ const App: Component = () => {
   const [messagesData] = createResource(effectiveLangCode, fetchMessages);
 
   const navigateTo = (view: ActiveView) => {
+    console.log(`[App.tsx] Navigating to: ${view}`);
     setActiveView(view);
   };
 
@@ -126,6 +128,7 @@ const App: Component = () => {
              onNavigateToBookmarks={() => navigateTo('bookmarks')}
              onNavigateToStudy={() => navigateTo('study')}
              onNavigateToSettings={() => navigateTo('settings')}
+             onNavigateToRoleplay={() => navigateTo('roleplay')}
              messages={messagesData()} 
              messagesLoading={messagesData.loading} 
           />
@@ -138,6 +141,9 @@ const App: Component = () => {
         </Match>
         <Match when={activeView() === 'settings'}>
           <SettingsPage onNavigateBack={() => navigateTo('newtab')} /> 
+        </Match>
+        <Match when={activeView() === 'roleplay'}> 
+          <RoleplayPage onNavigateBack={() => navigateTo('newtab')} />
         </Match>
       </Switch>
     </SettingsProvider>
