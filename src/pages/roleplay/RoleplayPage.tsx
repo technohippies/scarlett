@@ -54,7 +54,7 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
 
   // TTS State
   const [isTTSSpeaking, setIsTTSSpeaking] = createSignal(false);
-  const [currentTTSAudio, setCurrentTTSAudio] = createSignal<HTMLAudioElement | null>(null);
+  const [currentTTSAudioInfo, setCurrentTTSAudioInfo] = createSignal<{audio: HTMLAudioElement, url: string} | null>(null);
   const [ttsWordMap, setTtsWordMap] = createSignal<WordInfo[]>([]);
   const [currentTTSHighlightIndex, setCurrentTTSHighlightIndex] = createSignal<number | null>(null);
   const [ttsError, setTtsError] = createSignal<string | null>(null);
@@ -102,21 +102,27 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
   };
 
   const stopAndClearTTS = () => {
-    const audio = currentTTSAudio();
-    if (audio) {
+    const audioInfo = currentTTSAudioInfo();
+    if (audioInfo) {
+      const { audio, url } = audioInfo;
+      // Detach handlers to prevent them from firing after we're done with this audio object
+      audio.onplay = null;
+      audio.onpause = null;
+      audio.onended = null;
+      audio.onerror = null;
+
       audio.pause();
-      audio.src = '';
-      setCurrentTTSAudio(null);
+      
+      URL.revokeObjectURL(url); // Explicitly revoke the URL when stopping
+      setCurrentTTSAudioInfo(null);
     }
+
     if (ttsAnimationFrameId()) {
       cancelAnimationFrame(ttsAnimationFrameId()!);
       setTtsAnimationFrameId(null);
     }
     setIsTTSSpeaking(false);
-    setTtsWordMap([]);
-    setCurrentTTSHighlightIndex(null);
     setTtsError(null);
-    setActiveSpokenMessageId(null);
   };
 
   const handleBackToSelection = () => {
@@ -278,7 +284,9 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
   };
 
   const updateTTSHighlightLoop = () => {
-    const audio = currentTTSAudio();
+    const audioInfo = currentTTSAudioInfo();
+    if (!audioInfo) return;
+    const audio = audioInfo.audio;
     const wordMap = ttsWordMap();
 
     if (!audio || audio.paused || audio.ended || !wordMap || wordMap.length === 0) {
@@ -358,9 +366,9 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
       const processedWords = processTTSAlignment(text, finalAlignmentData, lang);
       setTtsWordMap(processedWords);
 
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-      setCurrentTTSAudio(audio);
+      const localAudioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(localAudioUrl);
+      setCurrentTTSAudioInfo({ audio, url: localAudioUrl });
 
       audio.onplay = () => {
         console.log('[RoleplayPage TTS] Audio playing.');
@@ -373,18 +381,32 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
         setTtsAnimationFrameId(null);
       };
       audio.onended = () => {
-        console.log('[RoleplayPage TTS] Audio ended.');
+        console.log('[RoleplayPage TTS] Audio ended. URL:', localAudioUrl);
         setIsTTSSpeaking(false);
         setCurrentTTSHighlightIndex(null);
         if (ttsAnimationFrameId()) cancelAnimationFrame(ttsAnimationFrameId()!);
         setTtsAnimationFrameId(null);
-        URL.revokeObjectURL(audioUrl);
+
+        // Check if this audio instance is still the current one we are tracking
+        const latestAudioInfo = currentTTSAudioInfo();
+        if (latestAudioInfo && latestAudioInfo.audio === audio) {
+            setCurrentTTSAudioInfo(null); // It was current, now it ended.
+        }
+        URL.revokeObjectURL(localAudioUrl); // Revoke this specific instance's URL
       };
       audio.onerror = (e) => {
-        console.error('[RoleplayPage TTS] Audio playback error:', e);
+        console.error('[RoleplayPage TTS] Audio playback error:', e, 'URL:', localAudioUrl);
+        if (audio && audio.error) {
+            console.error('[RoleplayPage TTS] HTMLMediaElement error code:', audio.error.code, 'message:', audio.error.message);
+        }
         setTtsError('Error playing TTS audio.');
         setIsTTSSpeaking(false);
-        URL.revokeObjectURL(audioUrl);
+
+        const latestAudioInfo = currentTTSAudioInfo();
+        if (latestAudioInfo && latestAudioInfo.audio === audio) {
+            setCurrentTTSAudioInfo(null); // It was current and errored.
+        }
+        URL.revokeObjectURL(localAudioUrl); // Revoke this specific instance's URL
       };
       
       await audio.play();
