@@ -114,30 +114,30 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
           <Chat weight="fill" size={18} />
           Chat
         </Button>
-        {/* Focus Button first in this stack */}
-        <Button onClick={props.onToggleFocusMode} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
-          <Shield weight="fill" size={18} />
-          {props.isFocusModeActive()
-            ? i18n().get('newTabPageButtonStopFocus', 'Stop Focus')
-            : i18n().get('newTabPageButtonStartFocus', 'Start Focus')}
-        </Button>
+          {/* Focus Button first in this stack */}
+          <Button onClick={props.onToggleFocusMode} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
+            <Shield weight="fill" size={18} />
+            {props.isFocusModeActive()
+              ? i18n().get('newTabPageButtonStopFocus', 'Stop Focus')
+              : i18n().get('newTabPageButtonStartFocus', 'Start Focus')}
+          </Button>
 
-        <EmbeddingProcessingPanel
-          pendingEmbeddingCount={props.pendingEmbeddingCount}
-          isEmbedding={props.isEmbedding}
-          embedStatusMessage={props.embedStatusMessage}
-          onProcessClick={props.onEmbedClick}
-          messages={props.messages}
-        />
-        
-        <Button onClick={props.onNavigateToBookmarks} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
-            <BookmarkSimple weight="fill" size={18} />
-            {i18n().get('newTabPageButtonBookmarks', 'Bookmarks')}
-        </Button>
-        <Button onClick={props.onNavigateToSettings} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
-            <Gear weight="fill" size={18} />
-            {i18n().get('newTabPageButtonSettings', 'Settings')}
-        </Button>
+          <EmbeddingProcessingPanel
+            pendingEmbeddingCount={props.pendingEmbeddingCount}
+            isEmbedding={props.isEmbedding}
+            embedStatusMessage={props.embedStatusMessage}
+            onProcessClick={props.onEmbedClick}
+            messages={props.messages}
+          />
+          
+          <Button onClick={props.onNavigateToBookmarks} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
+              <BookmarkSimple weight="fill" size={18} />
+              {i18n().get('newTabPageButtonBookmarks', 'Bookmarks')}
+          </Button>
+          <Button onClick={props.onNavigateToSettings} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
+              <Gear weight="fill" size={18} />
+              {i18n().get('newTabPageButtonSettings', 'Settings')}
+          </Button>
       </div>
 
     </Motion>

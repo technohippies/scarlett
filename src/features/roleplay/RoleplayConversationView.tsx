@@ -5,7 +5,9 @@ import { Button } from '../../components/ui/button';
 import { Spinner } from '../../components/ui/spinner';
 import { Microphone, StopCircle, Play, SpeakerSimpleHigh, SpeakerSimpleSlash, X } from 'phosphor-solid'; // Icons
 import { Header } from '../../components/layout/Header';
+// @ts-ignore: suppress missing types import
 import type { AlignmentData, ChatMessage, RoleplayConversationViewProps } from './types'; // Import types from a separate file
+import type { ScenarioOption } from './RoleplaySelectionView'; // Import ScenarioOption
 
 // Re-usable alignment data structure (similar to TranslatorWidget)
 export interface AlignmentData {
@@ -24,19 +26,19 @@ export interface ChatMessage {
 }
 
 export interface RoleplayConversationViewProps {
-    aiWelcomeMessage?: string; // Optional initial message from AI
+    aiWelcomeMessage?: string;
     onSendMessage: (spokenText: string, chatHistory: ChatMessage[]) => Promise<{ aiResponse: string; alignment?: AlignmentData | null; error?: string } | null>;
     onEndRoleplay?: () => void;
-    targetLanguage: string; // e.g., 'fr-FR', for context and potential TTS
-    // userNativeLanguage: string; // For UI elements, if needed
-    // onVadStatusChange?: (isActive: boolean) => void; // If VAD control is external
-    onStartRecording: () => Promise<boolean>; // Returns success/permission
-    onStopRecording: () => Promise<string | null>; // Returns STT result or null on error
-    onPlayTTS: (text: string, lang: string, alignmentData?: AlignmentData | null) => Promise<void>; // Handles playback and highlighting
+    targetLanguage: string;
+    onStartRecording: () => Promise<boolean>;
+    onStopRecording: () => Promise<string | null>;
+    onPlayTTS: (text: string, lang: string, alignmentData?: AlignmentData | null) => Promise<void>;
     onStopTTS: () => void;
-    isGlobalVadActive?: Accessor<boolean>; // If VAD state is managed globally
-    isTTSSpeaking?: Accessor<boolean>; // If TTS is currently active
-    currentHighlightIndex?: Accessor<number | null>; // Added to sync highlighting
+    isGlobalVadActive?: Accessor<boolean>;
+    isTTSSpeaking?: Accessor<boolean>;
+    currentHighlightIndex?: Accessor<number | null>;
+    scenario: ScenarioOption;
+    onNavigateBack: () => void;
 }
 
 // Centered loading animation
@@ -55,12 +57,14 @@ const HIGHLIGHT_STYLE_ID = "scarlett-roleplay-highlight-styles";
 const HIGHLIGHT_CSS = `
   .scarlett-roleplay-word-span {
     background-color: transparent;
-    border-radius: 3px;
-    display: inline-block;
+    border-radius: 3px; /* Keep for rounded highlight edges */
+    display: inline; /* Changed from inline-block */
     transition: background-color 0.2s ease-out, color 0.2s ease-out;
-    padding: 0.05em 0.1em;
-    margin: 0 0.02em;
-    line-height: 1.5;
+    padding: 0; /* Removed padding */
+    margin: 0; /* Removed margin */
+    /* line-height: 1.5; */ /* Commented out, let parent control line-height */
+    /* Ensure it doesn't add extra space if the content is just a space character */
+    /* white-space: pre-wrap; */ /* May or may not be needed, test without first */
   }
   .scarlett-roleplay-word-highlight {
     background-color: hsl(var(--primary) / 0.3); 
@@ -68,12 +72,40 @@ const HIGHLIGHT_CSS = `
 `;
 
 export const RoleplayConversationView: Component<RoleplayConversationViewProps> = (props) => {
-    const [chatHistory, setChatHistory] = createSignal<ChatMessage[]>([]);
-    const [currentAiMessageToDisplay, setCurrentAiMessageToDisplay] = createSignal<ChatMessage | null>(null);
+    const initialWelcomeMessageObject = props.aiWelcomeMessage
+        ? {
+            id: `ai-initial-welcome-${Date.now()}`,
+            sender: 'ai' as const,
+            text: props.aiWelcomeMessage,
+            timestamp: new Date(),
+            alignment: null,
+          }
+        : null;
+
+    const [chatHistory, setChatHistory] = createSignal<ChatMessage[]>(initialWelcomeMessageObject ? [initialWelcomeMessageObject] : []);
+    const [currentAiMessageToDisplay, setCurrentAiMessageToDisplay] = createSignal<ChatMessage | null>(initialWelcomeMessageObject);
     const [isListening, setIsListening] = createSignal(false);
     const [isProcessingUserSpeech, setIsProcessingUserSpeech] = createSignal(false);
     const [isWaitingForLLM, setIsWaitingForLLM] = createSignal(false);
     const [errorMessage, setErrorMessage] = createSignal<string | null>(null);
+
+    // --- DEBUG LOGGING FOR STATE CHANGES ---
+    createEffect(() => console.log("[RoleplayConversationView] isListening:", isListening()));
+    createEffect(() => console.log("[RoleplayConversationView] isProcessingUserSpeech:", isProcessingUserSpeech()));
+    createEffect(() => console.log("[RoleplayConversationView] isWaitingForLLM:", isWaitingForLLM()));
+    createEffect(() => console.log("[RoleplayConversationView] errorMessage:", errorMessage()));
+    createEffect(() => console.log("[RoleplayConversationView] isTTSSpeaking (prop):", props.isTTSSpeaking ? props.isTTSSpeaking() : 'prop undefined'));
+    createEffect(() => console.log("[RoleplayConversationView] Scenario (prop):", props.scenario ? props.scenario.title : 'prop undefined'));
+
+    // ADD THIS: Log full chatHistory on change
+    createEffect(() => {
+        const history = chatHistory();
+        console.log(`[RoleplayConversationView] chatHistory updated. Count: ${history.length}`);
+        history.forEach((msg, index) => {
+            console.log(`[RoleplayConversationView] chatHistory[${index}]: id=${msg.id}, sender=${msg.sender}, text="${msg.text ? msg.text.substring(0, 50) + (msg.text.length > 50 ? '...' : '') : 'NULL'}", error=${!!msg.error}`);
+        });
+    });
+    // --- END DEBUG LOGGING ---
 
     let chatAreaRef: HTMLDivElement | undefined;
 
@@ -178,23 +210,14 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
             document.head.appendChild(styleElement);
         }
 
-        if (props.aiWelcomeMessage) {
-            const welcomeMsg: ChatMessage = {
-                id: `ai-initial-welcome-${Date.now()}`,
-                sender: 'ai',
-                text: props.aiWelcomeMessage,
-                timestamp: new Date(),
-                alignment: null, 
-            };
-            setChatHistory([welcomeMsg]);
-            setCurrentAiMessageToDisplay(welcomeMsg);
-            if (props.onPlayTTS) {
-                props.onPlayTTS(props.aiWelcomeMessage, props.targetLanguage, null);
-            }
-        } else {
+        // If currentAiMessageToDisplay was initialized with a welcome message, play it.
+        if (initialWelcomeMessageObject && props.onPlayTTS) {
+            props.onPlayTTS(initialWelcomeMessageObject.text, props.targetLanguage, initialWelcomeMessageObject.alignment);
+        } else if (!initialWelcomeMessageObject) { // Only run this if no welcome message was set
             props.onStartRecording().then((success: boolean) => {
                 if (success) setIsListening(true);
                 else setErrorMessage("VAD failed to start.");
+                // Set a different initial message if no welcome message
                 setCurrentAiMessageToDisplay({
                     id: 'ai-ready-to-listen',
                     sender: 'ai',
@@ -324,118 +347,96 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
         }
     };
 
-    // For rendering AI messages with potential highlighting
-    const AiResponseDisplay: Component = () => {
-        const message = currentAiMessageToDisplay();
-        if (!message || (!message.text && isWaitingForLLM())) return null;
-        if (!message.text) return null;
-
-        const wordMap = () => {
-            if (!message.alignment?.characters || message.alignment.characters.length === 0) {
-                return [{ text: message.text as string, index: 0, isSpokenSegment: false }]; 
-            }
-            return message.alignment.characters.map((char: string, idx: number) => ({
-                text: char,
-                index: idx,
-                isSpokenSegment: true 
-            }));
-        };
-
-        // Animate presence of the container, and then animate text content change (or use key for re-render animation)
-        return (
-            <Motion.div 
-                key={message.id} // Use message ID to ensure re-animation on new message
-                initial={{ opacity: 0, y: 10, scale: 0.98 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                transition={{ duration: 0.35, easing: "ease-out" }}
-                class="text-center text-2xl md:text-3xl font-medium leading-relaxed p-4 flex-grow flex items-center justify-center w-full max-w-prose mx-auto"
-            >
-                <div> {/* Inner div for text content to prevent flexbox from shrinking it weirdly */}
-                    <Show when={message.text}>
-                        <For each={wordMap()}>{(word, _index) => (
-                            <span
-                                class="scarlett-roleplay-word-span"
-                                classList={{ 'scarlett-roleplay-word-highlight': props.currentHighlightIndex && props.currentHighlightIndex() === word.index && word.isSpokenSegment }}
-                                data-word-index={word.index}
-                            >
-                                {word.text.replace(/\n/g, '<br />')}
-                            </span>
-                        )}
-                        </For>
-                    </Show>
-                </div>
-            </Motion.div>
-        );
-    };
-
-    const getMicButtonIcon = () => {
-        if (isListening()) return <StopCircle size={36} weight="fill" class="text-red-500" />;
-        if (isProcessingUserSpeech() || isWaitingForLLM()) return <Spinner class="w-9 h-9 text-primary" />;
-        return <Microphone size={36} weight="regular" class="text-primary" />;
-    };
-    
-    const isMicButtonDisabled = () => {
-      if (props.isTTSSpeaking && props.isTTSSpeaking() && !isListening()) return true; 
-      if ((isProcessingUserSpeech() || isWaitingForLLM()) && !isListening()) return true;
-      return false; 
-    };
-
     // Visual status indicator (could be improved)
     const StatusIndicator: Component = () => {
-        let statusText = "";
-        if (errorMessage()) statusText = "Error"; // Prioritize error
-        else if (props.isTTSSpeaking && props.isTTSSpeaking()) statusText = "AI Speaking";
-        else if (isListening()) statusText = "Listening";
-        else if (isProcessingUserSpeech()) statusText = "Processing Speech";
-        else if (isWaitingForLLM()) statusText = "AI Thinking";
-        else if (currentAiMessageToDisplay()?.text === "Didn't catch any speech.") statusText = "No speech detected";
-        else statusText = "Ready"; // Default idle state
+        const ttsSpeaking = () => props.isTTSSpeaking ? props.isTTSSpeaking() : false;
+        const statusText = () => {
+            if (errorMessage()) return `Error: ${errorMessage()}`;
+            if (ttsSpeaking()) return "AI Speaking";
+            if (isListening()) return "Listening";
+            if (isProcessingUserSpeech()) return "Processing Speech";
+            if (isWaitingForLLM()) return "AI Thinking";
+            if (currentAiMessageToDisplay()?.text === "Didn't catch any speech.") return "No speech detected";
+            return "Ready";
+        };
 
         return (
-            <Show when={statusText !== "Ready" || errorMessage()}> {/* Show indicator unless truly idle and no error */}
-                <div class={`fixed bottom-4 right-4 text-xs p-2 rounded shadow-md transition-all duration-300 ease-in-out 
-                    ${errorMessage() ? 'bg-destructive text-destructive-foreground' : 'bg-muted text-muted-foreground'}
-                    ${(isListening() || (props.isTTSSpeaking && props.isTTSSpeaking())) ? 'opacity-90' : 'opacity-70'}
-                `}>
-                    {statusText}
-                </div>
-            </Show>
+            <div class={`fixed bottom-4 right-4 text-xs p-2 rounded shadow-md transition-all duration-300 ease-in-out 
+                ${errorMessage() ? 'bg-destructive text-destructive-foreground' : 'bg-muted text-muted-foreground'}
+                ${(isListening() || ttsSpeaking()) ? 'opacity-90' : 'opacity-70'}
+            `}>
+                {statusText()} | L: {isListening().toString().charAt(0)} | P: {isProcessingUserSpeech().toString().charAt(0)} | W: {isWaitingForLLM().toString().charAt(0)} | TTS: {ttsSpeaking().toString().charAt(0)} | Err: {errorMessage() ? 'Y' : 'N'}
+            </div>
         );
     };
 
     return (
         <div class="h-full w-full flex flex-col bg-gradient-to-br from-background to-muted/20 text-foreground font-sans select-none overflow-hidden">
             <Header 
+                title={props.scenario?.title ? `Roleplay: ${props.scenario.title}` : "Roleplay Chat"}
                 onBackClick={() => { 
+                    console.log("%c[RoleplayConversationView] HEADER ONBACKCLICK TRIGGERED!", "color: red; font-weight: bold;"); // ADDED LOG
                     props.onStopTTS?.(); 
                     if (isListening()) props.onStopRecording?.(); // Also stop VAD if active
-                    props.onEndRoleplay(); 
+                    props.onEndRoleplay ? props.onEndRoleplay() : props.onNavigateBack(); // Fallback to onNavigateBack if onEndRoleplay not provided
                 }} 
                 hideBackButton={false} // Header itself is fine, its internal button is fine for navigation
             /> 
             
-            <main class="flex-grow flex flex-col items-center justify-center relative p-4">
-                <AiResponseDisplay />
+            <main class="flex-grow flex flex-col items-center justify-center relative p-4 text-center"> {/* Added text-center */}
+                {(() => {
+                    console.log("[RoleplayConversationView] MAIN JSX - Evaluating reactive block. currentAiMessageToDisplay() is:", 
+                        currentAiMessageToDisplay() ? { 
+                            id: currentAiMessageToDisplay()!.id, 
+                            text: currentAiMessageToDisplay()!.text?.substring(0,30), 
+                            sender: currentAiMessageToDisplay()!.sender 
+                        } : null,
+                        "isWaitingForLLM() is:", isWaitingForLLM()
+                    );
+                    return null; // Explicitly return null for JSX
+                })()}
+                
+                {/* --- New Explicit Display Logic --- */}
+                <Show when={errorMessage()} keyed>
+                    {(errMsg) => (
+                        <Motion.div 
+                            initial={{opacity: 0, y:20}} animate={{opacity:1, y:0}} transition={{duration: 0.3}}
+                            class="text-destructive-foreground text-sm p-3 bg-destructive/80 backdrop-blur-sm rounded-lg shadow-lg w-auto max-w-[90%] text-center z-20"
+                        >
+                            {errMsg}
+                        </Motion.div>
+                    )}
+                </Show>
 
-                <Show when={(isProcessingUserSpeech() || isWaitingForLLM()) && (!currentAiMessageToDisplay() || !currentAiMessageToDisplay()?.text)}>
-                    <div class="absolute inset-0 flex items-center justify-center z-0"> {/* Ensure spinner is behind text if text appears */}
+                <Show when={!errorMessage() && isWaitingForLLM()} keyed>
+                     <div class="text-xl text-muted-foreground animate-pulse">AI is thinking...</div>
+                     <div class="absolute inset-0 flex items-center justify-center z-0">
                         <Spinner class="w-12 h-12 text-primary" />
                     </div>
                 </Show>
-                
-                <Show when={errorMessage() && !(isProcessingUserSpeech() || isWaitingForLLM())}>
-                    <Motion.div 
-                        initial={{opacity: 0, y:20}} animate={{opacity:1, y:0}} transition={{duration: 0.3}}
-                        class="absolute bottom-12 left-1/2 -translate-x-1/2 text-destructive-foreground text-sm p-3 bg-destructive/80 backdrop-blur-sm rounded-lg shadow-lg w-auto max-w-[90%] text-center z-20"
-                    >
-                        {errorMessage()}
-                    </Motion.div>
+
+                <Show when={!errorMessage() && !isWaitingForLLM() && currentAiMessageToDisplay()?.text} keyed>
+                    {(msg) => (
+                        // Render AI's actual text response
+                        <div class="text-2xl p-4">{currentAiMessageToDisplay()!.text}</div> // Removed animate-fade-in
+                    )}
                 </Show>
+
+                <Show when={!errorMessage() && !isWaitingForLLM() && (!currentAiMessageToDisplay() || !currentAiMessageToDisplay()?.text)} keyed>
+                    {/* Fallback: e.g., "Listening..." or "Ready" or initial state before any interaction */}
+                    <div class="text-xl text-muted-foreground">
+                        {currentAiMessageToDisplay()?.text ? currentAiMessageToDisplay()!.text : "Ready to begin roleplay..."}
+                    </div>
+                </Show>
+                {/* --- End New Explicit Display Logic --- */}
             </main>
             
+            {/* Mic button removed; VAD handles recording automatically */}
             <StatusIndicator />
-            {/* Footer and main microphone button are intentionally removed */}
+            {/* Debug Panel */}
+            <div style="position:fixed; bottom:8px; right:8px; background:rgba(0,0,0,0.6); color:#fff; font-size:10px; padding:4px; border-radius:4px; z-index:999;">
+                L:{isListening().toString()} P:{isProcessingUserSpeech().toString()} W:{isWaitingForLLM().toString()} E:{errorMessage() ?? 'none'}
+            </div>
         </div>
     );
 }; 

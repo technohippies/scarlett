@@ -1,4 +1,5 @@
 import type { Accessor } from 'solid-js';
+import type { ScenarioOption } from './RoleplaySelectionView';
 
 export interface AlignmentData {
     characters: string[];
@@ -26,4 +27,6 @@ export interface RoleplayConversationViewProps {
     onStopTTS: () => void;
     isTTSSpeaking?: Accessor<boolean>; 
     currentHighlightIndex?: Accessor<number | null>; 
+    scenario: ScenarioOption;
+    onNavigateBack: () => void;
 } 

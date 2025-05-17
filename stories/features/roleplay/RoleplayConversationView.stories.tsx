@@ -1,6 +1,7 @@
 import { RoleplayConversationView, RoleplayConversationViewProps, ChatMessage, AlignmentData } from '../../../src/features/roleplay/RoleplayConversationView';
 import type { Meta, StoryObj } from '@storybook/html';
 import { createSignal, Component, Accessor } from 'solid-js';
+import { action } from '@storybook/addon-actions';
 
 const meta: Meta<RoleplayConversationViewProps> = {
   title: 'Features/Roleplay/RoleplayConversationView',
@@ -55,14 +56,26 @@ const mockOnPlayTTS = async (text: string, lang: string, alignment?: AlignmentDa
   setCurrentHighlightIndexStory(null);
   if (ttsInterval) clearInterval(ttsInterval);
 
-  if (alignment && alignment.characters && alignment.character_start_times_seconds) {
+  let effectiveAlignment = alignment;
+  if (!effectiveAlignment && text) {
+    // If no alignment is provided, create a simple one based on characters for demonstration
+    const chars = Array.from(text);
+    effectiveAlignment = {
+      characters: chars,
+      character_start_times_seconds: chars.map((_, i) => i * 0.1), // Simple timing
+      character_end_times_seconds: chars.map((_, i) => i * 0.1 + 0.1),
+    };
+    console.log("Story: mockOnPlayTTS generated simple alignment for highlighting.");
+  }
+
+  if (effectiveAlignment && effectiveAlignment.characters && effectiveAlignment.character_start_times_seconds) {
     // Simulate highlighting based on alignment data
     let charIndex = 0;
     const playAligned = () => {
-      if (charIndex < alignment.characters.length) {
+      if (charIndex < effectiveAlignment!.characters.length) {
         setCurrentHighlightIndexStory(charIndex);
-        const charStartTime = alignment.character_start_times_seconds[charIndex];
-        const nextCharStartTime = (charIndex + 1 < alignment.characters.length) ? alignment.character_start_times_seconds[charIndex + 1] : charStartTime + 0.1; // Default duration if last char
+        const charStartTime = effectiveAlignment!.character_start_times_seconds[charIndex];
+        const nextCharStartTime = (charIndex + 1 < effectiveAlignment!.characters.length) ? effectiveAlignment!.character_start_times_seconds[charIndex + 1] : charStartTime + 0.1; // Default duration if last char
         const duration = (nextCharStartTime - charStartTime) * 1000; // in ms
         
         charIndex++;
@@ -78,10 +91,10 @@ const mockOnPlayTTS = async (text: string, lang: string, alignment?: AlignmentDa
   } else {
     // No alignment, just simulate speaking duration
     ttsInterval = setTimeout(() => {
-      console.log("Story: TTS finished playing (simulated, no alignment)");
+      console.log("Story: TTS finished playing (simulated, no alignment / no text)");
       setIsTTSSpeakingStory(false);
       setCurrentHighlightIndexStory(null);
-    }, text.length * 50); // Rough estimate
+    }, text ? text.length * 50 : 500); // Rough estimate, ensure it runs if text is empty
   }
   // In a real scenario, this would involve an actual audio playback
 };
@@ -152,4 +165,29 @@ export const AiErrorResponse: Story = {
       isTTSSpeaking: () => isTTSSpeakingStory(), 
       currentHighlightIndex: () => currentHighlightIndexStory(),
     },
-  }; 
+  };
+
+export const AiShowsWelcomeMessageAndHighlights: Story = {
+  args: {
+    aiWelcomeMessage: "Hello there! I am your AI assistant for this roleplay scenario. Let\'s begin when you\'re ready.",
+    onSendMessage: mockLLMResponder, // Use shared mock
+    onEndRoleplay: () => action("onEndRoleplayTriggered")(), // Keep this simple action call if preferred, or make a mock
+    targetLanguage: 'en-US',
+    onStartRecording: mockOnStartRecording, // Use shared mock
+    onStopRecording: mockOnStopRecording, // Use shared mock
+    onPlayTTS: mockOnPlayTTS, // Uses the enhanced mock
+    onStopTTS: mockOnStopTTS, // Use shared mock
+    isTTSSpeaking: () => isTTSSpeakingStory(),
+    currentHighlightIndex: () => currentHighlightIndexStory(),
+    scenario: { 
+      id: 'welcome-scenario', 
+      title: 'Welcome Scenario', 
+      description: 'A scenario to test initial AI message display and highlighting.', 
+      character: 'Helpful AI', 
+      setting: 'Virtual Greeting Room' 
+    },
+    onNavigateBack: () => action('onNavigateBackTriggered')(), // Keep simple action call
+  },
+  // The component should automatically play TTS for the welcome message on mount.
+  // No play function needed here for that part.
+}; 
