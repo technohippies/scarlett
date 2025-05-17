@@ -24,9 +24,7 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
   const [selectedScenario, setSelectedScenario] = createSignal<ScenarioOption | null>(null);
   const [targetLanguage, setTargetLanguage] = createSignal('en');
   const [isTTSSpeaking, setIsTTSSpeaking] = createSignal(false);
-  const [currentHighlightIndex, setCurrentHighlightIndex] = createSignal<number | null>(null);
   const [vadInstance, setVadInstance] = createSignal<MicVAD | null>(null);
-  const [isVadLoading, setIsVadLoading] = createSignal(false);
 
   const fetchScenarios = async () => {
     setIsLoading(true);
@@ -54,23 +52,17 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
   const destroyVadInstance = () => {
     const currentVad = vadInstance();
     if (currentVad) {
-      console.log('%c[RoleplayPage VAD] Attempting to destroy VAD instance.', 'color: orange; font-weight: bold;');
+      console.log('[RoleplayPage VAD] Destroying VAD instance.');
       try {
-        console.log('[RoleplayPage VAD] Calling currentVad.destroy()...');
         currentVad.destroy();
-        console.log('%c[RoleplayPage VAD] currentVad.destroy() successfully called.', 'color: green; font-weight: bold;');
+        console.log('[RoleplayPage VAD] VAD instance destroyed successfully.');
         
-        setVadInstance(null); // Clear the signal
-        setIsVadLoading(false); // Reset loading state if any
-        console.log('[RoleplayPage VAD] VAD instance signal cleared.');
+        setVadInstance(null);
       } catch (error) {
-        console.error('%c[RoleplayPage VAD] Error during VAD destruction process:', 'color: red; font-weight: bold;', error);
+        console.error('[RoleplayPage VAD] Error during VAD destruction process:', error);
       }
-    } else {
-      console.log('[RoleplayPage VAD] destroyVadInstance called but no VAD instance was found.');
     }
-    vadInitializationPromise = null; // Also clear any pending init promise
-    console.log('[RoleplayPage VAD] Cleared vadInitializationPromise.');
+    vadInitializationPromise = null;
   };
 
   const handleBackToSelection = () => {
@@ -99,7 +91,6 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
     let resolveInit: (instance: MicVAD | null) => void = () => {};
     vadInitializationPromise = new Promise<MicVAD | null>(r => resolveInit = r);
     
-    setIsVadLoading(true);
     console.log('[RoleplayPage VAD] Starting new VAD initialization...');
 
     try {
@@ -138,13 +129,11 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
       });
       setVadInstance(newVad);
       console.log('[RoleplayPage VAD] VAD Initialized successfully (new instance).');
-      setIsVadLoading(false);
       resolveInit(newVad);
       vadInitializationPromise = null;
       return newVad;
     } catch (e) {
       console.error('[RoleplayPage VAD] VAD initialization error', e);
-      setIsVadLoading(false);
       setVadInstance(null);
       resolveInit(null);
       vadInitializationPromise = null;
@@ -167,7 +156,6 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
     }
 
     try {
-      console.log('[RoleplayPage VAD] Attempting to start VAD...');
       await currentVad.start();
       console.log('[RoleplayPage VAD] VAD started successfully.');
       return true;
@@ -225,9 +213,8 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
           onPlayTTS={async (text: string, lang: string, alignment?: AlignmentData | null) => { console.log(`[RoleplayPage] onPlayTTS called for lang ${lang}:`, text, alignment); setIsTTSSpeaking(true); setTimeout(() => setIsTTSSpeaking(false), 2000); }}
           onStopTTS={() => { console.log('[RoleplayPage] onStopTTS called'); setIsTTSSpeaking(false); }}
           isTTSSpeaking={isTTSSpeaking}
-          currentHighlightIndex={currentHighlightIndex}
           onSendMessage={async (spokenText: string, chatHistory: UiChatMessage[]) => {
-            console.log('[RoleplayPage] onSendMessage called with:', spokenText, chatHistory);
+            console.log('[RoleplayPage] onSendMessage called with:', spokenText, `History items: ${chatHistory.length}`);
             const llmCfg = await getActiveLLMConfig();
             if (!llmCfg) {
               return { aiResponse: '', error: 'Missing LLM configuration' };
@@ -243,7 +230,7 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
             ];
 
             try {
-              console.log('[RoleplayPage] Sending to LLM with history count:', llmMessages.length -1, 'Full messages:', JSON.stringify(llmMessages, null, 2));
+              console.log(`[RoleplayPage] Sending to LLM. System prompt + ${llmMessages.length -1} history messages.`);
               const response = await ollamaChat(llmMessages, llmCfg);
               const aiContent = response.choices[0]?.message?.content ?? '';
               return { aiResponse: aiContent, alignment: null };

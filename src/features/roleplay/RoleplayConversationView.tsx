@@ -41,17 +41,6 @@ export interface RoleplayConversationViewProps {
     onNavigateBack: () => void;
 }
 
-// Centered loading animation
-const ThreeDotsLoadingCentered: Component = () => (
-    <div class="absolute inset-0 flex items-center justify-center z-10">
-        <div class="flex space-x-2 p-5 bg-muted/80 backdrop-blur-sm rounded-lg shadow-xl">
-            <div class="w-3 h-3 bg-primary rounded-full animate-bounce [animation-delay:-0.3s]"></div>
-            <div class="w-3 h-3 bg-primary rounded-full animate-bounce [animation-delay:-0.15s]"></div>
-            <div class="w-3 h-3 bg-primary rounded-full animate-bounce"></div>
-        </div>
-    </div>
-);
-
 // Similar to TranslatorWidget's highlight CSS
 const HIGHLIGHT_STYLE_ID = "scarlett-roleplay-highlight-styles";
 const HIGHLIGHT_CSS = `
@@ -72,40 +61,12 @@ const HIGHLIGHT_CSS = `
 `;
 
 export const RoleplayConversationView: Component<RoleplayConversationViewProps> = (props) => {
-    const initialWelcomeMessageObject = props.aiWelcomeMessage
-        ? {
-            id: `ai-initial-welcome-${Date.now()}`,
-            sender: 'ai' as const,
-            text: props.aiWelcomeMessage,
-            timestamp: new Date(),
-            alignment: null,
-          }
-        : null;
-
-    const [chatHistory, setChatHistory] = createSignal<ChatMessage[]>(initialWelcomeMessageObject ? [initialWelcomeMessageObject] : []);
+    const [chatHistory, setChatHistory] = createSignal<ChatMessage[]>([]);
     const [currentAiMessageToDisplay, setCurrentAiMessageToDisplay] = createSignal<ChatMessage | null>(null);
     const [isListening, setIsListening] = createSignal(false);
     const [isProcessingUserSpeech, setIsProcessingUserSpeech] = createSignal(false);
     const [isWaitingForLLM, setIsWaitingForLLM] = createSignal(false);
     const [errorMessage, setErrorMessage] = createSignal<string | null>(null);
-
-    // --- DEBUG LOGGING FOR STATE CHANGES ---
-    createEffect(() => console.log("[RoleplayConversationView] isListening:", isListening()));
-    createEffect(() => console.log("[RoleplayConversationView] isProcessingUserSpeech:", isProcessingUserSpeech()));
-    createEffect(() => console.log("[RoleplayConversationView] isWaitingForLLM:", isWaitingForLLM()));
-    createEffect(() => console.log("[RoleplayConversationView] errorMessage:", errorMessage()));
-    createEffect(() => console.log("[RoleplayConversationView] isTTSSpeaking (prop):", props.isTTSSpeaking ? props.isTTSSpeaking() : 'prop undefined'));
-    createEffect(() => console.log("[RoleplayConversationView] Scenario (prop):", props.scenario ? props.scenario.title : 'prop undefined'));
-
-    // ADD THIS: Log full chatHistory on change
-    createEffect(() => {
-        const history = chatHistory();
-        console.log(`[RoleplayConversationView] chatHistory updated. Count: ${history.length}`);
-        history.forEach((msg, index) => {
-            console.log(`[RoleplayConversationView] chatHistory[${index}]: id=${msg.id}, sender=${msg.sender}, text="${msg.text ? msg.text.substring(0, 50) + (msg.text.length > 50 ? '...' : '') : 'NULL'}", error=${!!msg.error}`);
-        });
-    });
-    // --- END DEBUG LOGGING ---
 
     let chatAreaRef: HTMLDivElement | undefined;
 
@@ -240,29 +201,25 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
             document.head.appendChild(styleElement);
         }
 
-        if (initialWelcomeMessageObject && props.onPlayTTS) {
-            props.onPlayTTS(initialWelcomeMessageObject.text, props.targetLanguage, initialWelcomeMessageObject.alignment);
-        } else if (!initialWelcomeMessageObject) {
-            console.log("[RoleplayConversationView] ONMOUNT: No welcome message, attempting initial VAD start.");
-            props.onStartRecording().then((success: boolean) => {
-                if (success) {
-                     console.log("[RoleplayConversationView] ONMOUNT: Initial VAD started successfully.");
-                    setIsListening(true);
-                } else {
-                    console.warn("[RoleplayConversationView] ONMOUNT: Initial VAD failed to start.");
-                    setErrorMessage("VAD failed to start.");
-                }
-                setCurrentAiMessageToDisplay({
-                    id: 'ai-ready-to-listen',
-                    sender: 'ai',
-                    text: isListening() ? "Listening..." : "Ready. Speak when you are.",
-                    timestamp: new Date(),
-                });
-            }).catch((err: any) => {
-                 console.error("[RoleplayConversationView] ONMOUNT: Error starting initial VAD:", err);
-                 setErrorMessage("Error with voice activity detection.");
+        console.log("[RoleplayConversationView] ONMOUNT: Attempting initial VAD start (no welcome message configured).");
+        props.onStartRecording().then((success: boolean) => {
+            if (success) {
+                 console.log("[RoleplayConversationView] ONMOUNT: Initial VAD started successfully.");
+                setIsListening(true);
+            } else {
+                console.warn("[RoleplayConversationView] ONMOUNT: Initial VAD failed to start.");
+                setErrorMessage("VAD failed to start.");
+            }
+            setCurrentAiMessageToDisplay({
+                id: 'ai-ready-to-listen',
+                sender: 'ai',
+                text: isListening() ? "Listening..." : "Ready. Speak when you are.",
+                timestamp: new Date(),
             });
-        }
+        }).catch((err: any) => {
+             console.error("[RoleplayConversationView] ONMOUNT: Error starting initial VAD:", err);
+             setErrorMessage("Error with voice activity detection.");
+        });
     });
 
     onCleanup(() => {
@@ -285,138 +242,6 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
             chatAreaRef.scrollTop = chatAreaRef.scrollHeight;
         }
     });
-
-    const handleMicClick = async () => {
-        if (props.isTTSSpeaking && props.isTTSSpeaking()) {
-            props.onStopTTS?.(); // Stop TTS if it's speaking
-            // Potentially wait a brief moment for TTS to fully stop before starting recording
-            await new Promise(r => setTimeout(r, 150)); 
-        }
-
-        if (isListening()) {
-            setIsListening(false);
-            setIsProcessingUserSpeech(true);
-            setErrorMessage(null);
-            setCurrentAiMessageToDisplay({
-                id: 'ai-processing-stt',
-                sender: 'ai',
-                text: "Processing your speech...",
-                timestamp: new Date(),
-            });
-
-            try {
-                const spokenText = await props.onStopRecording();
-                setIsProcessingUserSpeech(false);
-
-                if (spokenText && spokenText.trim() !== "") {
-                    const newUserMessage: ChatMessage = {
-                        id: `user-${Date.now()}`,
-                        sender: 'user',
-                        text: spokenText,
-                        timestamp: new Date(),
-                    };
-                    const currentHistory = [...chatHistory(), newUserMessage];
-                    setChatHistory(currentHistory);
-                    
-                    setIsWaitingForLLM(true);
-                    setCurrentAiMessageToDisplay({
-                        id: 'ai-waiting-llm',
-                        sender: 'ai',
-                        text: "Thinking...", // Placeholder while LLM responds
-                        timestamp: new Date(),
-                    });
-                    const response = await props.onSendMessage(spokenText, currentHistory);
-                    setIsWaitingForLLM(false);
-
-                    if (response) {
-                        const newAiMessage: ChatMessage = {
-                            id: `ai-response-${Date.now()}`,
-                            sender: 'ai',
-                            text: response.aiResponse,
-                            alignment: response.alignment,
-                            timestamp: new Date(),
-                            error: !!response.error
-                        };
-                        setChatHistory(prev => [...prev, newAiMessage]);
-                        setCurrentAiMessageToDisplay(newAiMessage);
-
-                        if (response.error) {
-                            setErrorMessage(response.error);
-                        } else if (props.onPlayTTS) {
-                            // Play AI response with TTS
-                            props.onPlayTTS(response.aiResponse, props.targetLanguage, response.alignment);
-                        }
-                    } else {
-                        throw new Error("No response from AI.");
-                    }
-                } else if (spokenText === "") {
-                    setCurrentAiMessageToDisplay({
-                        id: 'ai-no-speech',
-                        sender: 'ai',
-                        text: "I didn't catch that. Please try speaking again.",
-                        timestamp: new Date(),
-                    });
-                } else {
-                    const sttErrorMsg = "Sorry, I couldn't understand that. Please try again.";
-                    setErrorMessage(sttErrorMsg);
-                    setCurrentAiMessageToDisplay({ id: 'ai-stt-error', sender: 'ai', text: sttErrorMsg, timestamp: new Date(), error: true });
-                }
-            } catch (error: any) {
-                console.error("Error during voice interaction flow:", error);
-                const processingErrorMsg = error.message || "An error occurred processing your speech.";
-                setErrorMessage(processingErrorMsg);
-                setCurrentAiMessageToDisplay({ id: 'ai-flow-error', sender: 'ai', text: processingErrorMsg, timestamp: new Date(), error: true });
-                setIsProcessingUserSpeech(false);
-                setIsWaitingForLLM(false);
-            }
-        } else {
-            // Start listening
-            setErrorMessage(null);
-            setCurrentAiMessageToDisplay({
-                id: 'ai-listening',
-                sender: 'ai',
-                text: "Listening...",
-                timestamp: new Date(),
-            });
-            try {
-                const success = await props.onStartRecording();
-                if (success) {
-                    setIsListening(true);
-                } else {
-                    const micPermError = "Could not start recording. Check microphone permissions.";
-                    setErrorMessage(micPermError);
-                    setCurrentAiMessageToDisplay({ id: 'ai-mic-denied', sender: 'ai', text: micPermError, timestamp: new Date(), error: true });
-                }
-            } catch (error: any) {
-                const micStartError = "Error starting recording: " + error.message;
-                setErrorMessage(micStartError);
-                setCurrentAiMessageToDisplay({ id: 'ai-mic-error', sender: 'ai', text: micStartError, timestamp: new Date(), error: true });
-            }
-        }
-    };
-
-    // Visual status indicator (could be improved)
-    const StatusIndicator: Component = () => {
-        const ttsSpeaking = () => props.isTTSSpeaking ? props.isTTSSpeaking() : false;
-        const statusText = () => {
-            if (errorMessage()) return `Error: ${errorMessage()}`;
-            if (ttsSpeaking()) return "AI Speaking";
-            if (isListening()) return "Listening";
-            if (isProcessingUserSpeech()) return "Processing Speech";
-            if (isWaitingForLLM()) return "AI Thinking";
-            if (currentAiMessageToDisplay()?.text === "Didn't catch any speech.") return "No speech detected";
-            return "Ready";
-        };
-
-        return (
-            <div class={`fixed bottom-4 right-4 text-xs p-2 rounded shadow-md transition-all duration-300 ease-in-out 
-                ${errorMessage() ? 'bg-destructive text-destructive-foreground' : 'bg-muted text-muted-foreground'}
-                ${(isListening() || ttsSpeaking()) ? 'opacity-90' : 'opacity-70'}
-            `}>
-                {statusText()} | L: {isListening().toString().charAt(0)} | P: {isProcessingUserSpeech().toString().charAt(0)} | W: {isWaitingForLLM().toString().charAt(0)} | TTS: {ttsSpeaking().toString().charAt(0)} | Err: {errorMessage() ? 'Y' : 'N'}
-            </div>
-        );
-    };
 
     return (
         <div class="h-full w-full flex flex-col bg-gradient-to-br from-background to-muted/20 text-foreground font-sans select-none overflow-hidden">
@@ -480,11 +305,13 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
             </main>
             
             {/* Mic button removed; VAD handles recording automatically */}
-            <StatusIndicator />
             {/* Debug Panel */}
+            {/*
+            <StatusIndicator />
             <div style="position:fixed; bottom:8px; right:8px; background:rgba(0,0,0,0.6); color:#fff; font-size:10px; padding:4px; border-radius:4px; z-index:999;">
                 L:{isListening().toString()} P:{isProcessingUserSpeech().toString()} W:{isWaitingForLLM().toString()} E:{errorMessage() ?? 'none'}
             </div>
+            */}
         </div>
     );
 }; 
