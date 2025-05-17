@@ -15,6 +15,9 @@ interface RoleplayPageProps {
   onNavigateBack: () => void;
 }
 
+// Store the promise for ongoing VAD initialization
+let vadInitializationPromise: Promise<MicVAD | null> | null = null;
+
 const RoleplayPage: Component<RoleplayPageProps> = (props) => {
   const [scenarios, setScenarios] = createSignal<ScenarioOption[]>([]);
   const [isLoading, setIsLoading] = createSignal(true);
@@ -48,23 +51,58 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
     }
   };
 
+  const destroyVadInstance = () => {
+    const currentVad = vadInstance();
+    if (currentVad) {
+      console.log('%c[RoleplayPage VAD] Attempting to destroy VAD instance.', 'color: orange; font-weight: bold;');
+      try {
+        console.log('[RoleplayPage VAD] Calling currentVad.destroy()...');
+        currentVad.destroy();
+        console.log('%c[RoleplayPage VAD] currentVad.destroy() successfully called.', 'color: green; font-weight: bold;');
+        
+        setVadInstance(null); // Clear the signal
+        setIsVadLoading(false); // Reset loading state if any
+        console.log('[RoleplayPage VAD] VAD instance signal cleared.');
+      } catch (error) {
+        console.error('%c[RoleplayPage VAD] Error during VAD destruction process:', 'color: red; font-weight: bold;', error);
+      }
+    } else {
+      console.log('[RoleplayPage VAD] destroyVadInstance called but no VAD instance was found.');
+    }
+    vadInitializationPromise = null; // Also clear any pending init promise
+    console.log('[RoleplayPage VAD] Cleared vadInitializationPromise.');
+  };
+
   const handleBackToSelection = () => {
+    destroyVadInstance();
     setSelectedScenario(null);
   };
 
   const handleEndRoleplay = () => {
     console.log("%c[RoleplayPage] handleEndRoleplay TRIGGERED!", "color: red; font-weight: bold;");
     console.log('[RoleplayPage] Roleplay ended.');
-    // Optionally, navigate back or reset further state
-    setSelectedScenario(null); // For example, go back to selection screen
-    // props.onNavigateBack(); // Or use the main navigation back if that's desired
+    destroyVadInstance();
+    setSelectedScenario(null);
   };
 
-  const initVad = async () => {
-    if (vadInstance()) return;
+  const initVad = async (): Promise<MicVAD | null> => {
+    if (vadInstance()) {
+      console.log('[RoleplayPage VAD] Already initialized, returning existing instance.');
+      return vadInstance();
+    }
+
+    if (vadInitializationPromise) {
+      console.log('[RoleplayPage VAD] Initialization already in progress, awaiting existing promise...');
+      return await vadInitializationPromise;
+    }
+
+    let resolveInit: (instance: MicVAD | null) => void = () => {};
+    vadInitializationPromise = new Promise<MicVAD | null>(r => resolveInit = r);
+    
     setIsVadLoading(true);
+    console.log('[RoleplayPage VAD] Starting new VAD initialization...');
+
     try {
-      await navigator.mediaDevices.getUserMedia({ audio: true });
       const newVad = await MicVAD.new({
         baseAssetPath: '/vad-assets/',
         onnxWASMBasePath: '/vad-assets/',
@@ -79,14 +117,11 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
           // @ts-ignore
           ort.env.wasm.workerPath = browser.runtime.getURL('/vad-assets/ort-wasm.js' as any);
         },
-        onSpeechStart: () => {
-          console.log('[RoleplayPage VAD] onSpeechStart');
-        },
+        onSpeechStart: () => console.log('[RoleplayPage VAD] onSpeechStart'),
         onSpeechEnd: async (_audio) => {
           console.log('[RoleplayPage VAD] onSpeechEnd');
           const sampleRate = 16000;
           const wavBlob = pcmToWavBlob(_audio, sampleRate);
-          // Perform STT
           const { ttsConfig } = await userConfigurationStorage.getValue();
           const apiKey = ttsConfig?.apiKey;
           let text: string | null = null;
@@ -96,39 +131,58 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
               text = result.text;
             } catch (e) {
               console.error('[RoleplayPage VAD] STT error', e);
-              text = null;
             }
           }
-          // Pass transcription to conversation view
           (window as any).triggerUserSpeechProcessed(text);
         },
       });
       setVadInstance(newVad);
-    } catch (e) {
-      console.error('[RoleplayPage VAD] initialization error', e);
-    } finally {
+      console.log('[RoleplayPage VAD] VAD Initialized successfully (new instance).');
       setIsVadLoading(false);
+      resolveInit(newVad);
+      vadInitializationPromise = null;
+      return newVad;
+    } catch (e) {
+      console.error('[RoleplayPage VAD] VAD initialization error', e);
+      setIsVadLoading(false);
+      setVadInstance(null);
+      resolveInit(null);
+      vadInitializationPromise = null;
+      return null;
     }
   };
 
-  const handleStartRecording = async () => {
-    if (!vadInstance() && !isVadLoading()) {
-      await initVad();
+  const handleStartRecording = async (): Promise<boolean> => {
+    console.log('[RoleplayPage] handleStartRecording called.');
+    if (!selectedScenario()) {
+        console.warn("[RoleplayPage VAD] handleStartRecording: No scenario selected, VAD start aborted.");
+        return false;
     }
-    const vad = vadInstance();
-    if (!vad) return false;
+    
+    const currentVad = await initVad();
+
+    if (!currentVad) {
+      console.warn('[RoleplayPage] VAD not available to start recording (initVad returned null or failed).');
+      return false; 
+    }
+
     try {
-      await vad.start();
+      console.log('[RoleplayPage VAD] Attempting to start VAD...');
+      await currentVad.start();
+      console.log('[RoleplayPage VAD] VAD started successfully.');
       return true;
     } catch (e) {
-      console.error('[RoleplayPage] VAD start error', e);
+      console.error('[RoleplayPage VAD] VAD start error (after init)', e);
       return false;
     }
   };
-
+  
   const handleStopRecording = async (): Promise<string | null> => {
     const vad = vadInstance();
-    if (vad) vad.pause();
+    if (vad) {
+        console.log('[RoleplayPage VAD] Pausing VAD.');
+        vad.pause();
+    }
     return null;
   };
 
@@ -153,18 +207,9 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
     return null;
   };
 
-  onMount(() => {
-    void initVad();
-  });
-
-  // Cleanup VAD when the component is unmounted
   onCleanup(() => {
-    const vad = vadInstance();
-    if (vad) {
-      console.log('[RoleplayPage VAD] Cleaning up VAD instance.');
-      vad.destroy(); // Destroy the VAD instance to release resources
-      setVadInstance(null);
-    }
+    console.log("%c[RoleplayPage] ONCLEANUP TRIGGERED!", "color: orange; font-size: 14px; font-weight: bold;");
+    destroyVadInstance();
   });
 
   return (
@@ -189,8 +234,6 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
             }
             const systemPrompt = `You are a helpful partner in the following scenario: "${selectedScenario()!.title}": ${selectedScenario()!.description}. Continue the conversation naturally.`;
             
-            // chatHistory comes from RoleplayConversationView and already includes the latest user message.
-            // So, we just need to map it to the LLM message format.
             const llmMessages: LLMChatMessage[] = [
               { role: 'system', content: systemPrompt },
               ...chatHistory.map(m => ({

@@ -83,7 +83,7 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
         : null;
 
     const [chatHistory, setChatHistory] = createSignal<ChatMessage[]>(initialWelcomeMessageObject ? [initialWelcomeMessageObject] : []);
-    const [currentAiMessageToDisplay, setCurrentAiMessageToDisplay] = createSignal<ChatMessage | null>(initialWelcomeMessageObject);
+    const [currentAiMessageToDisplay, setCurrentAiMessageToDisplay] = createSignal<ChatMessage | null>(null);
     const [isListening, setIsListening] = createSignal(false);
     const [isProcessingUserSpeech, setIsProcessingUserSpeech] = createSignal(false);
     const [isWaitingForLLM, setIsWaitingForLLM] = createSignal(false);
@@ -111,18 +111,48 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
 
     // Automatic listening based on TTS status
     createEffect(() => {
-        const ttsSpeaking = props.isTTSSpeaking ? props.isTTSSpeaking() : false;
-        if (!ttsSpeaking && !isProcessingUserSpeech() && !isWaitingForLLM() && !errorMessage()) {
-            props.onStartRecording().then((success: boolean) => {
-                if (success) setIsListening(true);
-                else setErrorMessage("VAD failed to start automatically.");
-            }).catch((err: any) => {
-                console.error("Error auto-starting VAD:", err);
-                setErrorMessage("Error with voice activity detection.");
-            });
-        } else if (ttsSpeaking || errorMessage()) {
+        const currentScenario = props.scenario; // Capture prop for consistent use in this effect run
+        const ttsIsSpeaking = props.isTTSSpeaking ? props.isTTSSpeaking() : false;
+        const processingSpeech = isProcessingUserSpeech();
+        const waitingLlm = isWaitingForLLM();
+        const currentError = errorMessage();
+
+        // Log all relevant states at the beginning of the effect
+        console.log(`[RoleplayConversationView] Auto-listen effect. Scenario: ${currentScenario?.title || 'None'}, TTS: ${ttsIsSpeaking}, ProcSpeech: ${processingSpeech}, WaitLLM: ${waitingLlm}, Err: ${currentError || 'None'}, Listening: ${isListening()}`);
+
+        if (!currentScenario) {
+            console.log("[RoleplayConversationView] Auto-listen effect: No current scenario. Ensuring VAD is stopped if it was listening.");
             if (isListening()) {
-                props.onStopRecording(); // Ensure recording stops if AI speaks or error occurs
+                props.onStopRecording();
+                setIsListening(false); // Update local listening state
+            }
+            return; // IMPORTANT: Early exit if no scenario
+        }
+
+        // Scenario is valid, proceed with logic
+        if (!ttsIsSpeaking && !processingSpeech && !waitingLlm && !currentError) {
+            // Only attempt to start if not already listening to avoid redundant calls
+            if (!isListening()) {
+                console.log("[RoleplayConversationView] Auto-listen: Conditions met & not already listening. Attempting to start recording.");
+                props.onStartRecording().then((success) => {
+                    if (success) {
+                        console.log("[RoleplayConversationView] Auto-listen: VAD started successfully.");
+                        setIsListening(true);
+                    } else {
+                        console.warn("[RoleplayConversationView] Auto-listen: VAD failed to start.");
+                        setIsListening(false);
+                        // setErrorMessage("Voice input failed to start. Please check microphone permissions.");
+                    }
+                });
+            } else {
+                console.log("[RoleplayConversationView] Auto-listen: Conditions met but already listening. No action needed.");
+            }
+        } else {
+            // Conditions for starting are not met (e.g., TTS speaking, processing, error)
+            // Ensure VAD is stopped if it was listening
+            if (isListening()) {
+                console.log("[RoleplayConversationView] Auto-listen: Conditions NOT met for starting. Ensuring VAD is stopped.");
+                props.onStopRecording();
                 setIsListening(false);
             }
         }
@@ -200,7 +230,7 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
 
     // onMount: Initialize and play welcome message if any
     onMount(() => {
-        // Expose handleUserSpeechProcessed globally for VAD to call (TEMPORARY for external trigger)
+        console.log("[RoleplayConversationView] ONMOUNT - Setting window.triggerUserSpeechProcessed");
         (window as any).triggerUserSpeechProcessed = handleUserSpeechProcessed; 
 
         if (!document.getElementById(HIGHLIGHT_STYLE_ID)) {
@@ -210,14 +240,18 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
             document.head.appendChild(styleElement);
         }
 
-        // If currentAiMessageToDisplay was initialized with a welcome message, play it.
         if (initialWelcomeMessageObject && props.onPlayTTS) {
             props.onPlayTTS(initialWelcomeMessageObject.text, props.targetLanguage, initialWelcomeMessageObject.alignment);
-        } else if (!initialWelcomeMessageObject) { // Only run this if no welcome message was set
+        } else if (!initialWelcomeMessageObject) {
+            console.log("[RoleplayConversationView] ONMOUNT: No welcome message, attempting initial VAD start.");
             props.onStartRecording().then((success: boolean) => {
-                if (success) setIsListening(true);
-                else setErrorMessage("VAD failed to start.");
-                // Set a different initial message if no welcome message
+                if (success) {
+                     console.log("[RoleplayConversationView] ONMOUNT: Initial VAD started successfully.");
+                    setIsListening(true);
+                } else {
+                    console.warn("[RoleplayConversationView] ONMOUNT: Initial VAD failed to start.");
+                    setErrorMessage("VAD failed to start.");
+                }
                 setCurrentAiMessageToDisplay({
                     id: 'ai-ready-to-listen',
                     sender: 'ai',
@@ -225,9 +259,23 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
                     timestamp: new Date(),
                 });
             }).catch((err: any) => {
-                 console.error("Error starting VAD on mount:", err);
+                 console.error("[RoleplayConversationView] ONMOUNT: Error starting initial VAD:", err);
                  setErrorMessage("Error with voice activity detection.");
             });
+        }
+    });
+
+    onCleanup(() => {
+        console.log("%c[RoleplayConversationView] ONCLEANUP - Clearing window.triggerUserSpeechProcessed and stopping VAD if active.", "color: blue; font-weight: bold;");
+        // Clear the global handler only if it's the one set by this instance
+        if ((window as any).triggerUserSpeechProcessed === handleUserSpeechProcessed) {
+            (window as any).triggerUserSpeechProcessed = undefined;
+        }
+        // Explicitly stop recording if this component instance was listening
+        if (isListening()) {
+            console.log("[RoleplayConversationView] ONCLEANUP: VAD was listening, calling onStopRecording.");
+            props.onStopRecording?.();
+            setIsListening(false); // Ensure local state is also updated
         }
     });
 
