@@ -317,25 +317,10 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
     setTtsAnimationFrameId(requestAnimationFrame(updateTTSHighlightLoop));
   };
 
-  const handlePlayTTS = async (text: string, lang: string, messageIdOrAlignment?: string | ElevenLabsAlignmentData | null, alignmentDataParam?: ElevenLabsAlignmentData | null) => {
-    let messageId: string;
+  const handlePlayTTS = async (messageId: string, text: string, lang: string, alignmentDataParam?: ElevenLabsAlignmentData | null) => {
     let alignmentInput: ElevenLabsAlignmentData | null | undefined = alignmentDataParam;
 
-    // Infer parameters based on what RoleplayConversationView *might* be currently sending
-    // This is a temporary measure until RoleplayConversationView is updated.
-    if (typeof messageIdOrAlignment === 'string') {
-      messageId = messageIdOrAlignment;
-    } else {
-      // Fallback: if messageId is not provided as string, try to use a placeholder or log error
-      // This path assumes RoleplayConversationView is sending (text, lang, alignmentData?)
-      messageId = activeSpokenMessageId() || 'unknown_message_id'; // Or generate a temporary one
-      alignmentInput = messageIdOrAlignment as ElevenLabsAlignmentData | null | undefined;
-      if(messageId === 'unknown_message_id'){
-        console.warn("[RoleplayPage handlePlayTTS] messageId not explicitly passed. TTS highlighting might not be accurate for the specific message.");
-      }
-    }
-
-    console.log(`[RoleplayPage] handlePlayTTS called for lang ${lang}, messageId: ${messageId}:`, text.substring(0,50) + "...");
+    console.log(`[RoleplayPage] handlePlayTTS called for messageId: ${messageId}, lang ${lang}:`, text.substring(0,50) + "...");
     stopAndClearTTS();
     setIsTTSSpeaking(true);
     setTtsError(null);
@@ -436,13 +421,18 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
           ttsWordMap={ttsWordMap()}
           currentHighlightIndex={currentTTSHighlightIndex}
           ttsPlaybackError={ttsError}
+          activeSpokenMessageId={activeSpokenMessageId}
           onSendMessage={async (spokenText: string, chatHistory: UiChatMessage[]) => {
             console.log('[RoleplayPage] onSendMessage called with:', spokenText, `History items: ${chatHistory.length}`);
             const llmCfg = await getActiveLLMConfig();
             if (!llmCfg) {
               return { aiResponse: '', error: 'Missing LLM configuration' };
             }
-            const systemPrompt = `You are a helpful partner in the following scenario: "${selectedScenario()!.title}": ${selectedScenario()!.description}. Continue the conversation naturally.`;
+            const systemPrompt = `You are a helpful partner in the following scenario: "${selectedScenario()!.title}": ${selectedScenario()!.description}. 
+Your role is to respond as the other character in this scenario. 
+Keep your responses concise and natural, typically 1-2 sentences, as if you are having a real conversation. 
+Do NOT include any out-of-character commentary, instructions, or explanations. Only provide your character's dialogue for this turn. 
+Continue the conversation naturally based on the user's last message.`;
             
             const llmMessages: LLMChatMessage[] = [
               { role: 'system', content: systemPrompt },

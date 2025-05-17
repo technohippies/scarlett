@@ -40,6 +40,7 @@ export interface RoleplayConversationViewProps {
     ttsWordMap?: { text: string; startTime: number; endTime: number; index: number }[];
     scenario: ScenarioOption;
     onNavigateBack: () => void;
+    activeSpokenMessageId?: Accessor<string | null>;
 }
 
 // Similar to TranslatorWidget's highlight CSS
@@ -164,7 +165,7 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
                     if (response.error) {
                         setErrorMessage(response.error);
                     } else if (props.onPlayTTS) {
-                        props.onPlayTTS(response.aiResponse, props.targetLanguage, response.alignment);
+                        props.onPlayTTS(newAiMessage.id, response.aiResponse, props.targetLanguage, response.alignment);
                     }
                 } else {
                     throw new Error("No response from AI.");
@@ -291,8 +292,21 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
 
                 <Show when={!errorMessage() && !isWaitingForLLM() && currentAiMessageToDisplay()?.text} keyed>
                     {(msg) => (
-                        // Render AI's actual text response
-                        <div class="text-2xl p-4">{currentAiMessageToDisplay()!.text}</div> // Removed animate-fade-in
+                        <div class="text-2xl p-4">
+                            <Show 
+                                when={props.activeSpokenMessageId && props.activeSpokenMessageId() === currentAiMessageToDisplay()?.id && props.ttsWordMap && props.ttsWordMap.length > 0}
+                                fallback={currentAiMessageToDisplay()!.text}
+                            >
+                                <For each={props.ttsWordMap}>{(word, _index) => (
+                                    <span
+                                        class="scarlett-roleplay-word-span"
+                                        classList={{ 'scarlett-roleplay-word-highlight': props.currentHighlightIndex && props.currentHighlightIndex() === word.index }}
+                                    >
+                                        {word.text.replace(/ /g, '\u00A0')}
+                                    </span>
+                                )}</For>
+                            </Show>
+                        </div>
                     )}
                 </Show>
 

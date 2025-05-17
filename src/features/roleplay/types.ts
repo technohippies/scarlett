@@ -23,12 +23,13 @@ export interface RoleplayConversationViewProps {
     targetLanguage: string; 
     onStartRecording: () => Promise<boolean>; 
     onStopRecording: () => Promise<string | null>; 
-    onPlayTTS: (text: string, lang: string, alignmentData?: AlignmentData | null) => Promise<void>; 
+    onPlayTTS: (messageId: string, text: string, lang: string, alignmentData?: AlignmentData | null) => Promise<void>; 
     onStopTTS: () => void;
     isTTSSpeaking?: Accessor<boolean>; 
     currentHighlightIndex?: Accessor<number | null>; 
     ttsWordMap?: { text: string; startTime: number; endTime: number; index: number }[];
     ttsPlaybackError?: Accessor<string | null>;
+    activeSpokenMessageId?: Accessor<string | null>;
     scenario: ScenarioOption;
     onNavigateBack: () => void;
 } 
