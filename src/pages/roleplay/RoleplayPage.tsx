@@ -1,7 +1,7 @@
 import { Component, createSignal, onMount, onCleanup } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { RoleplaySelectionView, type ScenarioOption } from '../../features/roleplay/RoleplaySelectionView';
-import { RoleplayConversationView, type ChatMessage as UiChatMessage, type AlignmentData } from '../../features/roleplay/RoleplayConversationView';
+import { RoleplayConversationView, type ChatMessage as UiChatMessage, type AlignmentData as ElevenLabsAlignmentData } from '../../features/roleplay/RoleplayConversationView';
 import { generateRoleplayScenarios } from '../../services/roleplay/generateRoleplayScenarios';
 import { userConfigurationStorage } from '../../services/storage/storage';
 import { MicVAD } from '@ricky0123/vad-web';
@@ -10,6 +10,31 @@ import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttServi
 import { browser } from 'wxt/browser';
 import { ollamaChat } from '../../services/llm/providers/ollama/chat';
 import type { LLMConfig, ChatMessage as LLMChatMessage } from '../../services/llm/types';
+import { generateElevenLabsSpeechWithTimestamps, ElevenLabsVoiceSettings } from '../../services/tts/elevenLabsService';
+import { Dynamic } from 'solid-js/web';
+
+// --- Word Data Structure (for highlighting) ---
+interface WordInfo {
+    text: string;
+    startTime: number;
+    endTime: number;
+    index: number;
+}
+
+// --- Constants for Highlighting ---
+const HIGHLIGHT_STYLE_ID = "scarlett-roleplay-word-highlight-styles";
+const HIGHLIGHT_CSS = `
+  .scarlett-roleplay-word-span {
+    background-color: transparent;
+    border-radius: 3px;
+    display: inline-block;
+    transition: background-color 0.2s ease-out;
+  }
+  .scarlett-roleplay-word-highlight {
+    background-color: hsl(240, 5%, 25%); /* Example highlight color */
+  }
+`;
+
 
 interface RoleplayPageProps {
   onNavigateBack: () => void;
@@ -23,8 +48,19 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
   const [isLoading, setIsLoading] = createSignal(true);
   const [selectedScenario, setSelectedScenario] = createSignal<ScenarioOption | null>(null);
   const [targetLanguage, setTargetLanguage] = createSignal('en');
-  const [isTTSSpeaking, setIsTTSSpeaking] = createSignal(false);
+  
+  // VAD state
   const [vadInstance, setVadInstance] = createSignal<MicVAD | null>(null);
+
+  // TTS State
+  const [isTTSSpeaking, setIsTTSSpeaking] = createSignal(false);
+  const [currentTTSAudio, setCurrentTTSAudio] = createSignal<HTMLAudioElement | null>(null);
+  const [ttsWordMap, setTtsWordMap] = createSignal<WordInfo[]>([]);
+  const [currentTTSHighlightIndex, setCurrentTTSHighlightIndex] = createSignal<number | null>(null);
+  const [ttsError, setTtsError] = createSignal<string | null>(null);
+  const [ttsAnimationFrameId, setTtsAnimationFrameId] = createSignal<number | null>(null);
+  const [activeSpokenMessageId, setActiveSpokenMessageId] = createSignal<string | null>(null);
+
 
   const fetchScenarios = async () => {
     setIsLoading(true);
@@ -65,8 +101,27 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
     vadInitializationPromise = null;
   };
 
+  const stopAndClearTTS = () => {
+    const audio = currentTTSAudio();
+    if (audio) {
+      audio.pause();
+      audio.src = '';
+      setCurrentTTSAudio(null);
+    }
+    if (ttsAnimationFrameId()) {
+      cancelAnimationFrame(ttsAnimationFrameId()!);
+      setTtsAnimationFrameId(null);
+    }
+    setIsTTSSpeaking(false);
+    setTtsWordMap([]);
+    setCurrentTTSHighlightIndex(null);
+    setTtsError(null);
+    setActiveSpokenMessageId(null);
+  };
+
   const handleBackToSelection = () => {
     destroyVadInstance();
+    stopAndClearTTS();
     setSelectedScenario(null);
   };
 
@@ -74,6 +129,7 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
     console.log("%c[RoleplayPage] handleEndRoleplay TRIGGERED!", "color: red; font-weight: bold;");
     console.log('[RoleplayPage] Roleplay ended.');
     destroyVadInstance();
+    stopAndClearTTS();
     setSelectedScenario(null);
   };
 
@@ -194,14 +250,178 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
     console.warn('[RoleplayPage] No LLM config found in settings. Please configure LLM provider.');
     return null;
   };
+  
+  // --- TTS Helper Functions (adapted from TranslatorWidget) ---
+  const processTTSAlignment = (text: string, alignmentData: ElevenLabsAlignmentData | null, lang: string): WordInfo[] => {
+    console.log(`[RoleplayPage TTS processAlignment] lang: ${lang}, text: "${text.substring(0, 20)}...", alignment chars: ${alignmentData?.characters?.length ?? 'N/A'}`);
+    const words: WordInfo[] = [];
+
+    if (alignmentData && alignmentData.characters && alignmentData.character_start_times_seconds && alignmentData.character_end_times_seconds &&
+        alignmentData.characters.length === alignmentData.character_start_times_seconds.length &&
+        alignmentData.characters.length === alignmentData.character_end_times_seconds.length) {
+        
+        for (let i = 0; i < alignmentData.characters.length; i++) {
+            words.push({
+                text: alignmentData.characters[i],
+                startTime: alignmentData.character_start_times_seconds[i],
+                endTime: alignmentData.character_end_times_seconds[i],
+                index: i 
+            });
+        }
+    } else { 
+        console.warn('[RoleplayPage TTS processAlignment] Character alignment data missing or invalid. Falling back to splitting input text by character.');
+        for (let i = 0; i < text.length; i++) {
+            words.push({ text: text[i], startTime: 0, endTime: 0, index: i });
+        }
+    }
+    return words;
+  };
+
+  const updateTTSHighlightLoop = () => {
+    const audio = currentTTSAudio();
+    const wordMap = ttsWordMap();
+
+    if (!audio || audio.paused || audio.ended || !wordMap || wordMap.length === 0) {
+      if (ttsAnimationFrameId()) {
+        cancelAnimationFrame(ttsAnimationFrameId()!);
+        setTtsAnimationFrameId(null);
+      }
+      // If audio stopped not due to natural end (e.g., paused by user or error),
+      // we might want to keep the highlight or clear it based on `isPlayingAudio` state.
+      // `onended` handler already clears highlight.
+      return;
+    }
+
+    const currentTime = audio.currentTime;
+    let activeIndex = -1;
+
+    for (const word of wordMap) {
+      if (currentTime >= word.startTime && currentTime < word.endTime) {
+        activeIndex = word.index;
+        break;
+      }
+    }
+    
+    if (activeIndex !== -1 && currentTTSHighlightIndex() !== activeIndex) {
+      setCurrentTTSHighlightIndex(activeIndex);
+    } else if (activeIndex === -1 && currentTTSHighlightIndex() !== null) {
+      // If current time is past the end of the last word, clear highlight
+      if (wordMap.length > 0 && currentTime >= (wordMap.at(-1)?.endTime ?? Infinity)) {
+        setCurrentTTSHighlightIndex(null);
+      }
+      // If current time is before the first word, also clear (though less common once playback starts)
+      else if (wordMap.length > 0 && currentTime < (wordMap[0]?.startTime ?? 0)) {
+         setCurrentTTSHighlightIndex(null);
+      }
+    }
+    setTtsAnimationFrameId(requestAnimationFrame(updateTTSHighlightLoop));
+  };
+
+  const handlePlayTTS = async (text: string, lang: string, messageIdOrAlignment?: string | ElevenLabsAlignmentData | null, alignmentDataParam?: ElevenLabsAlignmentData | null) => {
+    let messageId: string;
+    let alignmentInput: ElevenLabsAlignmentData | null | undefined = alignmentDataParam;
+
+    // Infer parameters based on what RoleplayConversationView *might* be currently sending
+    // This is a temporary measure until RoleplayConversationView is updated.
+    if (typeof messageIdOrAlignment === 'string') {
+      messageId = messageIdOrAlignment;
+    } else {
+      // Fallback: if messageId is not provided as string, try to use a placeholder or log error
+      // This path assumes RoleplayConversationView is sending (text, lang, alignmentData?)
+      messageId = activeSpokenMessageId() || 'unknown_message_id'; // Or generate a temporary one
+      alignmentInput = messageIdOrAlignment as ElevenLabsAlignmentData | null | undefined;
+      if(messageId === 'unknown_message_id'){
+        console.warn("[RoleplayPage handlePlayTTS] messageId not explicitly passed. TTS highlighting might not be accurate for the specific message.");
+      }
+    }
+
+    console.log(`[RoleplayPage] handlePlayTTS called for lang ${lang}, messageId: ${messageId}:`, text.substring(0,50) + "...");
+    stopAndClearTTS();
+    setIsTTSSpeaking(true);
+    setTtsError(null);
+    setActiveSpokenMessageId(messageId);
+
+    try {
+      const userCfg = await userConfigurationStorage.getValue() as any; // Using any due to UserConfiguration export issue
+      
+      // Corrected access to TTS configuration from userCfg.ttsConfig
+      const elevenLabsApiKey = userCfg.ttsConfig?.apiKey;
+      const elevenLabsModelId = userCfg.ttsConfig?.modelId || 'eleven_multilingual_v2';
+      const elevenLabsVoiceId = userCfg.ttsConfig?.voiceId;
+      const voiceSettings: ElevenLabsVoiceSettings = userCfg.ttsConfig?.voiceSettings || {};
+
+      if (!elevenLabsApiKey) {
+        // Updated error message to reflect the correct path
+        throw new Error("ElevenLabs API key not configured in userCfg.ttsConfig.apiKey");
+      }
+
+      const { audioBlob, alignmentData: fetchedAlignmentData } = await generateElevenLabsSpeechWithTimestamps(
+        elevenLabsApiKey,
+        text,
+        elevenLabsModelId,
+        elevenLabsVoiceId,
+        voiceSettings,
+        undefined, 
+        lang
+      );
+      
+      const finalAlignmentData = alignmentInput || fetchedAlignmentData;
+      if (!finalAlignmentData) {
+          console.warn("[RoleplayPage TTS] No alignment data available after TTS generation.");
+      }
+      
+      const processedWords = processTTSAlignment(text, finalAlignmentData, lang);
+      setTtsWordMap(processedWords);
+
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      setCurrentTTSAudio(audio);
+
+      audio.onplay = () => {
+        console.log('[RoleplayPage TTS] Audio playing.');
+        if (ttsAnimationFrameId()) cancelAnimationFrame(ttsAnimationFrameId()!);
+        setTtsAnimationFrameId(requestAnimationFrame(updateTTSHighlightLoop));
+      };
+      audio.onpause = () => {
+        console.log('[RoleplayPage TTS] Audio paused.');
+        if (ttsAnimationFrameId()) cancelAnimationFrame(ttsAnimationFrameId()!);
+        setTtsAnimationFrameId(null);
+      };
+      audio.onended = () => {
+        console.log('[RoleplayPage TTS] Audio ended.');
+        setIsTTSSpeaking(false);
+        setCurrentTTSHighlightIndex(null);
+        if (ttsAnimationFrameId()) cancelAnimationFrame(ttsAnimationFrameId()!);
+        setTtsAnimationFrameId(null);
+        URL.revokeObjectURL(audioUrl);
+      };
+      audio.onerror = (e) => {
+        console.error('[RoleplayPage TTS] Audio playback error:', e);
+        setTtsError('Error playing TTS audio.');
+        setIsTTSSpeaking(false);
+        URL.revokeObjectURL(audioUrl);
+      };
+      
+      await audio.play();
+
+    } catch (error: any) {
+      console.error('[RoleplayPage TTS] Error in handlePlayTTS:', error);
+      setTtsError(error.message || 'Failed to generate or play TTS.');
+      setIsTTSSpeaking(false);
+      setActiveSpokenMessageId(null);
+      setTtsWordMap([]);
+    }
+  };
 
   onCleanup(() => {
     console.log("%c[RoleplayPage] ONCLEANUP TRIGGERED!", "color: orange; font-size: 14px; font-weight: bold;");
     destroyVadInstance();
+    stopAndClearTTS();
   });
 
   return (
     <div class="p-0 font-sans h-full flex flex-col">
+      <Dynamic component="style" id={HIGHLIGHT_STYLE_ID}>{HIGHLIGHT_CSS}</Dynamic>
       {selectedScenario() ? (
         <RoleplayConversationView
           scenario={selectedScenario()!}
@@ -210,9 +430,12 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
           targetLanguage={targetLanguage()}
           onStartRecording={handleStartRecording}
           onStopRecording={handleStopRecording}
-          onPlayTTS={async (text: string, lang: string, alignment?: AlignmentData | null) => { console.log(`[RoleplayPage] onPlayTTS called for lang ${lang}:`, text, alignment); setIsTTSSpeaking(true); setTimeout(() => setIsTTSSpeaking(false), 2000); }}
-          onStopTTS={() => { console.log('[RoleplayPage] onStopTTS called'); setIsTTSSpeaking(false); }}
+          onPlayTTS={handlePlayTTS}
+          onStopTTS={stopAndClearTTS}
           isTTSSpeaking={isTTSSpeaking}
+          ttsWordMap={ttsWordMap()}
+          currentHighlightIndex={currentTTSHighlightIndex}
+          ttsPlaybackError={ttsError}
           onSendMessage={async (spokenText: string, chatHistory: UiChatMessage[]) => {
             console.log('[RoleplayPage] onSendMessage called with:', spokenText, `History items: ${chatHistory.length}`);
             const llmCfg = await getActiveLLMConfig();

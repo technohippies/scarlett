@@ -37,6 +37,7 @@ export interface RoleplayConversationViewProps {
     isGlobalVadActive?: Accessor<boolean>;
     isTTSSpeaking?: Accessor<boolean>;
     currentHighlightIndex?: Accessor<number | null>;
+    ttsWordMap?: { text: string; startTime: number; endTime: number; index: number }[];
     scenario: ScenarioOption;
     onNavigateBack: () => void;
 }

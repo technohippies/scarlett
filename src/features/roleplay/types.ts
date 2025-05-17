@@ -27,6 +27,8 @@ export interface RoleplayConversationViewProps {
     onStopTTS: () => void;
     isTTSSpeaking?: Accessor<boolean>; 
     currentHighlightIndex?: Accessor<number | null>; 
+    ttsWordMap?: { text: string; startTime: number; endTime: number; index: number }[];
+    ttsPlaybackError?: Accessor<string | null>;
     scenario: ScenarioOption;
     onNavigateBack: () => void;
 } 
