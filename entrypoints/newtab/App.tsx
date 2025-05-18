@@ -1,4 +1,4 @@
-import { Component, createSignal, Match, Switch, createResource, onCleanup, createEffect } from 'solid-js';
+import { Component, createSignal, Match, Switch, createResource, onCleanup, createEffect, Show } from 'solid-js';
 import NewTabPage from '../../src/pages/newtab/NewTabPage';
 import BookmarksPage from '../../src/pages/bookmarks/BookmarksPage';
 import StudyPage from '../../src/pages/study/StudyPage';
@@ -10,6 +10,17 @@ import type { Messages } from '../../src/types/i18n';
 import { userConfigurationStorage } from '../../src/services/storage/storage';
 import type { UserConfiguration } from '../../src/services/storage/types';
 import { browser } from 'wxt/browser';
+import {
+  getAllChatThreads,
+  getChatMessagesByThreadId,
+  addChatThread,
+  addChatMessage,
+  updateThreadLastActivity
+} from '../../src/services/db/chat';
+import { getAiChatResponse } from '../../src/services/llm/llmChatService';
+import type { ChatMessage as LLMChatMessage, LLMConfig } from '../../src/services/llm/types';
+
+const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
 
 const minimalNativeLanguagesList = [
   { value: 'en' }, { value: 'zh' }, { value: 'vi' }, { value: 'th' }, { value: 'id' }, 
@@ -65,38 +76,123 @@ const App: Component = () => {
 
   const [threads, setThreads] = createSignal<Thread[]>([]);
   const [currentThreadId, setCurrentThreadId] = createSignal<string | null>(null);
+  const [isLoadingThreads, setIsLoadingThreads] = createSignal(true);
 
-  createEffect(() => {
-    const initialThreads: Thread[] = [
-      {
-        id: 'thread-1',
-        title: 'Introductions',
-        systemPrompt: 'You are a helpful assistant for general chat. Start by introducing yourself and asking how you can help.',
-        messages: [],
-        lastActivity: new Date().toISOString(),
-      },
-      {
-        id: 'thread-2',
-        title: 'French Tutor Bot',
-        systemPrompt: 'You are a friendly French tutor. Start by greeting the user in French and ask what they want to learn.',
-        messages: [],
-        lastActivity: new Date().toISOString(),
-      },
-      {
-        id: '__just_chat_speech_mode__',
-        title: "Just Chat (Speech)",
-        systemPrompt: "You are a friendly AI assistant for voice chat. Keep responses concise for speech.",
-        messages: [],
-        lastActivity: new Date().toISOString(),
+  const triggerAiKickoffMessage = async (thread: Thread) => { // Made async for safety if DB calls were added here
+    if (!thread || thread.messages.length > 0 || thread.id === JUST_CHAT_THREAD_ID) return;
+
+    let kickoffText = "Hello! How can I assist you today based on my role?";
+    let kickoffTtsLang = 'en';
+
+    if (thread.systemPrompt.toLowerCase().includes("french tutor")) {
+      kickoffText = "Bonjour! Comment puis-je vous aider avec votre français aujourd'hui?";
+      kickoffTtsLang = 'fr';
+    } else if (thread.systemPrompt.toLowerCase().includes("introductions")) {
+      kickoffText = "Welcome! This is the introductions thread. How can I help you get started?";
+    } else if (thread.systemPrompt.toLowerCase().includes("general chat")) {
+      kickoffText = "Hello! I'm your general assistant. What can I help you with?";
+    } // More conditions can be added here
+
+    console.log(`[App.tsx] Triggering AI kickoff for thread ${thread.id} (${thread.title}) with: "${kickoffText}"`);
+    // This will be updated to use addChatMessage later
+    await handleSendMessageToUnifiedView(kickoffText, thread.id, false, kickoffTtsLang);
+  };
+
+  const loadMessagesForThreadAndKickoff = async (threadId: string) => {
+    try {
+      const messages = await getChatMessagesByThreadId(threadId);
+      setThreads(prevThreads => 
+        prevThreads.map(t => t.id === threadId ? { ...t, messages: messages } : t)
+      );
+      const updatedThread = threads().find(t => t.id === threadId);
+      if (updatedThread && messages.length === 0) {
+        await triggerAiKickoffMessage(updatedThread);
       }
-    ];
-    setThreads(initialThreads);
-    if (initialThreads.length > 0 && initialThreads[0].id !== '__just_chat_speech_mode__') {
-      setCurrentThreadId(initialThreads[0].id);
-    } else if (initialThreads.length > 1) {
-      setCurrentThreadId(initialThreads.find(t => t.id !== '__just_chat_speech_mode__')?.id || null);
+    } catch (error) {
+      console.error(`[App.tsx] Error loading messages or kicking off for thread ${threadId}:`, error);
     }
-    
+  };
+
+  createEffect(async () => {
+    console.log('[App.tsx] Initializing threads from DB...');
+    setIsLoadingThreads(true);
+    try {
+      const loadedThreads = await getAllChatThreads();
+      if (loadedThreads.length === 0) {
+        console.log('[App.tsx] No threads in DB. Creating default welcome threads...');
+        // Define the new welcome threads
+        const introductionsThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
+          id: 'thread-welcome-introductions',
+          title: 'Introductions',
+          systemPrompt: "I'm Scarlett, your friendly AI language companion. I'd love to get to know you a bit! Tell me about yourself - what are your interests, what languages are you learning, or anything else you'd like to share?"
+        };
+        const sharingThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
+          id: 'thread-welcome-sharing',
+          title: 'Sharing Thoughts',
+          systemPrompt: "It's great to connect on a deeper level. As an AI, I have a unique perspective. I can share some 'AI thoughts' or how I learn if you're curious, and I'm always here to listen to yours. What's on your mind, or what would you like to ask me?"
+        };
+        const justChatThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
+          id: JUST_CHAT_THREAD_ID,
+          title: 'Just Chat (Speech)',
+          systemPrompt: 'You are a friendly AI assistant for voice chat. Keep responses concise for speech.'
+        };
+
+        const newIntroThread = await addChatThread(introductionsThreadData);
+        const newSharingThread = await addChatThread(sharingThreadData);
+        const newJustChatThread = await addChatThread(justChatThreadData);
+
+        const initialSetupThreads = [newIntroThread, newSharingThread, newJustChatThread].filter(Boolean) as Thread[];
+        setThreads(initialSetupThreads);
+        
+        const firstSelectableThread = initialSetupThreads.find(t => t.id !== JUST_CHAT_THREAD_ID);
+        if (firstSelectableThread) {
+          setCurrentThreadId(firstSelectableThread.id);
+          // No automatic kickoff needed for these welcome threads beyond their system prompt
+          // Messages will be loaded if any exist, but expected to be empty initially.
+          await loadMessagesForThreadAndKickoff(firstSelectableThread.id); 
+        } else {
+          setCurrentThreadId(null);
+        }
+      } else {
+        // Ensure JUST_CHAT_THREAD_ID exists if other threads are loaded
+        let allThreads = [...loadedThreads];
+        if (!allThreads.some(t => t.id === JUST_CHAT_THREAD_ID)) {
+          console.log('[App.tsx] JUST_CHAT_THREAD_ID missing from loaded threads. Creating it.');
+          const justChatData: Omit<Thread, 'messages' | 'lastActivity'> = {
+            id: JUST_CHAT_THREAD_ID,
+            title: 'Just Chat (Speech)',
+            systemPrompt: 'You are a friendly AI assistant for voice chat. Keep responses concise for speech.'
+          };
+          try {
+            const createdJustChatThread = await addChatThread(justChatData);
+            allThreads.push(createdJustChatThread);
+          } catch (dbError) {
+            console.error('[App.tsx] Failed to create missing JUST_CHAT_THREAD_ID:', dbError);
+          }
+        }
+        setThreads(allThreads);
+        const firstSelectableThread = allThreads.find(t => t.id !== JUST_CHAT_THREAD_ID);
+        if (firstSelectableThread) {
+          if (currentThreadId() === null || !allThreads.some(t=> t.id === currentThreadId())) {
+             setCurrentThreadId(firstSelectableThread.id);
+          }
+          // Load messages for the initially selected/persisted thread
+          // The currentThreadId() might already be set if it was persisted or from a previous state
+          await loadMessagesForThreadAndKickoff(currentThreadId() || firstSelectableThread.id);
+        } else {
+          setCurrentThreadId(null); // No non-speech thread available
+        }
+      }
+    } catch (error) {
+      console.error('[App.tsx] Error initializing threads from DB:', error);
+      setThreads([]); // Set to empty array on error
+      setCurrentThreadId(null);
+    } finally {
+      setIsLoadingThreads(false);
+      console.log('[App.tsx] Finished initializing threads.');
+    }
+
+    // Load language from storage (can remain as is)
     userConfigurationStorage.getValue().then(config => {
       if (config && config.nativeLanguage) {
         if (config.nativeLanguage !== effectiveLangCode()) {
@@ -145,108 +241,258 @@ const App: Component = () => {
     setActiveView(view);
   };
 
-  const handleSendMessageToUnifiedView = async (
-    text: string, 
-    threadId: string, 
-    isUserMessage: boolean, 
-    ttsLangForAiResponse?: string
-  ) => {
-    console.log('[App.tsx] handleSendMessageToUnifiedView:', { text, threadId, isUserMessage, ttsLangForAiResponse });
-    const newMessage: ChatMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      text,
-      sender: isUserMessage ? 'user' : 'ai',
-      timestamp: new Date().toISOString(),
-      ttsLang: isUserMessage ? undefined : ttsLangForAiResponse,
-    };
-
-    setThreads(prevThreads => 
-      prevThreads.map(thread => 
-        thread.id === threadId 
-          ? { ...thread, messages: [...thread.messages, newMessage], lastActivity: new Date().toISOString() }
-          : thread
-      )
-    );
-
-    if (isUserMessage) {
-      setTimeout(() => {
-        const currentThreadForResponse = threads().find(t => t.id === threadId);
-        let aiResponseText = `Mock AI Response to: "${text}".`;
-        if (currentThreadForResponse) {
-          aiResponseText += ` My role: "${currentThreadForResponse.systemPrompt.substring(0, 70)}..."`;
-        }
-        
-        const aiMessage: ChatMessage = {
-          id: `msg-ai-${Date.now()}`,
-          text: aiResponseText,
-          sender: 'ai',
-          timestamp: new Date().toISOString(),
-          ttsLang: ttsLangForAiResponse || 'en', 
-        };
-        setThreads(prevThreads =>
-          prevThreads.map(thread =>
-            thread.id === threadId
-              ? { ...thread, messages: [...thread.messages, aiMessage], lastActivity: new Date().toISOString() }
-              : thread
-          )
-        );
-      }, 1000);
-    }
-  };
-
-  const triggerAiKickoffMessage = (thread: Thread) => {
-    if (!thread || thread.messages.length > 0) return; // Only kickoff if thread is empty
-
-    let kickoffText = "Hello! How can I assist you today based on my role?"; // Default kickoff
-    let kickoffTtsLang = 'en';
-
-    // Basic logic to customize kickoff based on system prompt
-    if (thread.systemPrompt.toLowerCase().includes("french tutor")) {
-      kickoffText = "Bonjour! Comment puis-je vous aider avec votre français aujourd'hui?";
-      kickoffTtsLang = 'fr';
-    } else if (thread.systemPrompt.toLowerCase().includes("general chat")) {
-      kickoffText = "Hello! I'm your general assistant. What can I help you with?";
-    } else if (thread.title.toLowerCase().includes("introductions")) {
-        kickoffText = "Welcome! This is the introductions thread. How can I help you get started?"
-    }
-    // Add more conditions for other specific system prompts if needed
-
-    console.log(`[App.tsx] Triggering AI kickoff for thread ${thread.id} (${thread.title}) with: "${kickoffText}"`);
-    handleSendMessageToUnifiedView(kickoffText, thread.id, false, kickoffTtsLang);
-  };
-
-  const handleSelectThread = (threadId: string) => {
-    console.log('[App.tsx] handleSelectThread:', threadId);
-    setCurrentThreadId(threadId);
-    const selectedThread = threads().find(t => t.id === threadId);
-    if (selectedThread) {
-      triggerAiKickoffMessage(selectedThread);
-    }
-  };
-
-  const handleCreateNewThread = async (title: string, systemPrompt: string): Promise<string> => {
-    console.log('[App.tsx] handleCreateNewThread:', title, systemPrompt);
-    const newThread: Thread = {
-      id: `thread-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      title,
-      systemPrompt,
-      messages: [], 
-      lastActivity: new Date().toISOString(),
-    };
-    
-    setThreads(prev => [...prev, newThread]);
-    setCurrentThreadId(newThread.id); // Select the new thread immediately
-    triggerAiKickoffMessage(newThread); // Trigger kickoff for the new empty thread
-    return newThread.id;
-  };
-
   const i18n = () => {
     const messages = messagesData();
     return {
       get: (key: string, fallback: string) => messages?.[key]?.message || fallback,
     };
   };
+  // --- Handler modifications for DB interaction --- 
 
+  const handleSelectThread = async (threadId: string) => {
+    console.log('[App.tsx] handleSelectThread:', threadId);
+    const selectedThread = threads().find(t => t.id === threadId);
+    if (selectedThread) {
+      setCurrentThreadId(threadId);
+      if (!selectedThread.messages || selectedThread.messages.length === 0) {
+        console.log(`[App.tsx] Messages for thread ${threadId} not loaded or empty, fetching...`);
+        await loadMessagesForThreadAndKickoff(threadId);
+      }
+    } else {
+      console.warn(`[App.tsx] Thread with id ${threadId} not found.`);
+    }
+  };
+
+  const handleCreateNewThread = async (title: string, systemPrompt: string): Promise<string> => {
+    console.log(`[App.tsx] Creating new thread: \"${title}\"`);
+    const newThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
+      id: `thread-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      title: title,
+      systemPrompt: systemPrompt,
+    };
+    try {
+      const createdThread = await addChatThread(newThreadData);
+      setThreads(prev => [createdThread, ...prev]);
+      setCurrentThreadId(createdThread.id);
+      await loadMessagesForThreadAndKickoff(createdThread.id);
+      return createdThread.id;
+    } catch (error) {
+      console.error('[App.tsx] Error creating new thread:', error);
+      return '';
+    }
+  };
+
+  const handleSendMessageToUnifiedView = async (
+    text: string,
+    threadId: string,
+    isUserMessage: boolean,
+    ttsLangForAiResponse?: string
+  ) => {
+    console.log(`[App.tsx] handleSendMessageToUnifiedView. Thread: ${threadId}, User: ${isUserMessage}, Text: \"${text}\"`);
+    const currentThreadSignalValue = threads().find(t => t.id === threadId);
+    if (!currentThreadSignalValue) {
+      console.error(`[App.tsx] Thread with id ${threadId} not found. Cannot send message.`);
+      return;
+    }
+
+    const currentIsoTimestamp = new Date().toISOString();
+
+    const newMessage: ChatMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      thread_id: threadId, 
+      timestamp: currentIsoTimestamp,
+      sender: isUserMessage ? 'user' : 'ai',
+      text_content: text,
+      ttsWordMap: undefined,
+      alignmentData: undefined,
+      ttsLang: isUserMessage ? undefined : ttsLangForAiResponse || effectiveLangCode(),
+    };
+
+    try {
+      await addChatMessage(newMessage);
+
+      const newMessagesAfterUser = [...(currentThreadSignalValue.messages || []), newMessage];
+      const updatedThreadAfterUserMessage: Thread = {
+        ...currentThreadSignalValue,
+        messages: newMessagesAfterUser,
+        lastActivity: currentIsoTimestamp,
+      };
+      setThreads(prevThreads =>
+        prevThreads.map(t => (t.id === threadId ? updatedThreadAfterUserMessage : t))
+      );
+      await updateThreadLastActivity(threadId);
+
+      if (isUserMessage) {
+        const userConfig = await userConfigurationStorage.getValue();
+
+        if (!userConfig
+            || !userConfig.selectedLlmProvider
+            || userConfig.selectedLlmProvider === 'none'
+            || !userConfig.llmConfig
+            || !userConfig.llmConfig.modelId
+            || !userConfig.llmConfig.baseUrl
+        ) {
+          console.error('[App.tsx] LLM provider, config, or modelId not properly set. Cannot get AI response.');
+          const errorText = !userConfig || !userConfig.llmConfig
+            ? "AI provider is not set."
+            : !userConfig.llmConfig.modelId
+              ? "LLM model is not configured."
+              : "LLM baseUrl is not configured.";
+          const errorTimestamp = new Date().toISOString();
+          const errorAiMessage: ChatMessage = {
+            id: `msg-error-cfg-${Date.now()}`,
+            thread_id: threadId, 
+            timestamp: errorTimestamp,
+            sender: 'ai',
+            text_content: errorText + " Please check settings.",
+            ttsWordMap: undefined, alignmentData: undefined, ttsLang: effectiveLangCode(),
+          };
+          await addChatMessage(errorAiMessage);
+
+          const newMessagesAfterError = [...newMessagesAfterUser, errorAiMessage];
+          const updatedThreadAfterError: Thread = {
+            ...updatedThreadAfterUserMessage,
+            messages: newMessagesAfterError,
+            lastActivity: errorTimestamp,
+          };
+          setThreads(prevThreads =>
+            prevThreads.map(t => (t.id === threadId ? updatedThreadAfterError : t))
+          );
+          await updateThreadLastActivity(threadId);
+          return;
+        }
+
+        const modelIdSafe: string = userConfig.llmConfig.modelId;
+        const baseUrlSafe: string = userConfig.llmConfig.baseUrl; // guaranteed non-null by guard
+
+        const llmSpecificConfig: LLMConfig = {
+          provider: userConfig.selectedLlmProvider,
+          model: modelIdSafe,
+          baseUrl: baseUrlSafe,
+          apiKey: userConfig.llmConfig.apiKey ?? '',
+          stream: false,
+        };
+        
+        // Additional check for empty model string if the LLM provider cannot handle it.
+        if (llmSpecificConfig.model === "") {
+            console.error('[App.tsx] LLM model ID is an empty string after safety check. Cannot get AI response.');
+            const errorModelEmptyTimestamp = new Date().toISOString();
+            const errorModelEmptyMessage: ChatMessage = {
+                id: `msg-error-model-empty-${Date.now()}`,
+                thread_id: threadId,
+                timestamp: errorModelEmptyTimestamp,
+                sender: 'ai',
+                text_content: "LLM model is not configured (empty). Please check settings.",
+                ttsWordMap: undefined, alignmentData: undefined, ttsLang: effectiveLangCode(),
+            };
+            await addChatMessage(errorModelEmptyMessage);
+            const newMessagesAfterModelError = [...newMessagesAfterUser, errorModelEmptyMessage];
+            const updatedThreadAfterModelError: Thread = {
+                ...updatedThreadAfterUserMessage,
+                messages: newMessagesAfterModelError,
+                lastActivity: errorModelEmptyTimestamp,
+            };
+            setThreads(prevThreads =>
+                prevThreads.map(t => (t.id === threadId ? updatedThreadAfterModelError : t))
+            );
+            await updateThreadLastActivity(threadId);
+            return;
+        }
+
+        const historyForLLM = currentThreadSignalValue.messages || [];
+        const conversationHistoryForLLM: LLMChatMessage[] = historyForLLM.map(msg => ({
+          role: msg.sender === 'user' ? 'user' : 'assistant',
+          content: msg.text_content
+        }));
+
+        console.log(`[App.tsx] Requesting AI response. Provider: ${llmSpecificConfig.provider}, Model: ${llmSpecificConfig.model}`);
+
+        try {
+          const aiResponseText = await getAiChatResponse(
+            conversationHistoryForLLM,
+            text,
+            llmSpecificConfig,
+            { threadSystemPrompt: currentThreadSignalValue.systemPrompt }
+          );
+
+          if (aiResponseText && typeof aiResponseText === 'string' && aiResponseText.trim() !== '') {
+            const aiMessageTimestamp = new Date().toISOString();
+            const aiMessage: ChatMessage = {
+              id: `msg-ai-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+              thread_id: threadId, 
+              timestamp: aiMessageTimestamp,
+              sender: 'ai',
+              text_content: aiResponseText,
+              ttsWordMap: undefined, alignmentData: undefined, 
+              ttsLang: ttsLangForAiResponse || effectiveLangCode(),
+            };
+            await addChatMessage(aiMessage);
+
+            const newMessagesAfterAI = [...newMessagesAfterUser, aiMessage];
+            const updatedThreadAfterAI: Thread = {
+              ...updatedThreadAfterUserMessage,
+              messages: newMessagesAfterAI,
+              lastActivity: aiMessageTimestamp,
+            };
+            setThreads(prevThreads =>
+              prevThreads.map(t => (t.id === threadId ? updatedThreadAfterAI : t))
+            );
+            await updateThreadLastActivity(threadId);
+          } else {
+            console.error('[App.tsx] AI response text was empty or not a string:', aiResponseText);
+            const emptyErrorTimestamp = new Date().toISOString();
+            const errorResponseMessage: ChatMessage = {
+              id: `msg-error-empty-${Date.now()}`,
+              thread_id: threadId, 
+              timestamp: emptyErrorTimestamp,
+              sender: 'ai',
+              text_content: "Sorry, I received an empty or invalid response from the AI.",
+              ttsWordMap: undefined, alignmentData: undefined, ttsLang: effectiveLangCode(),
+            };
+            await addChatMessage(errorResponseMessage);
+
+            const newMessagesAfterEmptyError = [...newMessagesAfterUser, errorResponseMessage];
+            const updatedThreadAfterEmptyError: Thread = {
+              ...updatedThreadAfterUserMessage,
+              messages: newMessagesAfterEmptyError,
+              lastActivity: emptyErrorTimestamp,
+            };
+            setThreads(prevThreads =>
+              prevThreads.map(t => (t.id === threadId ? updatedThreadAfterEmptyError : t))
+            );
+            await updateThreadLastActivity(threadId);
+          }
+        } catch (llmError) {
+          console.error('[App.tsx] Error getting AI response from LLM service:', llmError);
+          const llmErrorTimestamp = new Date().toISOString();
+          const errorLlmMessage: ChatMessage = {
+            id: `msg-error-llm-${Date.now()}`,
+            thread_id: threadId, 
+            timestamp: llmErrorTimestamp,
+            sender: 'ai',
+            text_content: `Sorry, I encountered an error trying to respond: ${String(llmError)}.`,
+            ttsWordMap: undefined, alignmentData: undefined, ttsLang: effectiveLangCode(),
+          };
+          await addChatMessage(errorLlmMessage);
+
+          const newMessagesAfterLlmError = [...newMessagesAfterUser, errorLlmMessage];
+          const updatedThreadAfterLlmError: Thread = {
+            ...updatedThreadAfterUserMessage,
+            messages: newMessagesAfterLlmError,
+            lastActivity: llmErrorTimestamp,
+          };
+          setThreads(prevThreads =>
+            prevThreads.map(t => (t.id === threadId ? updatedThreadAfterLlmError : t))
+          );
+          await updateThreadLastActivity(threadId);
+        }
+      }
+    } catch (error) {
+      console.error('[App.tsx] Error sending message or updating UI:', error);
+    }
+  };
+
+  // --- JSX --- 
   return (
     <SettingsProvider>
       <Switch fallback={<div>{i18n().get('newTabPageUnknownView', 'Unknown View')}</div>}>
@@ -270,14 +516,16 @@ const App: Component = () => {
           <SettingsPage onNavigateBack={() => navigateTo('newtab')} /> 
         </Match>
         <Match when={activeView() === 'unifiedChat'}>
-          <UnifiedConversationView
-            threads={threads()}
-            currentSelectedThreadId={currentThreadId()}
-            onSelectThread={handleSelectThread}
-            onCreateNewThread={handleCreateNewThread}
-            onSendMessage={handleSendMessageToUnifiedView}
-            onNavigateBack={() => navigateTo('newtab')}
-          />
+          <Show when={!isLoadingThreads()} fallback={<div>Loading chats...</div>}>
+            <UnifiedConversationView
+              threads={threads()}
+              currentSelectedThreadId={currentThreadId()}
+              onSelectThread={handleSelectThread}
+              onCreateNewThread={handleCreateNewThread}
+              onSendMessage={handleSendMessageToUnifiedView}
+              onNavigateBack={() => navigateTo('newtab')}
+            />
+          </Show>
         </Match>
       </Switch>
     </SettingsProvider>

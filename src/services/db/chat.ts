@@ -1,6 +1,7 @@
 import { getDbInstance } from './init';
 import type { Thread, ChatMessage } from '../../features/chat/types';
 import type { PGlite } from '@electric-sql/pglite';
+import { JUST_CHAT_THREAD_ID } from '../../features/chat/types';
 
 // Helper to convert DB row to Thread type (adjust as needed for embedding columns)
 const mapDbRowToThread = (row: any): Thread => {
@@ -11,7 +12,10 @@ const mapDbRowToThread = (row: any): Thread => {
     createdAt: row.created_at,
     lastActivity: row.last_activity_at,
     messages: [], // Messages will be loaded separately
-    // TODO: Add logic to populate metadata_embedding fields based on active_metadata_embedding_dimension
+    embedding_512: row.embedding_512 ? JSON.parse(row.embedding_512) : null,
+    embedding_768: row.embedding_768 ? JSON.parse(row.embedding_768) : null,
+    embedding_1024: row.embedding_1024 ? JSON.parse(row.embedding_1024) : null,
+    active_embedding_dimension: row.active_embedding_dimension,
   };
 };
 
@@ -19,49 +23,50 @@ const mapDbRowToThread = (row: any): Thread => {
 const mapDbRowToChatMessage = (row: any): ChatMessage => {
   return {
     id: row.id,
-    sender: row.sender,
-    text: row.text_content,
+    thread_id: row.thread_id,
+    sender: row.sender as 'user' | 'ai',
+    text_content: row.text_content,
     timestamp: row.timestamp,
     ttsLang: row.tts_lang,
-    alignmentData: row.tts_alignment_data ? JSON.parse(row.tts_alignment_data) : undefined,
-    // TODO: Add logic to populate embedding fields based on active_embedding_dimension
+    alignmentData: row.tts_alignment_data ? JSON.parse(row.tts_alignment_data) : null,
+    embedding_512: row.embedding_512 ? JSON.parse(row.embedding_512) : null,
+    embedding_768: row.embedding_768 ? JSON.parse(row.embedding_768) : null,
+    embedding_1024: row.embedding_1024 ? JSON.parse(row.embedding_1024) : null,
+    active_embedding_dimension: row.active_embedding_dimension,
   };
 };
 
 export const getAllChatThreads = async (): Promise<Thread[]> => {
   const db: PGlite = await getDbInstance();
   try {
-    // const rows: any[] = await db.query(`
     const results = await db.query(`
       SELECT 
         id, 
         title, 
         system_prompt, 
         created_at, 
-        last_activity_at
-        -- TODO: Select correct metadata_embedding columns based on active_metadata_embedding_dimension
+        last_activity_at,
+        embedding_512,
+        embedding_768,
+        embedding_1024,
+        active_embedding_dimension
       FROM chat_threads 
       ORDER BY last_activity_at DESC
     `);
-    // if (!rows || rows.length === 0) {
-    //   return [];
-    // }
-    // return rows.map(mapDbRowToThread);
-    const rows = results.rows; // Assuming 'rows' is the property holding the array
+    const rows = results.rows;
     if (!rows || rows.length === 0) {
       return [];
     }
     return rows.map(mapDbRowToThread);
   } catch (error) {
     console.error('[DB ChatService] Error fetching all chat threads:', error);
-    throw error; 
+    return [];
   }
 };
 
 export const getChatMessagesByThreadId = async (threadId: string): Promise<ChatMessage[]> => {
   const db: PGlite = await getDbInstance();
   try {
-    // const rows: any[] = await db.query(`
     const results = await db.query(`
       SELECT 
         id, 
@@ -69,24 +74,23 @@ export const getChatMessagesByThreadId = async (threadId: string): Promise<ChatM
         text_content, 
         timestamp, 
         tts_lang, 
-        tts_alignment_data
-        -- TODO: Select correct embedding columns based on active_embedding_dimension
+        tts_alignment_data,
+        embedding_512,
+        embedding_768,
+        embedding_1024,
+        active_embedding_dimension
       FROM chat_messages 
       WHERE thread_id = ?1 
       ORDER BY timestamp ASC
     `, [threadId]);
-    // if (!rows || rows.length === 0) {
-    //   return [];
-    // }
-    // return rows.map(mapDbRowToChatMessage);
-    const rows = results.rows; // Assuming 'rows' is the property holding the array
+    const rows = results.rows;
     if (!rows || rows.length === 0) {
       return [];
     }
     return rows.map(mapDbRowToChatMessage);
   } catch (error) {
     console.error(`[DB ChatService] Error fetching messages for thread ${threadId}:`, error);
-    throw error;
+    return [];
   }
 };
 
@@ -94,16 +98,30 @@ export interface NewChatThreadData {
   id: string; 
   title: string;
   systemPrompt?: string;
+  embedding_512?: number[] | null;
+  embedding_768?: number[] | null;
+  embedding_1024?: number[] | null;
+  active_embedding_dimension?: 512 | 768 | 1024 | null;
 }
 
 export const addChatThread = async (threadData: NewChatThreadData): Promise<Thread> => {
   const db: PGlite = await getDbInstance();
   const now = new Date().toISOString();
   try {
-    // await db.run(
     await db.query(
-      'INSERT INTO chat_threads (id, title, system_prompt, created_at, last_activity_at) VALUES (?1, ?2, ?3, ?4, ?5)',
-      [threadData.id, threadData.title, threadData.systemPrompt || null, now, now] // Ensure systemPrompt is null if undefined
+      `INSERT INTO chat_threads (id, title, system_prompt, created_at, last_activity_at, embedding_512, embedding_768, embedding_1024, active_embedding_dimension)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      [
+        threadData.id,
+        threadData.title,
+        threadData.systemPrompt || null,
+        now,
+        now,
+        threadData.embedding_512 ? JSON.stringify(threadData.embedding_512) : null,
+        threadData.embedding_768 ? JSON.stringify(threadData.embedding_768) : null,
+        threadData.embedding_1024 ? JSON.stringify(threadData.embedding_1024) : null,
+        threadData.active_embedding_dimension ?? null,
+      ]
     );
     const newThread: Thread = {
       id: threadData.id,
@@ -112,6 +130,10 @@ export const addChatThread = async (threadData: NewChatThreadData): Promise<Thre
       createdAt: now,
       lastActivity: now,
       messages: [],
+      embedding_512: threadData.embedding_512,
+      embedding_768: threadData.embedding_768,
+      embedding_1024: threadData.embedding_1024,
+      active_embedding_dimension: threadData.active_embedding_dimension,
     };
     return newThread;
   } catch (error) {
@@ -127,38 +149,52 @@ export interface NewChatMessageData {
   text_content: string;
   tts_lang?: string;
   tts_alignment_data?: any; 
+  embedding_512?: number[] | null;
+  embedding_768?: number[] | null;
+  embedding_1024?: number[] | null;
+  active_embedding_dimension?: 512 | 768 | 1024 | null;
 }
 
 export const addChatMessage = async (messageData: NewChatMessageData): Promise<ChatMessage> => {
   const db: PGlite = await getDbInstance();
   const now = new Date().toISOString();
   try {
-    // await db.run(
-    await db.query(
-      'INSERT INTO chat_messages (id, thread_id, sender, text_content, timestamp, tts_lang, tts_alignment_data) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)',
-      [
-        messageData.id,
-        messageData.thread_id,
-        messageData.sender,
-        messageData.text_content,
-        now, 
-        messageData.tts_lang || null, // Ensure null if undefined
-        messageData.tts_alignment_data ? JSON.stringify(messageData.tts_alignment_data) : null
-      ]
-    );
-    // await db.run(
-    await db.query(
-      'UPDATE chat_threads SET last_activity_at = ?1 WHERE id = ?2',
-      [now, messageData.thread_id]
-    );
+    await db.transaction(async (tx) => {
+      await tx.query(
+        `INSERT INTO chat_messages (id, thread_id, sender, text_content, timestamp, tts_lang, tts_alignment_data, embedding_512, embedding_768, embedding_1024, active_embedding_dimension)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        [
+          messageData.id,
+          messageData.thread_id,
+          messageData.sender,
+          messageData.text_content,
+          now,
+          messageData.tts_lang ?? null,
+          messageData.tts_alignment_data ? JSON.stringify(messageData.tts_alignment_data) : null,
+          messageData.embedding_512 ? JSON.stringify(messageData.embedding_512) : null,
+          messageData.embedding_768 ? JSON.stringify(messageData.embedding_768) : null,
+          messageData.embedding_1024 ? JSON.stringify(messageData.embedding_1024) : null,
+          messageData.active_embedding_dimension ?? null,
+        ]
+      );
+      await tx.query(
+        'UPDATE chat_threads SET last_activity_at = ? WHERE id = ?',
+        [now, messageData.thread_id]
+      );
+    });
 
     const newMessage: ChatMessage = {
       id: messageData.id,
+      thread_id: messageData.thread_id,
       sender: messageData.sender,
-      text: messageData.text_content,
+      text_content: messageData.text_content,
       timestamp: now,
       ttsLang: messageData.tts_lang,
       alignmentData: messageData.tts_alignment_data,
+      embedding_512: messageData.embedding_512,
+      embedding_768: messageData.embedding_768,
+      embedding_1024: messageData.embedding_1024,
+      active_embedding_dimension: messageData.active_embedding_dimension,
     };
     return newMessage;
   } catch (error) {
@@ -171,13 +207,105 @@ export const updateThreadLastActivity = async (threadId: string): Promise<void> 
   const db: PGlite = await getDbInstance();
   const now = new Date().toISOString();
   try {
-    // await db.run(
     await db.query(
-      'UPDATE chat_threads SET last_activity_at = ?1 WHERE id = ?2',
+      'UPDATE chat_threads SET last_activity_at = ? WHERE id = ?',
       [now, threadId]
     );
   } catch (error) {
     console.error(`[DB ChatService] Error updating last_activity_at for thread ${threadId}:`, error);
     throw error;
+  }
+};
+
+export const updateChatThread = async (
+  db: PGlite,
+  threadId: string,
+  updates: {
+    title?: string;
+    systemPrompt?: string;
+    embedding_512?: number[] | null;
+    embedding_768?: number[] | null;
+    embedding_1024?: number[] | null;
+    active_embedding_dimension?: 512 | 768 | 1024 | null;
+  }
+): Promise<Thread | null> => {
+  if (Object.keys(updates).length === 0) {
+    const currentThreadResult = await db.query('SELECT * FROM chat_threads WHERE id = ?', [threadId]);
+    return currentThreadResult.rows.length > 0 ? mapDbRowToThread(currentThreadResult.rows[0]) : null;
+  }
+  if (threadId === JUST_CHAT_THREAD_ID && (updates.title || updates.systemPrompt)) {
+    console.warn("Attempted to update title or systemPrompt for JUST_CHAT_THREAD_ID. This is not allowed.");
+    if (updates.title) delete updates.title;
+    if (updates.systemPrompt) delete updates.systemPrompt;
+    if (Object.keys(updates).length === 0) {
+      const currentThreadResult = await db.query('SELECT * FROM chat_threads WHERE id = ?', [threadId]);
+      return currentThreadResult.rows.length > 0 ? mapDbRowToThread(currentThreadResult.rows[0]) : null;
+    }
+  }
+
+  const now = new Date().toISOString();
+  const fieldsToUpdate: string[] = [];
+  const values: any[] = [];
+
+  if (updates.title !== undefined) {
+    fieldsToUpdate.push('title = ?');
+    values.push(updates.title);
+  }
+  if (updates.systemPrompt !== undefined) {
+    fieldsToUpdate.push('system_prompt = ?');
+    values.push(updates.systemPrompt);
+  }
+  if (updates.embedding_512 !== undefined) {
+    fieldsToUpdate.push('embedding_512 = ?');
+    values.push(updates.embedding_512 ? JSON.stringify(updates.embedding_512) : null);
+  }
+  if (updates.embedding_768 !== undefined) {
+    fieldsToUpdate.push('embedding_768 = ?');
+    values.push(updates.embedding_768 ? JSON.stringify(updates.embedding_768) : null);
+  }
+  if (updates.embedding_1024 !== undefined) {
+    fieldsToUpdate.push('embedding_1024 = ?');
+    values.push(updates.embedding_1024 ? JSON.stringify(updates.embedding_1024) : null);
+  }
+  if (updates.active_embedding_dimension !== undefined) {
+    fieldsToUpdate.push('active_embedding_dimension = ?');
+    values.push(updates.active_embedding_dimension ?? null);
+  }
+  
+  if (fieldsToUpdate.length === 0) {
+    const currentThreadResult = await db.query('SELECT * FROM chat_threads WHERE id = ?', [threadId]);
+    return currentThreadResult.rows.length > 0 ? mapDbRowToThread(currentThreadResult.rows[0]) : null;
+  }
+
+  fieldsToUpdate.push('last_activity_at = ?');
+  values.push(now);
+  values.push(threadId);
+
+  const sql = `UPDATE chat_threads SET ${fieldsToUpdate.join(', ')} WHERE id = ?`;
+
+  try {
+    await db.query(sql, values);
+    const result = await db.query('SELECT * FROM chat_threads WHERE id = ?', [threadId]);
+    return result.rows.length > 0 ? mapDbRowToThread(result.rows[0]) : null;
+  } catch (error) {
+    console.error(`Error updating chat thread ${threadId}:`, error);
+    return null;
+  }
+};
+
+export const deleteChatThread = async (db: PGlite, threadId: string): Promise<boolean> => {
+  if (threadId === JUST_CHAT_THREAD_ID) {
+    console.warn("Attempted to delete JUST_CHAT_THREAD_ID. This is not allowed.");
+    return false;
+  }
+  try {
+    await db.transaction(async (tx) => {
+      await tx.query('DELETE FROM chat_messages WHERE thread_id = ?', [threadId]);
+      await tx.query('DELETE FROM chat_threads WHERE id = ?', [threadId]);
+    });
+    return true;
+  } catch (error) {
+    console.error(`Error deleting chat thread ${threadId}:`, error);
+    return false;
   }
 }; 

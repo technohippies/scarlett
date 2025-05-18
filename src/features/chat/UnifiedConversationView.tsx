@@ -18,22 +18,22 @@ const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
 
 // --- Word Data Structure (for highlighting from RoleplayPage) ---
 interface WordInfo {
-    text: string;
-    startTime: number;
-    endTime: number;
-    index: number;
+    word: string;    // Changed from text
+    start: number;   // Changed from startTime
+    end: number;     // Changed from endTime
+    index: number;   // Kept, as it's used internally by processTTSAlignment and updateTTSHighlightLoop
 }
 
 // --- Constants for Highlighting (from RoleplayPage) ---
 const HIGHLIGHT_STYLE_ID = "scarlett-unified-word-highlight-styles";
 const HIGHLIGHT_CSS = `
-  .scarlett-roleplay-word-span {
+  .scarlett-unified-word-span {
     background-color: transparent;
     border-radius: 3px;
     display: inline-block;
     transition: background-color 0.2s ease-out;
   }
-  .scarlett-roleplay-word-highlight {
+  .scarlett-unified-word-highlight {
     background-color: hsl(240, 5%, 25%);
   }
 `;
@@ -178,11 +178,11 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
         alignmentData.characters.length === alignmentData.character_start_times_seconds.length &&
         alignmentData.characters.length === alignmentData.character_end_times_seconds.length) {
         for (let i = 0; i < alignmentData.characters.length; i++) {
-            words.push({ text: alignmentData.characters[i], startTime: alignmentData.character_start_times_seconds[i], endTime: alignmentData.character_end_times_seconds[i], index: i });
+            words.push({ word: alignmentData.characters[i], start: alignmentData.character_start_times_seconds[i], end: alignmentData.character_end_times_seconds[i], index: i });
         }
     } else { 
         console.warn('[TTS processAlignment] Character alignment data missing/invalid. Fallback: splitting by char.');
-        for (let i = 0; i < text.length; i++) { words.push({ text: text[i], startTime: 0, endTime: 0, index: i }); }
+        for (let i = 0; i < text.length; i++) { words.push({ word: text[i], start: 0, end: 0, index: i }); }
     }
     return words;
   };
@@ -199,11 +199,11 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
     const currentTime = audio.currentTime;
     let activeIndex = -1;
     for (const word of wordMapData) {
-      if (currentTime >= word.startTime && currentTime < word.endTime) { activeIndex = word.index; break; }
+      if (currentTime >= word.start && currentTime < word.end) { activeIndex = word.index; break; }
     }
     if (activeIndex !== -1 && currentTTSHighlightIndex() !== activeIndex) setCurrentTTSHighlightIndex(activeIndex);
     else if (activeIndex === -1 && currentTTSHighlightIndex() !== null) {
-      if (wordMapData.length > 0 && (currentTime >= (wordMapData.at(-1)?.endTime ?? Infinity) || currentTime < (wordMapData[0]?.startTime ?? 0))) {
+      if (wordMapData.length > 0 && (currentTime >= (wordMapData.at(-1)?.end ?? Infinity) || currentTime < (wordMapData[0]?.start ?? 0))) {
         setCurrentTTSHighlightIndex(null);
       }
     }
@@ -279,7 +279,7 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
         const lastMessage = messages[messages.length - 1];
         if (lastMessage.sender === 'ai' && activeSpokenMessageId() !== lastMessage.id && !isTTSSpeaking()) {
             setActiveSpokenMessageId(lastMessage.id);
-            handlePlayTTS(lastMessage.id, lastMessage.text, lastMessage.ttsLang || 'en', lastMessage.alignmentData);
+            handlePlayTTS(lastMessage.id, lastMessage.text_content, lastMessage.ttsLang || 'en', lastMessage.alignmentData);
         }
     }
   });

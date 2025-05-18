@@ -8,10 +8,9 @@ import { Play, ArrowClockwise } from 'phosphor-solid';
 // WordInfo is expected to be provided by the parent or defined in a shared types file if necessary.
 // For now, we assume it matches the structure used by the parent.
 interface WordInfo {
-    text: string;
-    startTime: number;
-    endTime: number;
-    index: number;
+    word: string;
+    start: number;
+    end: number;
 }
 
 export interface ChatMessageItemProps {
@@ -91,16 +90,16 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
       >
         <Show 
           when={message.sender === 'ai' && props.isCurrentSpokenMessage && props.wordMap && props.wordMap.length > 0}
-          fallback={<p class="text-md whitespace-pre-wrap">{message.text}</p>}
+          fallback={<p class="text-md whitespace-pre-wrap">{message.text_content}</p>}
         >
           <p class="text-md whitespace-pre-wrap">
-            <For each={props.wordMap || []}>{(word, index) => (
+            <For each={props.wordMap || []}>{(item, index) => (
               <span 
-                class="scarlett-unified-word-span" // Using class name consistent with UnifiedConversationView
-                classList={{ 'scarlett-unified-word-highlight': props.currentHighlightIndex === word.index }}
-                data-word-index={word.index}
+                class="scarlett-unified-word-span"
+                classList={{ 'scarlett-unified-word-highlight': props.currentHighlightIndex === index() }}
+                data-word-index={index()}
               >
-                {word.text.replace(/ /g, '\u00A0')} 
+                {item.word.replace(/ /g, '\u00A0')} 
               </span>
             )}</For>
           </p>
