@@ -55,4 +55,38 @@ export async function getMoodForDate(entryDate: string): Promise<Mood | null> {
     return null;
   }
 }
-*/ 
+*/
+
+export interface MoodEntryForContext {
+  mood: string;
+}
+
+/**
+ * Fetches the mood entry for the current day.
+ * @returns The mood string (e.g., 'happy') or null if no entry for today.
+ */
+export async function getTodaysMoodForContext(): Promise<string | null> {
+  console.log('[DB Mood DEBUG] Entered getTodaysMoodForContext function.');
+  const db = await getDbInstance();
+  const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+
+  console.log(`[DB Mood] Fetching mood for today: ${today}`);
+
+  try {
+    const result = await db.query<{ mood: string }>(
+      'SELECT mood FROM mood_entries WHERE entry_date = $1 ORDER BY timestamp DESC LIMIT 1',
+      [today]
+    );
+
+    if (result.rows.length > 0) {
+      console.log(`[DB Mood] Found mood for today: ${result.rows[0].mood}`);
+      return result.rows[0].mood;
+    } else {
+      console.log('[DB Mood] No mood entry found for today.');
+      return null;
+    }
+  } catch (error) {
+    console.error('[DB Mood] Error fetching today\'s mood:', error);
+    return null;
+  }
+} 

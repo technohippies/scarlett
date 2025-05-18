@@ -435,4 +435,47 @@ export async function removeTag(tagId: number): Promise<boolean> {
         throw error; 
         // return false; // Or just return false on error
     }
-} 
+}
+
+// --- NEW FUNCTION for LLM Context ---
+export interface FlashcardForContext {
+  sourceText: string;
+  targetText: string;
+  lastReviewed: string | null;
+}
+
+export async function getRecentlyStudiedFlashcardsForContext(db: PGlite, limit: number = 5): Promise<FlashcardForContext[]> {
+  const query = `
+    SELECT
+      source_lex.text AS sourceText,
+      target_lex.text AS targetText,
+      ul.last_review AS lastReviewed
+    FROM user_learning ul
+    JOIN lexeme_translations lt ON ul.translation_id = lt.translation_id
+    JOIN lexemes source_lex ON lt.source_lexeme_id = source_lex.lexeme_id
+    JOIN lexemes target_lex ON lt.target_lexeme_id = target_lex.lexeme_id
+    WHERE ul.last_review IS NOT NULL
+    ORDER BY ul.last_review DESC
+    LIMIT $1;
+  `;
+  try {
+    const result = await db.query<{
+      sourcetext: string; // pglite returns lowercase keys
+      targettext: string;
+      lastreviewed: string | Date | null; 
+    }>(query, [limit]); 
+    
+    // This log can be removed or kept for future debugging, but it showed the raw rows with lowercase keys.
+    // console.log('[DB learning] Raw flashcards for context query result:', JSON.stringify(result.rows, null, 2));
+
+    return result.rows.map(row => ({
+      sourceText: row.sourcetext,
+      targetText: row.targettext,
+      lastReviewed: row.lastreviewed ? (row.lastreviewed instanceof Date ? row.lastreviewed.toISOString() : new Date(row.lastreviewed).toISOString()) : null
+    }));
+  } catch (error) {
+    console.error("[DB learning] Error fetching recently studied flashcards for context:", error);
+    return [];
+  }
+}
+// --- END NEW FUNCTION --- 

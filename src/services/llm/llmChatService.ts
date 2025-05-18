@@ -12,6 +12,9 @@ import personality from './prompts/personality.json';
 // --- Import DB functions for context --- 
 import { getRecentVisitedPages } from '../db/visited_pages';
 import { getRecentBookmarks } from '../db/bookmarks'; // Assuming BookmarkForContext is exported
+import { getRecentlyStudiedFlashcardsForContext } from '../db/learning'; // Import new function and type
+import { getTodaysMoodForContext } from '../db/mood'; // Import for mood
+import { getDbInstance } from '../db/init'; // Import getDbInstance
 
 import { userConfigurationStorage } from '../storage/storage'; // Import userConfigurationStorage
 
@@ -27,7 +30,23 @@ interface UnifiedChatOptions {
 
 // --- NEW FUNCTION to fetch and format user context ---
 async function fetchAndFormatUserContext(): Promise<string> {
+  console.log('[llmChatService DEBUG] Entered fetchAndFormatUserContext function.'); // VERY FIRST LOG
   let contextParts: string[] = [];
+  const db = await getDbInstance(); // Get DB instance
+
+  console.log('[llmChatService DEBUG] Attempting to fetch today\'s mood...'); // ADDED DEBUG LOG
+  try {
+    const todaysMood = await getTodaysMoodForContext();
+    console.log('[llmChatService DEBUG] todaysMood raw value received:', todaysMood); // ADDED DEBUG LOG
+    if (todaysMood) {
+      console.log('[llmChatService DEBUG] todaysMood is truthy, adding to contextParts.'); // ADDED DEBUG LOG
+      contextParts.push(`Current Mood: ${todaysMood}`);
+    } else {
+      console.log('[llmChatService DEBUG] todaysMood is falsy, NOT adding to contextParts.'); // ADDED DEBUG LOG
+    }
+  } catch (e) {
+    console.warn("[llmChatService DEBUG] CRITICAL ERROR fetching today's mood for context:", e); // Enhanced log
+  }
 
   try {
     const recentPages = await getRecentVisitedPages(5);
@@ -47,6 +66,18 @@ async function fetchAndFormatUserContext(): Promise<string> {
     }
   } catch (e) {
     console.warn("[llmChatService] Error fetching recent bookmarks for context:", e);
+  }
+
+  try {
+    const recentFlashcards = await getRecentlyStudiedFlashcardsForContext(db, 3); // Fetch 3 recent flashcards
+    console.log('[llmChatService fetchAndFormatUserContext] Received recentFlashcards:', JSON.stringify(recentFlashcards, null, 2)); 
+    if (recentFlashcards.length > 0) {
+      // Simplified syntax: sourceText (targetText)
+      const flashcardLines = recentFlashcards.map(fc => `- ${fc.sourceText} (${fc.targetText})`);
+      contextParts.push("Recently Studied Flashcards:\n" + flashcardLines.join('\n'));
+    }
+  } catch (e) {
+    console.warn("[llmChatService] Error fetching recent flashcards for context:", e);
   }
 
   // Future: Add more context sources here (learning activity, etc.)
@@ -69,29 +100,27 @@ async function prepareLLMMessages(
   options: UnifiedChatOptions
 ): Promise<ChatMessage[]> { // MODIFIED: Made async to await context fetching
   const effectiveBaseSystem = options.baseSystemOverride || baseSystemPrompt;
-  const userActivityContext = await fetchAndFormatUserContext(); // Fetch context
+  
+  let userActivityContext = ""; // Initialize to empty
+  if (!options.excludeBaseSystem) {
+    // Only fetch context if not excluding base system (and thus its embedded context)
+    userActivityContext = await fetchAndFormatUserContext(); 
+  }
   
   const systemMessages: ChatMessage[] = [];
 
-  // Construct the full system prompt string
   let fullSystemPrompt = "";
 
   if (options.excludeBaseSystem) {
-    // If excluding base, the system prompt is ONLY the threadSystemPrompt.
-    // User context is handled by the caller in the user message for this specific task (scenario generation).
     if (options.threadSystemPrompt) {
       fullSystemPrompt = options.threadSystemPrompt;
     }
-    // DO NOT append userActivityContext here when excludeBaseSystem is true,
-    // as it's expected to be part of the user message for specific tasks like scenario generation.
   } else {
-    // Default behavior: start with base system prompt
     fullSystemPrompt = effectiveBaseSystem;
     if (userActivityContext) {
       fullSystemPrompt += "\n\n" + userActivityContext;
     }
     if (options.threadSystemPrompt) {
-      // Append as [Current Thread Focus] only if not excluding base system
       fullSystemPrompt += "\n\n[Current Thread Focus]\n" + options.threadSystemPrompt;
     }
   }

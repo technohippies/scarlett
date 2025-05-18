@@ -1,7 +1,7 @@
 import { Component, For, createSignal, createEffect } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { TextField, TextFieldInput } from '../../components/ui/text-field'; 
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../../components/ui/sheet';
+import { Sheet, SheetContent, SheetTrigger } from '../../components/ui/sheet';
 import type { ChatMessage, Thread } from './types';
 import { ChatMessageItem } from './ChatMessageItem';
 import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../components/ui/switch';

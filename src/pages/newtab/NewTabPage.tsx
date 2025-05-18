@@ -50,6 +50,7 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
   });
 
   const handleMoodSelect = async (mood: Mood | null) => {
+    console.log(`[NewTabPage DEBUG] Entered handleMoodSelect. Mood argument:`, mood); // VERY FIRST LOG
     if (mood) {
       const todayStr = getCurrentDateYYYYMMDD();
       console.log(`[NewTabPage handleMoodSelect] Mood selected: ${mood} for date: ${todayStr}`);
