@@ -4,7 +4,7 @@ import BookmarksPage from '../../src/pages/bookmarks/BookmarksPage';
 import StudyPage from '../../src/pages/study/StudyPage';
 import SettingsPage from '../../src/pages/settings/SettingsPage';
 import { UnifiedConversationView } from '../../src/features/chat/UnifiedConversationView';
-import type { Thread, ChatMessage } from '../../src/features/chat/types';
+import type { Thread, ChatMessage as UIChatMessage } from '../../src/features/chat/types';
 import { SettingsProvider } from '../../src/context/SettingsContext';
 import type { Messages } from '../../src/types/i18n';
 import { userConfigurationStorage } from '../../src/services/storage/storage';
@@ -74,6 +74,7 @@ let appScopeHasInitializedDefaultThreads = false;
 const App: Component = () => {
   const [activeView, setActiveView] = createSignal<ActiveView>('newtab');
   const [effectiveLangCode, setEffectiveLangCode] = createSignal<string>(getBestInitialLangCode());
+  const [userConfig, setUserConfig] = createSignal<UserConfiguration | null>(null);
 
   const [threads, setThreads] = createSignal<Thread[]>([]);
   const [currentThreadId, setCurrentThreadId] = createSignal<string | null>(null);
@@ -231,8 +232,19 @@ const App: Component = () => {
             setEffectiveLangCode(config.nativeLanguage);
         }
       }
+      // Also set the userConfig signal here initially
+      if (config) {
+        setUserConfig(config);
+      } else {
+        // Attempt to set a default or minimal config if none exists, 
+        // or ensure UnifiedConversationView handles null gracefully.
+        // For now, just log and it will be null.
+        console.warn('[App.tsx] No user configuration found in storage during initial load.');
+        setUserConfig(null); 
+      }
     }).catch(e => {
-      console.error('[NewTabApp] Error loading initial language from storage during createEffect:', e);
+      console.error('[NewTabApp] Error loading initial language or user config from storage during createEffect:', e);
+      setUserConfig(null); // Set to null on error too
     });
   });
 
@@ -240,14 +252,21 @@ const App: Component = () => {
     const storageKey = userConfigurationStorage.key;
     if (areaName === 'local' && changes[storageKey]) {
       const newConfig = changes[storageKey].newValue as UserConfiguration | undefined;
-      if (newConfig && newConfig.nativeLanguage) {
-        if (newConfig.nativeLanguage !== effectiveLangCode()) {
-            console.log('[NewTabApp] handleStorageChange: Updating effectiveLangCode to:', newConfig.nativeLanguage);
-            setEffectiveLangCode(newConfig.nativeLanguage);
+      // Update userConfig signal
+      if (newConfig) {
+        setUserConfig(newConfig);
+        if (newConfig.nativeLanguage) {
+          if (newConfig.nativeLanguage !== effectiveLangCode()) {
+              console.log('[NewTabApp] handleStorageChange: Updating effectiveLangCode to:', newConfig.nativeLanguage);
+              setEffectiveLangCode(newConfig.nativeLanguage);
+          }
         }
-      } else if ((!newConfig || newConfig.nativeLanguage === null) && effectiveLangCode() !== 'en') {
-        console.log('[NewTabApp] handleStorageChange: nativeLanguage is null or config removed, defaulting to English.');
-        setEffectiveLangCode('en');
+      } else {
+        setUserConfig(null);
+        if (effectiveLangCode() !== 'en') {
+          console.log('[NewTabApp] handleStorageChange: nativeLanguage is null or config removed, defaulting to English.');
+          setEffectiveLangCode('en');
+        }
       }
     }
   };
@@ -295,31 +314,51 @@ const App: Component = () => {
     }
   };
 
-  const handleCreateNewThread = async (baseTitle: string, systemPromptForDB: string): Promise<string> => {
-    const uniqueTitle = `${baseTitle} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+  const handleCreateNewThread = async (
+    title: string, 
+    systemPromptForDB: string,
+    initialMessages?: UIChatMessage[],
+  ): Promise<string> => {
+    const uniqueTitle = title || `New Chat ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
     console.log(`[App.tsx] Creating new thread: "${uniqueTitle}" with system prompt (for DB): "${systemPromptForDB}"`);
     
     const newThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
       id: `thread-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      title: uniqueTitle, // Use the generated unique title
-      systemPrompt: systemPromptForDB, // This will be empty for general chats from the UI
+      title: uniqueTitle, 
+      systemPrompt: systemPromptForDB, 
     };
     try {
       const createdThread = await addChatThread(newThreadData);
-      // Ensure messages array is initialized for the new thread in the local state
-      const threadWithEmptyMessages = { ...createdThread, messages: [] }; 
-      setThreads(prev => [threadWithEmptyMessages, ...prev]);
+      let messagesForNewThread: UIChatMessage[] = [];
+
+      if (initialMessages && initialMessages.length > 0) {
+        for (const msg of initialMessages) {
+          const messageToSave: UIChatMessage = {
+            ...msg,
+            thread_id: createdThread.id,
+            timestamp: msg.timestamp || new Date().toISOString(),
+          };
+          await addChatMessage(messageToSave);
+          messagesForNewThread.push(messageToSave);
+        }
+      }
+      
+      const threadWithMessages = { ...createdThread, messages: messagesForNewThread }; 
+      setThreads(prev => [threadWithMessages, ...prev]);
       setCurrentThreadId(createdThread.id);
       
-      // Automatically send a "Hello!" from the user to kick off the AI in the new thread
-      // if it's a general chat (i.e., systemPromptForDB is empty or a generic one).
-      // For now, let's assume any user-created thread via this button is general.
-      console.log(`[App.tsx] New general thread ${createdThread.id} created. Sending initial 'Hello!' as user.`);
-      await handleSendMessageToUnifiedView("Hello!", createdThread.id, true);
+      // Conditionally send "Hello!" only if no initial messages were provided by the caller
+      // AND it's a general chat (empty system prompt from UnifiedConversationView implies general from its side)
+      if ((!initialMessages || initialMessages.length === 0) && (!systemPromptForDB || systemPromptForDB.trim() === "")) {
+        console.log(`[App.tsx] New general thread ${createdThread.id} created without initial messages. Sending 'Hello!' as user.`);
+        await handleSendMessageToUnifiedView("Hello!", createdThread.id, true);
+      } else if (initialMessages && initialMessages.length > 0) {
+        console.log(`[App.tsx] New thread ${createdThread.id} created with ${initialMessages.length} initial message(s). Not sending automatic "Hello!".`);
+      }
 
       return createdThread.id;
     } catch (error) {
-      console.error('[App.tsx] Error creating new thread or sending initial message:', error);
+      console.error('[App.tsx] Error creating new thread or saving initial messages:', error);
       return '';
     }
   };
@@ -337,7 +376,7 @@ const App: Component = () => {
     }
 
     const currentIsoTimestamp = new Date().toISOString();
-    const userMessage: ChatMessage = {
+    const userMessage: UIChatMessage = {
       id: `msg-user-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       thread_id: threadId,
       timestamp: currentIsoTimestamp,
@@ -369,7 +408,7 @@ const App: Component = () => {
     } else {
       // This branch handles AI-initiated messages (e.g., kickoff)
       // It assumes 'text' is the full message content from the AI already.
-      const aiKickoffMessage: ChatMessage = {
+      const aiKickoffMessage: UIChatMessage = {
         id: `msg-ai-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         thread_id: threadId,
         timestamp: currentIsoTimestamp,
@@ -403,7 +442,7 @@ const App: Component = () => {
       const errorText = "AI provider/model not configured. Please check settings.";
       // Add error message to chat
       const errorMsgTimestamp = new Date().toISOString();
-      const errorAiMessage: ChatMessage = {
+      const errorAiMessage: UIChatMessage = {
         id: `msg-error-cfg-stream-${Date.now()}`, thread_id: threadId, timestamp: errorMsgTimestamp,
         sender: 'ai', text_content: errorText, ttsLang: effectiveLangCode(),
       };
@@ -423,7 +462,7 @@ const App: Component = () => {
         console.error('[App.tsx] LLM Model ID is empty for streaming.');
         const modelErrorMsg = "LLM model not configured for streaming. Check settings.";
         const modelErrorTimestamp = new Date().toISOString();
-        const errorModelMsg: ChatMessage = {
+        const errorModelMsg: UIChatMessage = {
             id: `msg-error-model-stream-${Date.now()}`, thread_id: threadId, timestamp: modelErrorTimestamp,
             sender: 'ai', text_content: modelErrorMsg, ttsLang: effectiveLangCode(),
         };
@@ -444,7 +483,7 @@ const App: Component = () => {
 
     // Create an initial placeholder AI message for streaming
     const aiStreamingMessageId = `msg-ai-stream-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    const initialAiMessage: ChatMessage = {
+    const initialAiMessage: UIChatMessage = {
       id: aiStreamingMessageId,
       thread_id: threadId,
       timestamp: new Date().toISOString(), 
@@ -529,7 +568,7 @@ const App: Component = () => {
       console.log('[App.tsx Stream] Finished iterating getAiChatResponseStream. Final accumulated text:', accumulatedResponse);
       
       // After stream finishes (or errors out), update the message with isStreaming: false and save final to DB
-      const finalAiMessage: ChatMessage = {
+      const finalAiMessage: UIChatMessage = {
         ...initialAiMessage, 
         text_content: accumulatedResponse.trim(),
         timestamp: finalTimestamp, 
@@ -579,7 +618,7 @@ const App: Component = () => {
               };
               return { ...t, messages: updatedMessages, lastActivity: finalErrorTimestamp };
             } else {
-              const newErrorMsg: ChatMessage = {
+              const newErrorMsg: UIChatMessage = {
                 id: `msg-error-stream-outer-${Date.now()}`,
                 thread_id: threadId, timestamp: finalErrorTimestamp,
                 sender: 'ai', text_content: streamErrorText, ttsLang: effectiveLangCode(),
@@ -593,7 +632,7 @@ const App: Component = () => {
       );
       
       // Attempt to save the error state to the DB if the message exists.
-      const finalErrorAiMessage: ChatMessage = {
+      const finalErrorAiMessage: UIChatMessage = {
         ...initialAiMessage,
         id: aiStreamingMessageId, 
         text_content: accumulatedResponse.trim() + `\n[Outer Error: ${String(error)}]`,
@@ -630,7 +669,7 @@ const App: Component = () => {
           <SettingsPage onNavigateBack={() => navigateTo('newtab')} /> 
         </Match>
         <Match when={activeView() === 'unifiedChat'}>
-          <Show when={!isLoadingThreads()} fallback={<div>Loading chats...</div>}>
+          <Show when={!isLoadingThreads() && userConfig()} fallback={<div>Loading chats and configuration...</div>}>
             <UnifiedConversationView
               threads={threads()}
               currentSelectedThreadId={currentThreadId()}
@@ -638,6 +677,7 @@ const App: Component = () => {
               onCreateNewThread={handleCreateNewThread}
               onSendMessage={handleSendMessageToUnifiedView}
               onNavigateBack={() => navigateTo('newtab')}
+              userConfig={userConfig()!}
             />
           </Show>
         </Match>

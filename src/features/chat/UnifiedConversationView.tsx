@@ -12,6 +12,10 @@ import { generateElevenLabsSpeechWithTimestamps, ElevenLabsVoiceSettings } from 
 import { DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
 // Placeholder for STT service - will be properly imported later
 // import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService'; 
+import { Spinner, Sparkle } from 'phosphor-solid';
+import { generateRoleplayScenariosLLM, type RoleplayScenario } from '../../services/llm/llmChatService';
+import type { UserConfiguration } from '../../services/storage/types';
+import type { ChatMessage } from './types';
 
 const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
 
@@ -51,9 +55,11 @@ interface UnifiedConversationViewProps {
   onSelectThread: (threadId: string) => void;
   onNavigateBack: () => void;
   currentSelectedThreadId?: string | null;
-  onCreateNewThread: (title: string, systemPrompt: string) => Promise<string>; 
-  // onUpdateThreadMessages: (threadId: string, messages: ChatMessage[]) => void; // Messages are part of Thread now
+  onCreateNewThread: (title: string, systemPrompt: string, newMessages?: ChatMessage[], metadata?: any) => Promise<string>; 
+  userConfig: UserConfiguration;
 }
+
+const [isGeneratingRoleplays, setIsGeneratingRoleplays] = createSignal(false);
 
 export const UnifiedConversationView: Component<UnifiedConversationViewProps> = (props) => {
   const [inputText, setInputText] = createSignal('');
@@ -375,18 +381,52 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
   });
   
   const handleCreateNewGeneralChat = async () => {
-    // App.tsx will handle default title and empty system prompt for DB
-    await props.onCreateNewThread("New Chat", ""); // Pass a placeholder title and empty system prompt
+    // Pass empty string for systemPrompt
+    await props.onCreateNewThread("New Chat", "", []);
   };
 
-  const handleGenerateRoleplays = () => {
-    console.log("[UnifiedConversationView] Generate Roleplays clicked - placeholder");
-    // TODO: Implement roleplay generation logic
-    // This might involve:
-    // 1. Calling a service (like the one in roleplayScenarios.ts) to get a scenario
-    // 2. Extracting title and systemPrompt from the scenario
-    // 3. Calling props.onCreateNewThread(roleplayTitle, roleplaySystemPrompt)
-    // 4. Potentially sending an initial AI message for the roleplay
+  const handleGenerateRoleplays = async () => {
+    setIsGeneratingRoleplays(true);
+    try {
+      // Temporarily hardcode targetLanguage, will revisit userConfig access for learningLanguage
+      const targetLanguage = 'English'; 
+      console.log(`[UnifiedConversationView] Generating roleplays for language: ${targetLanguage}`);
+      
+      const scenarios: RoleplayScenario[] = await generateRoleplayScenariosLLM(targetLanguage, undefined);
+
+      if (!scenarios || scenarios.length === 0) {
+        console.warn('[UnifiedConversationView] No roleplay scenarios generated.');
+        alert('Could not generate roleplay scenarios. Please try again later.');
+        return;
+      }
+
+      console.log(`[UnifiedConversationView] Generated ${scenarios.length} scenarios. Creating threads...`);
+      for (const scenario of scenarios) {
+        const sceneMessage: ChatMessage = {
+          id: crypto.randomUUID(),
+          thread_id: '', 
+          sender: 'ai', 
+          text_content: scenario.description,
+          timestamp: new Date().toISOString(),
+          isStreaming: false,
+          ttsWordMap: undefined,
+          alignmentData: undefined,
+          // Temporarily use hardcoded targetLanguage for ttsLang as well
+          ttsLang: targetLanguage.split('-')[0].toLowerCase() || 'en',
+        };
+
+        console.log(`[UnifiedConversationView] Creating thread for scenario: "${scenario.title}"`);
+        // Pass empty string for systemPrompt for now. App.tsx will apply its own defaults for roleplay type.
+        await props.onCreateNewThread(scenario.title, "", [sceneMessage]);
+      }
+      alert(`${scenarios.length} new roleplay scenarios generated and threads created!`);
+
+    } catch (error) {
+      console.error("[UnifiedConversationView] Error generating roleplay scenarios:", error);
+      alert(`An error occurred while generating roleplay scenarios: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsGeneratingRoleplays(false);
+    }
   };
 
   return (
@@ -431,8 +471,23 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
           </For>
 
           <div class="mt-auto pt-2">
-            <Button variant="outline" class="w-full" onClick={handleGenerateRoleplays}>
-              Generate Roleplays
+            <Button 
+              variant="outline" 
+              class="w-full" 
+              onClick={handleGenerateRoleplays}
+              disabled={isGeneratingRoleplays()}
+            >
+              {isGeneratingRoleplays() ? (
+                <>
+                  <Spinner class="mr-2 h-4 w-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkle class="mr-2 h-4 w-4" />
+                  Generate Roleplays
+                </>
+              )}
             </Button>
           </div>
         </aside>

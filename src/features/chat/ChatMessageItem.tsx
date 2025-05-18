@@ -3,7 +3,7 @@ import type { ChatMessage } from './types';
 import { Button } from '../../components/ui/button';
 import { Spinner } from '../../components/ui/spinner';
 import { Popover } from '@kobalte/core/popover';
-import { Play, ArrowClockwise } from 'phosphor-solid';
+import { Play, Pause, ArrowClockwise } from 'phosphor-solid';
 
 // WordInfo is expected to be provided by the parent or defined in a shared types file if necessary.
 // For now, we assume it matches the structure used by the parent.
@@ -101,30 +101,26 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
       </div>
 
       <Show when={message.sender === 'ai' && canInteractWithTTS()}>
-        <div class="mt-2 w-full max-w-[75%] md:max-w-[70%]">
+        <div class="mt-2 w-full max-w-[75%] md:max-w-[70%] px-3">
             <div class="flex items-center"> 
-              <Button 
-                variant="outline" 
-                size="lg"
+              <Button
+                variant="outline"
                 onClick={handlePrimaryTTSAction}
-                class="flex-grow rounded-r-none" // Occupy available space, remove right rounding
+                class="h-11 w-20 px-2 rounded-l-md rounded-r-none flex items-center justify-center"
                 disabled={isAnotherMessagePlaying()}
               >
-                <Show 
-                  when={isThisMessagePlaying()} 
-                  fallback={
-                    <><Play weight="fill" class="size-4 mr-2" /> Play Audio</>
-                  }
+                <Show
+                  when={isThisMessagePlaying()}
+                  fallback={<Play weight="fill" class="size-4" />}
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 mr-2 animate-pulse"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
-                  Playing...
+                  <Pause weight="fill" class="size-4" />
                 </Show>
               </Button>
               <Popover placement="top-end" gutter={4} open={isPopoverOpen()} onOpenChange={setIsPopoverOpen}>
                 <Popover.Trigger
                   aria-label="More options"
                   disabled={isAnotherMessagePlaying()}
-                  class="inline-flex items-center justify-center whitespace-nowrap rounded-l-none rounded-r-md border-l-0 w-11 h-11 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                  class="inline-flex items-center justify-center whitespace-nowrap rounded-l-none rounded-r-md border-l w-11 h-11 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input hover:bg-accent hover:text-accent-foreground cursor-pointer"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4"><path d="m6 9 6 6 6-6" /></svg>
                 </Popover.Trigger>
