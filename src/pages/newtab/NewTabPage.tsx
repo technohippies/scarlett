@@ -23,7 +23,7 @@ interface NewTabPageProps {
   onNavigateToBookmarks: () => void;
   onNavigateToStudy: () => void;
   onNavigateToSettings: () => void;
-  onNavigateToRoleplay: () => void;
+  onNavigateToChat: () => void;
   messages: Messages | undefined;
   messagesLoading: boolean;
 }
@@ -198,23 +198,23 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
     <NewTabPageView
       summary={summaryData}
       summaryLoading={() => summaryData.loading || props.messagesLoading}
-      pendingEmbeddingCount={() => embeddingCountData()?.count ?? 0}
+      pendingEmbeddingCount={() => embeddingCountData()?.count || 0}
       isEmbedding={isEmbedding}
       embedStatusMessage={embedStatusMessage}
+      currentStreak={createMemo(() => streakData()?.currentStreak)}
+      streakLoading={createMemo(() => streakData.loading)}
       onEmbedClick={handleEmbedClick}
       onNavigateToBookmarks={props.onNavigateToBookmarks}
       onNavigateToStudy={props.onNavigateToStudy}
       onNavigateToSettings={props.onNavigateToSettings}
-      onNavigateToRoleplay={props.onNavigateToRoleplay}
+      onNavigateToChat={props.onNavigateToChat}
       messages={props.messages}
       isFocusModeActive={isFocusModeActive}
       onToggleFocusMode={handleToggleFocusMode}
       showMoodSelector={showMoodSelector}
       onMoodSelect={handleMoodSelect}
-      currentStreak={() => streakData()?.currentStreak ?? 0}
-      streakLoading={() => streakData.loading}
-      isPageReady={isPageReady}
       dailyGoalCompleted={dailyGoalCompleted}
+      isPageReady={isPageReady}
     />
   );
 };

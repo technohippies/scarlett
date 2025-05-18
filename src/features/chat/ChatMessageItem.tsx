@@ -1,19 +1,12 @@
-import { Component, Show, createSignal, createEffect, For, Accessor } from 'solid-js';
+import { Component, Show, createSignal, For } from 'solid-js';
 import type { ChatMessage } from './types';
 import { Button } from '../../components/ui/button';
 import { Spinner } from '../../components/ui/spinner';
 import { Popover } from '@kobalte/core/popover';
 import { Play, ArrowClockwise } from 'phosphor-solid';
-import { Dynamic } from 'solid-js/web';
 
-// --- Alignment Data Structure (copied from TranslatorWidget for now) ---
-export interface AlignmentData {
-    characters: string[];
-    character_start_times_seconds: number[];
-    character_end_times_seconds: number[];
-}
-
-// --- Word Data Structure (copied from TranslatorWidget for now) ---
+// WordInfo is expected to be provided by the parent or defined in a shared types file if necessary.
+// For now, we assume it matches the structure used by the parent.
 interface WordInfo {
     text: string;
     startTime: number;
@@ -21,25 +14,13 @@ interface WordInfo {
     index: number;
 }
 
-// --- Highlight CSS (copied from TranslatorWidget for now) ---
-const HIGHLIGHT_STYLE_ID = "scarlett-chat-highlight-styles"; // Unique ID for chat
-const HIGHLIGHT_CSS = `
-  .scarlett-chat-word-span {
-    background-color: transparent;
-    border-radius: 3px;
-    display: inline-block;
-    transition: background-color 0.2s ease-out;
-  }
-  .scarlett-chat-word-highlight {
-    background-color: hsl(240, 5%, 25%); /* Example highlight color */
-  }
-`;
-
 export interface ChatMessageItemProps {
   message: ChatMessage;
-  alignment?: AlignmentData | null;      // Added for highlighting
-  currentHighlightIndex?: number | null; // Added for highlighting
-  // ... other TTS props would go here eventually
+  // Props for TTS highlighting, passed from UnifiedConversationView
+  isCurrentSpokenMessage?: boolean;
+  wordMap?: WordInfo[]; 
+  currentHighlightIndex?: number | null;
+  // TTS action-related props (if any) could be added here if ChatMessageItem controls TTS directly
 }
 
 const POPOVER_CONTENT_CLASS = "absolute right-0 bottom-full mb-2 z-10 w-56 rounded-md bg-popover p-1 text-popover-foreground shadow-md outline-none";
@@ -49,49 +30,12 @@ const POPOVER_ITEM_CLASS = `${POPOVER_ITEM_CLASS_BASE} justify-start`;
 export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
   const { message } = props;
 
+  // Local state for mock TTS button interactions (Generate Audio, Play, etc.)
+  // This part is kept as is for now, as it's separate from the text rendering/highlighting logic.
   const [isGeneratingAudio, setIsGeneratingAudio] = createSignal(false);
   const [isAudioReady, setIsAudioReady] = createSignal(false);
   const [isPlayingAudio, setIsPlayingAudio] = createSignal(false);
   const [isPopoverOpen, setIsPopoverOpen] = createSignal(false);
-
-  const [wordMap, setWordMap] = createSignal<WordInfo[]>([]);
-
-  // Process alignment data when it changes
-  createEffect(() => {
-    if (props.alignment && message.sender === 'ai') {
-      const processed = processAlignmentForChatMessage(message.text, props.alignment);
-      setWordMap(processed);
-    } else {
-      setWordMap([]);
-    }
-  });
-
-  // Simplified processAlignment, assuming alignment data directly maps to words/chars for now
-  // In a real scenario, this might need more sophisticated logic like in TranslatorWidget
-  const processAlignmentForChatMessage = (text: string, alignmentData: AlignmentData): WordInfo[] => {
-    const words: WordInfo[] = [];
-    if (alignmentData && alignmentData.characters && 
-        alignmentData.character_start_times_seconds && 
-        alignmentData.character_end_times_seconds &&
-        alignmentData.characters.length === alignmentData.character_start_times_seconds.length &&
-        alignmentData.characters.length === alignmentData.character_end_times_seconds.length) {
-      for (let i = 0; i < alignmentData.characters.length; i++) {
-        words.push({
-          text: alignmentData.characters[i],
-          startTime: alignmentData.character_start_times_seconds[i],
-          endTime: alignmentData.character_end_times_seconds[i],
-          index: i 
-        });
-      }
-    } else {
-      // Fallback: If no valid alignment, split the original message text by character for display (no timing)
-      // This ensures something is rendered if alignment is bad, but won't highlight meaningfully with timing.
-      // For highlighting to work, the parent needs to ensure alignment data matches the actual spoken words/characters.
-      console.warn('[ChatMessageItem] Alignment data missing or invalid. Falling back to character split of message text.');
-      return text.split('').map((char, index) => ({ text: char, startTime: 0, endTime: 0, index }));
-    }
-    return words;
-  };
 
   const handleTTSAction = () => {
     if (!isAudioReady()) {
@@ -138,34 +82,32 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
 
   return (
     <div class={`flex flex-col ${message.sender === 'user' ? 'items-end' : 'items-start'}`}>
-      <Dynamic component="style" id={HIGHLIGHT_STYLE_ID}>{HIGHLIGHT_CSS}</Dynamic>
       <div
         class={`max-w-[75%] md:max-w-[70%] p-2 px-3 rounded-lg shadow-sm break-words no-underline outline-none ${
           message.sender === 'user'
             ? 'bg-neutral-700 text-neutral-50'
-            : 'bg-transparent text-foreground'
+            : 'bg-transparent text-foreground' // AI messages have transparent background for highlighting to show through
         }`}
       >
         <Show 
-          when={message.sender === 'ai' && wordMap().length > 0}
-          fallback={<p class="text-md whitespace-pre-wrap bg-transparent text-decoration-none outline-none">{message.text}</p>}
+          when={message.sender === 'ai' && props.isCurrentSpokenMessage && props.wordMap && props.wordMap.length > 0}
+          fallback={<p class="text-md whitespace-pre-wrap">{message.text}</p>}
         >
-          <p class="text-md whitespace-pre-wrap bg-transparent text-decoration-none outline-none">
-            <For each={wordMap()}>{(word) => (
+          <p class="text-md whitespace-pre-wrap">
+            <For each={props.wordMap || []}>{(word, index) => (
               <span 
-                class="scarlett-chat-word-span"
-                classList={{ 'scarlett-chat-word-highlight': props.currentHighlightIndex === word.index }}
+                class="scarlett-unified-word-span" // Using class name consistent with UnifiedConversationView
+                classList={{ 'scarlett-unified-word-highlight': props.currentHighlightIndex === word.index }}
                 data-word-index={word.index}
               >
-                {/* Replace space with non-breaking space for visual consistency if words are space-separated */}
-                {/* For character-based alignment, this might not be needed or might need adjustment */}
-                {word.text.replace(/ /g, '\u00A0')}
+                {word.text.replace(/ /g, '\u00A0')} 
               </span>
             )}</For>
           </p>
         </Show>
       </div>
 
+      {/* TTS Action Buttons - this section's logic remains for local UI interaction for now */}
       <Show when={message.sender === 'ai'}>
         <div class="mt-2 w-full max-w-[75%] md:max-w-[70%]">
           <Show when={isGeneratingAudio()}

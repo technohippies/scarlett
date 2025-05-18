@@ -23,7 +23,7 @@ export interface NewTabPageViewProps {
   onNavigateToBookmarks: () => void;
   onNavigateToStudy: () => void;
   onNavigateToSettings: () => void;
-  onNavigateToRoleplay: () => void;
+  onNavigateToChat: () => void;
   messages: Messages | undefined;
   isFocusModeActive: Accessor<boolean>;
   onToggleFocusMode: () => void;
@@ -110,7 +110,7 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
 
       <div class="mt-auto ml-auto flex flex-col gap-2 items-end">
         {/* Chat / Roleplay button */}
-        <Button onClick={props.onNavigateToRoleplay} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
+        <Button onClick={props.onNavigateToChat} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
           <Chat weight="fill" size={18} />
           Chat
         </Button>

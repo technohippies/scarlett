@@ -2,17 +2,17 @@ import { Component, For, createSignal, createEffect } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { TextField, TextFieldInput } from '../../components/ui/text-field'; 
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../../components/ui/sheet';
-import type { ChatMessage, ChatSession } from './types';
+import type { ChatMessage, Thread } from './types';
 import { ChatMessageItem } from './ChatMessageItem';
 import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../components/ui/switch';
 
 interface ChatPageViewProps {
-  chatSessions: ChatSession[];
+  threads: Thread[];
   currentChatMessages: ChatMessage[];
   onSendMessage: (text: string) => void;
-  onSelectChatSession: (sessionId: string) => void;
+  onSelectThread: (threadId: string) => void;
   onNavigateBack: () => void;
-  currentSessionId?: string | null;
+  currentThreadId?: string | null;
 }
 
 export const ChatPageView: Component<ChatPageViewProps> = (props) => {
@@ -42,16 +42,16 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
           </SheetTrigger>
           <SheetContent position="left" class="w-full sm:max-w-xs p-0 flex flex-col">
             <div class="p-2 pt-4 overflow-y-auto flex-grow">
-              <For each={props.chatSessions}>
-                {(session) => (
+              <For each={props.threads}>
+                {(thread) => (
                   <Button
-                    variant={props.currentSessionId === session.id ? "secondary" : "ghost"}
+                    variant={props.currentThreadId === thread.id ? "secondary" : "ghost"}
                     class="w-full justify-start mb-1 text-sm p-2 h-auto text-left"
-                    onClick={() => props.onSelectChatSession(session.id)}
-                    title={session.title}
+                    onClick={() => props.onSelectThread(thread.id)}
+                    title={thread.title}
                   >
                     <span class="block w-full truncate">
-                      {session.title}
+                      {thread.title}
                     </span>
                   </Button>
                 )}
@@ -81,16 +81,16 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
       <div class="flex flex-1 overflow-hidden">
         <aside class="hidden md:flex flex-col w-64 lg:w-72 border-r border-border/40 bg-muted/20">
           <div class="p-2 pt-4 overflow-y-auto flex-grow">
-            <For each={props.chatSessions}>
-              {(session) => (
+            <For each={props.threads}>
+              {(thread) => (
                 <Button
-                  variant={props.currentSessionId === session.id ? "secondary" : "ghost"}
+                  variant={props.currentThreadId === thread.id ? "secondary" : "ghost"}
                   class="w-full justify-start mb-1 text-sm p-2 h-auto text-left"
-                  onClick={() => props.onSelectChatSession(session.id)}
-                  title={session.title}
+                  onClick={() => props.onSelectThread(thread.id)}
+                  title={thread.title}
                 >
                   <span class="block w-full truncate">
-                    {session.title}
+                    {thread.title}
                   </span>
                 </Button>
               )}

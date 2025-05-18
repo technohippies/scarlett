@@ -1,13 +1,48 @@
 import { ChatPageView } from '../../../src/features/chat/ChatPageView';
-import type { ChatMessage, ChatSession } from '../../../src/features/chat/types';
+import type { ChatMessage, Thread } from '../../../src/features/chat/types';
 
-// Mock data
-const mockChatSessions: ChatSession[] = [
-  { id: '1', title: 'Conversation about SolidJS and modern web development frameworks and also many other things that make this title extremely long to test the ellipsis functionality, hopefully this is long enough now to cause an overflow and show the desired truncation effect.', lastActivity: '5m ago' },
-  { id: '2', title: 'Recipe Ideas for a potluck dinner party next week', lastActivity: '1h ago' },
-  { id: '3', title: 'Book Recommendations: Sci-Fi and Fantasy novels from the last decade', lastActivity: 'Yesterday' },
-  { id: '4', title: 'Travel Plans for Summer Vacation in Southeast Asia', lastActivity: '2 days ago' },
-  { id: '5', title: 'Quick question about project setup', lastActivity: '1 week ago' },
+// Mock data for Threads
+const mockThreads: Thread[] = [
+  { 
+    id: '1', 
+    title: 'Conversation about SolidJS and modern web development frameworks and also many other things that make this title extremely long to test the ellipsis functionality, hopefully this is long enough now to cause an overflow and show the desired truncation effect.', 
+    lastActivity: '5m ago',
+    systemPrompt: 'You are a helpful assistant discussing SolidJS.',
+    messages: [
+      { id: 's1-m1', sender: 'ai', text: 'Hello! Let us discuss SolidJS.', timestamp: '10:00 AM' },
+      { id: 's1-m2', sender: 'user', text: 'Sure, what makes it fast?', timestamp: '10:01 AM' },
+    ]
+  },
+  { 
+    id: '2', 
+    title: 'Recipe Ideas for a potluck dinner party next week', 
+    lastActivity: '1h ago',
+    systemPrompt: 'You are a culinary expert suggesting recipes.',
+    messages: [
+        { id: 's2-m1', sender: 'ai', text: 'For the potluck, how about a nice pasta salad?', timestamp: '11:00 AM' }
+    ]
+  },
+  { 
+    id: '3', 
+    title: 'Book Recommendations: Sci-Fi and Fantasy novels from the last decade', 
+    lastActivity: 'Yesterday',
+    systemPrompt: 'You are a librarian recommending books.',
+    messages: [] 
+  },
+  { 
+    id: '4', 
+    title: 'Travel Plans for Summer Vacation in Southeast Asia', 
+    lastActivity: '2 days ago',
+    systemPrompt: 'You are a travel agent planning a trip.',
+    messages: []
+  },
+  { 
+    id: '5', 
+    title: 'Quick question about project setup', 
+    lastActivity: '1 week ago',
+    systemPrompt: 'You are a tech support bot.',
+    messages: []
+  },
 ];
 
 const mockMessagesShort: ChatMessage[] = [
@@ -37,12 +72,12 @@ const generateLongMessagesForStory = (): ChatMessage[] => {
 };
 
 const baseArgs = {
-  chatSessions: mockChatSessions,
+  threads: mockThreads,
   currentChatMessages: mockMessagesShort,
-  currentSessionId: '1',
+  currentThreadId: '1',
   onNavigateBack: () => console.log('Navigate Back clicked'),
   onSendMessage: (text: string) => console.log('Send Message:', text),
-  onSelectChatSession: (sessionId: string) => console.log('Select Session:', sessionId),
+  onSelectThread: (threadId: string) => console.log('Select Thread:', threadId),
 };
 
 export default {
@@ -52,19 +87,17 @@ export default {
     layout: 'fullscreen',
   },
   tags: ['autodocs'],
-  // Global args for all stories, can be overridden by individual story args
   args: baseArgs, 
   argTypes: {
     onNavigateBack: { action: 'onNavigateBack' },
     onSendMessage: { action: 'onSendMessage' },
-    onSelectChatSession: { action: 'onSelectChatSession' },
-    chatSessions: { control: 'object' },
+    onSelectThread: { action: 'onSelectThread' },
+    threads: { control: 'object' },
     currentChatMessages: { control: 'object' },
-    currentSessionId: { control: 'text' },
+    currentThreadId: { control: 'text' },
   }
 };
 
-// Define stories as objects with a render function and optional args
 export const Default = {
   render: (args: any) => <ChatPageView {...args} />,
   args: {
@@ -77,7 +110,7 @@ export const EmptyChat = {
   args: {
     ...baseArgs,
     currentChatMessages: [],
-    currentSessionId: '2',
+    currentThreadId: '2',
   },
 };
 
@@ -86,7 +119,7 @@ export const LongConversation = {
   args: {
     ...baseArgs,
     currentChatMessages: generateLongMessagesForStory(),
-    currentSessionId: '3',
+    currentThreadId: '3',
   },
 };
 
@@ -94,9 +127,9 @@ export const NoSessions = {
   render: (args: any) => <ChatPageView {...args} />,
   args: {
     ...baseArgs,
-    chatSessions: [],
+    threads: [],
     currentChatMessages: [],
-    currentSessionId: null,
+    currentThreadId: null,
   },
 };
 
@@ -105,7 +138,7 @@ export const NoActiveSession = {
   args: {
     ...baseArgs,
     currentChatMessages: [],
-    currentSessionId: null,
+    currentThreadId: null,
   },
 };
 
@@ -117,7 +150,7 @@ export const AiMessageFirst = {
       { id: 'm1-ai-first', sender: 'ai', text: 'Welcome! How can I assist you?', timestamp: '11:00 AM' },
       ...mockMessagesShort.slice(1).map(m => ({...m, id: `${m.id}-ai-first`})) 
     ],
-    currentSessionId: '1',
+    currentThreadId: '1',
   },
 };
 
@@ -129,6 +162,6 @@ export const UserMessageFirst = {
         { id: 'm0-user-first', sender: 'user', text: 'Hello?', timestamp: '10:00 AM' },
         ...mockMessagesShort.map(m => ({...m, id: `${m.id}-user-first`})) 
     ],
-    currentSessionId: '1',
+    currentThreadId: '1',
   },
 };

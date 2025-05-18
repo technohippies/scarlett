@@ -325,5 +325,44 @@ EXECUTE FUNCTION update_updated_at_column();
 
 -- Indices for song_lyrics table
 CREATE INDEX IF NOT EXISTS idx_song_lyrics_lrclib_id ON song_lyrics(lrclib_id);
-CREATE INDEX IF NOT EXISTS idx_song_lyrics_track_artist ON song_lyrics(track_name, artist_name);
+-- CREATE INDEX IF NOT EXISTS idx_song_lyrics_track_artist ON song_lyrics(track_name, artist_name);
 -- --- END Song Lyrics Table ---
+
+-- --- Chat / Conversation Tables ---
+
+CREATE TABLE IF NOT EXISTS chat_threads (
+    id TEXT PRIMARY KEY, 
+    title TEXT NOT NULL,
+    system_prompt TEXT, 
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_activity_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    -- metadata_embedding vector(1024) NULL -- Old single dimension
+    metadata_embedding_512 vector(512) NULL,
+    metadata_embedding_768 vector(768) NULL,
+    metadata_embedding_1024 vector(1024) NULL,
+    active_metadata_embedding_dimension INTEGER NULL -- Stores 512, 768, or 1024 etc.
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id TEXT PRIMARY KEY, 
+    thread_id TEXT NOT NULL REFERENCES chat_threads(id) ON DELETE CASCADE,
+    sender TEXT NOT NULL, -- 'user' or 'ai'
+    text_content TEXT NOT NULL,
+    timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    tts_lang TEXT NULL, 
+    tts_alignment_data TEXT NULL, 
+    -- embedding vector(1024) NULL, -- Old single dimension
+    embedding_512 vector(512) NULL,
+    embedding_768 vector(768) NULL,
+    embedding_1024 vector(1024) NULL,
+    active_embedding_dimension INTEGER NULL, -- Stores 512, 768, or 1024 etc.
+    processed_for_embedding_at TIMESTAMPTZ NULL,
+    embedding_model_id TEXT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_threads_last_activity ON chat_threads(last_activity_at DESC);
+CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_id_timestamp ON chat_messages(thread_id, timestamp);
+-- Optional: Index for finding messages that need embedding
+CREATE INDEX IF NOT EXISTS idx_chat_messages_needs_embedding ON chat_messages (processed_for_embedding_at) WHERE processed_for_embedding_at IS NULL;
+
+-- --- END Chat / Conversation Tables ---
