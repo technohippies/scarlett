@@ -9,27 +9,30 @@ export interface AlignmentData {
 
 export interface ChatMessage {
     id: string; 
-    sender: 'user' | 'ai';
+    sender: 'user' | 'ai' | 'system';
     text: string; 
-    alignment?: AlignmentData | null; 
     timestamp: Date;
-    error?: boolean; 
+    isLoading?: boolean;
+    error?: boolean;
+    alignmentData?: AlignmentData | null;
+    ttsLang?: string;
 }
 
 export interface RoleplayConversationViewProps {
     aiWelcomeMessage?: string; 
-    onSendMessage: (spokenText: string, chatHistory: ChatMessage[]) => Promise<{ aiResponse: string; alignment?: AlignmentData | null; error?: string } | null>;
-    onEndRoleplay: () => void; 
+    onSendMessage: (spokenText: string, chatHistory: ChatMessage[]) => Promise<{ aiResponse: string; alignment?: AlignmentData | null; error?: string; ttsLangForAiResponse?: string } | null>;
+    onEndRoleplay?: () => void;
     targetLanguage: string; 
     onStartRecording: () => Promise<boolean>; 
     onStopRecording: () => Promise<string | null>; 
     onPlayTTS: (messageId: string, text: string, lang: string, alignmentData?: AlignmentData | null) => Promise<void>; 
     onStopTTS: () => void;
+    isGlobalVadActive?: Accessor<boolean>;
     isTTSSpeaking?: Accessor<boolean>; 
     currentHighlightIndex?: Accessor<number | null>; 
     ttsWordMap?: { text: string; startTime: number; endTime: number; index: number }[];
-    ttsPlaybackError?: Accessor<string | null>;
-    activeSpokenMessageId?: Accessor<string | null>;
     scenario: ScenarioOption;
     onNavigateBack: () => void;
+    activeSpokenMessageId?: Accessor<string | null>;
+    ttsPlaybackError?: Accessor<string | null>;
 } 

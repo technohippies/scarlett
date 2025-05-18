@@ -12,6 +12,15 @@ import { ollamaChat } from '../../services/llm/providers/ollama/chat';
 import type { LLMConfig, ChatMessage as LLMChatMessage } from '../../services/llm/types';
 import { generateElevenLabsSpeechWithTimestamps, ElevenLabsVoiceSettings } from '../../services/tts/elevenLabsService';
 import { Dynamic } from 'solid-js/web';
+import {
+    getTodaysMoodHistory,
+    getTodaysVisitedPagesSummary,
+    getTodaysSongsSummary,
+    getRecentFlashcardActivitySummary,
+    getStudyStatsSummary,
+    getBookmarksSummary,
+    getAllUserLexemesSummary
+} from '../../services/context/userDataService';
 
 // --- Word Data Structure (for highlighting) ---
 interface WordInfo {
@@ -328,7 +337,10 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
   const handlePlayTTS = async (messageId: string, text: string, lang: string, alignmentDataParam?: ElevenLabsAlignmentData | null) => {
     let alignmentInput: ElevenLabsAlignmentData | null | undefined = alignmentDataParam;
 
-    console.log(`[RoleplayPage] handlePlayTTS called for messageId: ${messageId}, lang ${lang}:`, text.substring(0,50) + "...");
+    // Ensure lang is never undefined or empty, default to 'en' if so (should not happen with new logic but good safeguard)
+    const effectiveLang = lang || 'en'; 
+
+    console.log(`[RoleplayPage] handlePlayTTS called for messageId: ${messageId}, lang ${effectiveLang}:`, text.substring(0,50) + "...");
     stopAndClearTTS();
     setIsTTSSpeaking(true);
     setTtsError(null);
@@ -355,7 +367,7 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
         elevenLabsVoiceId,
         voiceSettings,
         undefined, 
-        lang
+        effectiveLang
       );
       
       const finalAlignmentData = alignmentInput || fetchedAlignmentData;
@@ -363,7 +375,7 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
           console.warn("[RoleplayPage TTS] No alignment data available after TTS generation.");
       }
       
-      const processedWords = processTTSAlignment(text, finalAlignmentData, lang);
+      const processedWords = processTTSAlignment(text, finalAlignmentData, effectiveLang);
       setTtsWordMap(processedWords);
 
       const localAudioUrl = URL.createObjectURL(audioBlob);
@@ -450,11 +462,75 @@ const RoleplayPage: Component<RoleplayPageProps> = (props) => {
             if (!llmCfg) {
               return { aiResponse: '', error: 'Missing LLM configuration' };
             }
-            const systemPrompt = `You are a helpful partner in the following scenario: "${selectedScenario()!.title}": ${selectedScenario()!.description}. 
+
+            let systemPrompt = "";
+            const currentScenario = selectedScenario();
+
+            if (currentScenario && currentScenario.id === 'just-chat') {
+              // --- Build Comprehensive Context for "Just Chat" ---
+              let justChatContextParts: string[] = ["User's Comprehensive Context for a Casual Chat:"];
+              try {
+                const moods = await getTodaysMoodHistory();
+                if (moods.length > 0) justChatContextParts.push(`- Mood today: ${moods.map(m => m.mood).join(', ')} (last entry at ${new Date(moods.at(-1)!.timestamp).toLocaleTimeString()}).`);
+                
+                const pages = await getTodaysVisitedPagesSummary(3); // Limit for conciseness in prompt
+                if (pages.count > 0) justChatContextParts.push(`- Recent web activity: ${pages.topicsSummary}`);
+
+                const songs = await getTodaysSongsSummary();
+                justChatContextParts.push(`- Music: ${songs.summary}`); // e.g., "Song listening data for today is not available."
+                
+                const flashcards = await getRecentFlashcardActivitySummary(5); // Limit for conciseness
+                if (flashcards.count > 0) justChatContextParts.push(`- Recent flashcards: ${flashcards.summary}`);
+
+                const studyStats = await getStudyStatsSummary();
+                if (studyStats.stats) justChatContextParts.push(`- Study habits: ${studyStats.summary}`);
+
+                const bookmarks = await getBookmarksSummary(3);
+                if (bookmarks.count > 0) justChatContextParts.push(`- Recent bookmarks: ${bookmarks.summary}`);
+
+                const lexemes = await getAllUserLexemesSummary();
+                justChatContextParts.push(`- Vocabulary size: ${lexemes.summary}`);
+
+                // You could add more here: active decks, specific encounters, etc.
+              } catch (error) {
+                console.error("[RoleplayPage] Error building Just Chat context:", error);
+                justChatContextParts.push("- (Could not retrieve all user activity data due to an error)");
+              }
+              const fullJustChatContext = justChatContextParts.join('\n');
+              // --- End Build Comprehensive Context ---
+
+              systemPrompt = `You are Scarlett, a friendly and empathetic AI language practice partner. The user wants to have a casual, free-flowing conversation ("Just Chat").
+Your goal is to engage the user naturally, ask follow-up questions, and gently weave in opportunities for them to use and practice their target language (${targetLanguage()}).
+You have access to a rich summary of the user's recent activities, learning progress, and interests. Use this information to make the conversation highly relevant, personalized, and engaging. 
+For example, you could:
+- Ask about something they recently bookmarked or a webpage they visited.
+- Comment on their study streak or vocabulary size and offer encouragement.
+- If they learned a new word recently (from flashcards), try to create a situation where they could use it.
+- Subtly steer the conversation towards topics related to their flashcards or visited pages.
+- If their mood was recorded as 'sad', you could be more gentle or try to cheer them up.
+
+User's Context (use this to guide your conversation topics and tone):
+${fullJustChatContext}
+
+General Instructions:
+- Respond naturally in 1-3 sentences.
+- Prioritize making the user feel comfortable and encouraged to speak.
+- Do NOT explicitly say "Based on your flashcards..." or "I see you visited...". Instead, make it a natural part of the conversation. E.g., "Speaking of [topic related to a flashcard], have you ever...?".
+- Do NOT include any out-of-character commentary, instructions, or explanations. Only provide your character's dialogue.
+- The user is learning ${targetLanguage()}. While you should respond in English, subtly encourage them to use ${targetLanguage()} if the opportunity arises naturally, or if they seem to be practicing it.
+- Continue the conversation naturally based on the user's last message and the provided context.`;
+
+            } else if (currentScenario) {
+              // Existing prompt for specific scenarios
+              systemPrompt = `You are a helpful partner in the following scenario: "${currentScenario.title}": ${currentScenario.description}. 
 Your role is to respond as the other character in this scenario. 
 Keep your responses concise and natural, typically 1-2 sentences, as if you are having a real conversation. 
 Do NOT include any out-of-character commentary, instructions, or explanations. Only provide your character's dialogue for this turn. 
 Continue the conversation naturally based on the user's last message.`;
+            } else {
+                console.error("[RoleplayPage] No scenario selected, cannot generate system prompt.");
+                return { aiResponse: '', error: 'Internal error: No scenario context for LLM.' };
+            }
             
             const llmMessages: LLMChatMessage[] = [
               { role: 'system', content: systemPrompt },
@@ -465,10 +541,19 @@ Continue the conversation naturally based on the user's last message.`;
             ];
 
             try {
-              console.log(`[RoleplayPage] Sending to LLM. System prompt + ${llmMessages.length -1} history messages.`);
+              const logMsg = currentScenario && currentScenario.id === 'just-chat' ? 
+                `[RoleplayPage] Sending to LLM for "Just Chat". System prompt + ${llmMessages.length -1} history messages.`:
+                `[RoleplayPage] Sending to LLM for scenario "${currentScenario?.title}". System prompt + ${llmMessages.length -1} history messages.`;
+              console.log(logMsg);
+              
               const response = await ollamaChat(llmMessages, llmCfg);
               const aiContent = response.choices[0]?.message?.content ?? '';
-              return { aiResponse: aiContent, alignment: null };
+
+              // Determine the language for TTS based on the mode
+              const ttsLang = currentScenario && currentScenario.id === 'just-chat' ? 'en' : targetLanguage();
+              console.log(`[RoleplayPage] AI response received. TTS will use lang: ${ttsLang}`);
+
+              return { aiResponse: aiContent, alignment: null, ttsLangForAiResponse: ttsLang }; // Pass ttsLang
             } catch (err: any) {
               console.error('[RoleplayPage] LLM chat error', err);
               return { aiResponse: '', error: err.message || 'LLM error' };
@@ -488,6 +573,19 @@ Continue the conversation naturally based on the user's last message.`;
             isLoading={isLoading()}
             onScenarioSelect={handleScenarioSelect}
             onGenerateNewSet={fetchScenarios}
+            onJustChatSelect={() => {
+              // For "Just Chat", we can create a generic scenario object
+              // or handle it as a special mode without a pre-defined scenario.
+              // For now, let's treat it like selecting a generic scenario.
+              // The actual chat logic in RoleplayConversationView will need to know
+              // not to rely on a specific scenario description if it's "Just Chat".
+              console.log('[RoleplayPage] "Just Chat" selected.');
+              setSelectedScenario({
+                id: 'just-chat',
+                title: 'Just Chat',
+                description: 'A casual conversation about anything you like. Feel free to talk about your day, hobbies, or practice general conversation.'
+              });
+            }}
           />
         </>
       )}

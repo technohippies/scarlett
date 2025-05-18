@@ -15,6 +15,7 @@ const meta: Meta<RoleplaySelectionViewProps> = {
     isLoading: { control: 'boolean' },
     titleText: { control: 'text' },
     onGenerateNewSet: { action: 'onGenerateNewSet' },
+    onJustChatSelect: { action: 'onJustChatSelect' },
   },
 };
 
@@ -41,11 +42,12 @@ const mockScenarios: ScenarioOption[] = [
 
 export const Default: Story = {
   args: {
-    scenarios: mockScenarios,
+    scenarios: mockScenarios.slice(0, 2),
     onScenarioSelect: (id: ScenarioOption['id']) => console.log("Scenario selected:", id),
     isLoading: false,
     titleText: "Choose Your Conversation Practice",
-    onGenerateNewSet: () => console.log("Generate new set clicked"),
+    onGenerateNewSet: () => console.log("Generate More clicked"),
+    onJustChatSelect: () => console.log("Just Chat selected"),
   },
 };
 
@@ -55,7 +57,8 @@ export const Loading: Story = {
     onScenarioSelect: (id: ScenarioOption['id']) => console.log("Scenario selected:", id),
     isLoading: true,
     titleText: "Finding Scenarios For You...",
-    onGenerateNewSet: () => console.log("Generate new set clicked (while loading - should be disabled or not shown)"),
+    onGenerateNewSet: () => console.log("Generate More clicked (while loading)"),
+    onJustChatSelect: () => console.log("Just Chat selected (while loading)"),
   },
 };
 
@@ -65,7 +68,8 @@ export const EmptyState: Story = {
     onScenarioSelect: (id: ScenarioOption['id']) => console.log("Scenario selected:", id),
     isLoading: false,
     titleText: "No Scenarios Found",
-    onGenerateNewSet: () => console.log("Generate new set clicked from empty state"),
+    onGenerateNewSet: () => console.log("Generate More clicked from empty state"),
+    onJustChatSelect: () => console.log("Just Chat selected (empty state)"),
   },
 };
 
@@ -74,6 +78,7 @@ export const SingleScenario: Story = {
       scenarios: [mockScenarios[0]],
       onScenarioSelect: (id: ScenarioOption['id']) => console.log("Scenario selected:", id),
       isLoading: false,
-      onGenerateNewSet: () => console.log("Generate new set clicked"),
+      onGenerateNewSet: () => console.log("Generate More clicked"),
+      onJustChatSelect: () => console.log("Just Chat selected (single scenario)"),
     },
   }; 

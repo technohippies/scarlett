@@ -16,6 +16,7 @@ export interface RoleplaySelectionViewProps {
     isLoading?: boolean;
     // userNativeLanguage: string; // To ensure descriptions are in this lang, though content comes from LLM
     onGenerateNewSet?: () => void; // Optional: If user wants to refresh options
+    onJustChatSelect: () => void; // Added new prop
     titleText?: string;
 }
 
@@ -31,9 +32,9 @@ export const RoleplaySelectionView: Component<RoleplaySelectionViewProps> = (pro
     const defaultTitle = "Choose Your Roleplay Scenario";
 
     return (
-        <div class="p-4 md:p-6 lg:p-8 max-w-4xl mx-auto font-sans">
+        <div class="p-4 md:p-6 lg:p-8 max-w-4xl mx-auto font-sans flex flex-col items-center"> {/* Added flex for centering Just Chat */}
             <Show when={!props.isLoading} fallback={<MinimalLoadingState />}>
-                <Card class="bg-background/80 backdrop-blur-sm border-border/20 shadow-xl">
+                <Card class="bg-background/80 backdrop-blur-sm border-border/20 shadow-xl w-full"> {/* Added w-full */}
                     <CardHeader class="text-center pb-4">
                         <CardTitle class="text-2xl md:text-3xl font-semibold text-primary">
                             {props.titleText || defaultTitle}
@@ -47,15 +48,15 @@ export const RoleplaySelectionView: Component<RoleplaySelectionViewProps> = (pro
                     <CardContent class="pt-2 pb-4">
                         <Show when={props.scenarios.length > 0} fallback={
                             <div class="text-center py-8">
-                                <p class="text-muted-foreground">No scenarios available at the moment.</p>
+                                <p class="text-muted-foreground">No LLM-generated scenarios available yet.</p>
                                 <Show when={props.onGenerateNewSet}>
                                     <Button onClick={() => props.onGenerateNewSet && props.onGenerateNewSet()} variant="outline" class="mt-4">
-                                        Try Generating Again
+                                        Generate Scenarios
                                     </Button>
                                 </Show>
                             </div>
                         }>
-                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4"> {/* Changed lg:grid-cols-3 to md:grid-cols-2 for 2 scenarios */}
                                 <For each={props.scenarios}>{(scenario) => (
                                     <Card 
                                         class="hover:shadow-primary/20 hover:border-primary/40 transition-all duration-200 ease-in-out cursor-pointer flex flex-col h-full bg-muted/30 border-border/10 hover:bg-muted/50"
@@ -71,7 +72,7 @@ export const RoleplaySelectionView: Component<RoleplaySelectionViewProps> = (pro
                                         </CardContent>
                                         <CardFooter class="mt-auto pt-3">
                                             <Button variant="outline" class="w-full text-primary border-primary/50 hover:bg-primary/10 hover:text-primary">
-                                                Start Roleplay
+                                                Start This Roleplay
                                             </Button>
                                         </CardFooter>
                                     </Card>
@@ -82,12 +83,24 @@ export const RoleplaySelectionView: Component<RoleplaySelectionViewProps> = (pro
                     <Show when={props.onGenerateNewSet && props.scenarios.length > 0}>
                         <CardFooter class="pt-4 flex justify-center border-t border-border/10">
                             <Button onClick={() => props.onGenerateNewSet && props.onGenerateNewSet()} variant="ghost" class="text-sm text-muted-foreground">
-                                Not what you're looking for? Generate new scenarios.
+                                Generate More Scenarios
                             </Button>
                         </CardFooter>
                     </Show>
                 </Card>
             </Show>
+
+            {/* "Just Chat" Button - Always visible and centered */}
+            <div class="mt-8 w-full flex justify-center">
+                <Button 
+                    variant="default" // Or perhaps a more prominent variant if available, e.g., "primary"
+                    size="lg" 
+                    class="px-8 py-3 text-lg shadow-md" // Simplified classes: Adjust padding/text-size as needed for "XL" feel
+                    onClick={() => props.onJustChatSelect()}
+                >
+                    Just Chat
+                </Button>
+            </div>
         </div>
     );
 }; 

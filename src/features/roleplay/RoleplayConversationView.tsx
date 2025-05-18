@@ -1,29 +1,11 @@
 import { Component, createSignal, For, Show, createEffect, onCleanup, onMount, Accessor } from 'solid-js';
 import { Motion } from 'solid-motionone';
-import { Button } from '../../components/ui/button';
 // import { Textarea } from '../../components/ui/textarea'; // REMOVED Textarea for user text input
 import { Spinner } from '../../components/ui/spinner';
-import { Microphone, StopCircle, Play, SpeakerSimpleHigh, SpeakerSimpleSlash, X } from 'phosphor-solid'; // Icons
 import { Header } from '../../components/layout/Header';
 // @ts-ignore: suppress missing types import
 import type { AlignmentData, ChatMessage, RoleplayConversationViewProps } from './types'; // Import types from a separate file
 import type { ScenarioOption } from './RoleplaySelectionView'; // Import ScenarioOption
-
-// Re-usable alignment data structure (similar to TranslatorWidget)
-export interface AlignmentData {
-    characters: string[];
-    character_start_times_seconds: number[];
-    character_end_times_seconds: number[];
-}
-
-export interface ChatMessage {
-    id: string; // Unique ID for each message
-    sender: 'user' | 'ai';
-    text: string; // For user, this will be STT result. For AI, LLM response.
-    alignment?: AlignmentData | null; // For AI messages, for word highlighting
-    timestamp: Date;
-    error?: boolean; // Flag if AI message generation resulted in an error
-}
 
 export interface RoleplayConversationViewProps {
     aiWelcomeMessage?: string;
@@ -63,7 +45,7 @@ const HIGHLIGHT_CSS = `
 `;
 
 export const RoleplayConversationView: Component<RoleplayConversationViewProps> = (props) => {
-    const [chatHistory, setChatHistory] = createSignal<ChatMessage[]>([]);
+    const [chatMessages, setChatMessages] = createSignal<ChatMessage[]>([]);
     const [currentAiMessageToDisplay, setCurrentAiMessageToDisplay] = createSignal<ChatMessage | null>(null);
     const [isListening, setIsListening] = createSignal(false);
     const [isProcessingUserSpeech, setIsProcessingUserSpeech] = createSignal(false);
@@ -133,48 +115,64 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
                 id: `user-${Date.now()}`,
                 sender: 'user',
                 text: spokenText,
-                timestamp: new Date(),
+                timestamp: new Date(), // Use Date object
             };
-            const currentHistory = [...chatHistory(), newUserMessage];
-            setChatHistory(currentHistory);
+            const currentMessageList = [...chatMessages(), newUserMessage];
+            setChatMessages(currentMessageList);
             
             setIsWaitingForLLM(true);
             setCurrentAiMessageToDisplay({
                 id: 'ai-waiting-llm',
                 sender: 'ai',
                 text: "", 
-                timestamp: new Date(),
+                timestamp: new Date(), // Use Date object
+                isLoading: true,
             });
 
             try {
-                const response = await props.onSendMessage(spokenText, currentHistory);
+                // Pass currentMessageList (which is ChatMessage[]) to onSendMessage
+                const response = await props.onSendMessage(spokenText, currentMessageList);
                 setIsWaitingForLLM(false);
 
                 if (response) {
                     const newAiMessage: ChatMessage = {
                         id: `ai-response-${Date.now()}`,
-                        sender: 'ai',
                         text: response.aiResponse,
-                        alignment: response.alignment,
-                        timestamp: new Date(),
-                        error: !!response.error
+                        sender: 'ai',
+                        timestamp: new Date(), // Use Date object
+                        isLoading: false,
+                        alignmentData: response.alignment,
+                        ttsLang: response.ttsLangForAiResponse,
+                        error: !!response.error 
                     };
-                    setChatHistory(prev => [...prev, newAiMessage]);
+                    setChatMessages(prev => [...prev, newAiMessage]);
                     setCurrentAiMessageToDisplay(newAiMessage);
 
                     if (response.error) {
                         setErrorMessage(response.error);
-                    } else if (props.onPlayTTS) {
-                        props.onPlayTTS(newAiMessage.id, response.aiResponse, props.targetLanguage, response.alignment);
+                        // Update displayed AI message to show error text
+                        setCurrentAiMessageToDisplay(prev => prev ? {...prev, text: response.error || "Error generating response", error: true, isLoading: false } : null);
+                    } else if (props.onPlayTTS && newAiMessage.text) {
+                        // Use the ttsLang from the newAiMessage, fallback to general targetLanguage
+                        props.onPlayTTS(newAiMessage.id, newAiMessage.text, newAiMessage.ttsLang || props.targetLanguage, newAiMessage.alignmentData);
                     }
                 } else {
-                    throw new Error("No response from AI.");
+                    setErrorMessage("No response from AI.");
+                    setCurrentAiMessageToDisplay({ id: 'ai-no-response', sender:'ai', text: "No response from AI.", timestamp: new Date(), error: true, isLoading: false });
+                    // throw new Error("No response from AI."); // Optionally throw
                 }
             } catch (error: any) {
                 console.error("Error during LLM interaction flow:", error);
                 const llmErrorMsg = error.message || "An error occurred with the AI.";
                 setErrorMessage(llmErrorMsg);
-                setCurrentAiMessageToDisplay({ id: 'ai-llm-error', sender: 'ai', text: llmErrorMsg, timestamp: new Date(), error: true });
+                setCurrentAiMessageToDisplay({ 
+                    id: 'ai-llm-error', 
+                    sender: 'ai', 
+                    text: llmErrorMsg, 
+                    timestamp: new Date(), // Use Date object
+                    error: true, 
+                    isLoading: false 
+                });
                 setIsWaitingForLLM(false);
             }
         } else if (spokenText === "") {
@@ -182,19 +180,27 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
                 id: 'ai-no-speech-detected',
                 sender: 'ai',
                 text: "Didn't catch any speech.",
-                timestamp: new Date(),
+                timestamp: new Date(), // Use Date object
+                isLoading: false,
             });
-        } else {
+        } else { // spokenText is null (STT error)
             const sttErrorMsg = "Sorry, I couldn't understand that.";
             setErrorMessage(sttErrorMsg);
-            setCurrentAiMessageToDisplay({ id: 'ai-stt-error', sender: 'ai', text: sttErrorMsg, timestamp: new Date(), error: true });
+            setCurrentAiMessageToDisplay({ 
+                id: 'ai-stt-error', 
+                sender: 'ai', 
+                text: sttErrorMsg, 
+                timestamp: new Date(), // Use Date object
+                error: true, 
+                isLoading: false 
+            });
         }
     };
 
     // onMount: Initialize and play welcome message if any
     onMount(() => {
         console.log("[RoleplayConversationView] ONMOUNT - Setting window.triggerUserSpeechProcessed");
-        (window as any).triggerUserSpeechProcessed = handleUserSpeechProcessed; 
+        (window as any).triggerUserSpeechProcessed = handleUserSpeechProcessed;
 
         if (!document.getElementById(HIGHLIGHT_STYLE_ID)) {
             const styleElement = document.createElement('style');
@@ -228,7 +234,7 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
         console.log("%c[RoleplayConversationView] ONCLEANUP - Clearing window.triggerUserSpeechProcessed and stopping VAD if active.", "color: blue; font-weight: bold;");
         // Clear the global handler only if it's the one set by this instance
         if ((window as any).triggerUserSpeechProcessed === handleUserSpeechProcessed) {
-            (window as any).triggerUserSpeechProcessed = undefined;
+            (window as any).triggerUserSpeechProcessed = null;
         }
         // Explicitly stop recording if this component instance was listening
         if (isListening()) {
@@ -240,7 +246,7 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
 
     createEffect(() => {
         // Scroll to bottom when new messages are added
-        if (chatAreaRef) {
+        if (chatMessages() && chatAreaRef) {
             chatAreaRef.scrollTop = chatAreaRef.scrollHeight;
         }
     });

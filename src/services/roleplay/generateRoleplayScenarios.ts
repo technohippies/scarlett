@@ -1,11 +1,17 @@
-import { getEmbedding, type EmbeddingResult } from '../llm/embedding';
-import { searchPageSummariesByVector, type RetrievedPageContext } from '../db/retrieval';
+import { getEmbedding } from '../llm/embedding';
+import { searchPageSummariesByVector } from '../db/retrieval';
 import type { ScenarioOption } from '../../features/roleplay/RoleplaySelectionView';
 import type { LLMConfig, ChatMessage } from '../llm/types';
 // Placeholder for actual LLM chat function. You'll need to import your specific one (ollamaChat, janChat, etc.)
 // or a generic wrapper if you have one.
 import { ollamaChat } from '../llm/providers/ollama/chat'; 
 import { userConfigurationStorage } from '../storage/storage';
+import {
+    getTodaysMoodHistory,
+    getTodaysVisitedPagesSummary,
+    getTodaysSongsSummary,
+    getRecentFlashcardActivitySummary
+} from '../context/userDataService'; // Import new user data service
 
 console.log('[Roleplay Service] Loaded.');
 
@@ -82,77 +88,94 @@ function parseLLMResponseToScenarios(responseText: string): ScenarioOption[] {
 export async function generateRoleplayScenarios(
     topicHint: string = 'everyday situations, travel, and hobbies'
 ): Promise<ScenarioOption[]> {
-    // Pull learner's target language code from user settings
     const userCfg = await userConfigurationStorage.getValue();
     const rawLang = userCfg.targetLanguage ?? 'French';
-    // Map language codes to full language names
     const LANGUAGE_NAME_MAP: Record<string, string> = {
         en: 'English', zh: 'Chinese', vi: 'Vietnamese', th: 'Thai', id: 'Indonesian',
         ar: 'Arabic', ja: 'Japanese', ko: 'Korean', es: 'Spanish', fr: 'French'
     };
     const code = rawLang.toLowerCase();
     const targetLanguageName = LANGUAGE_NAME_MAP[code] ?? rawLang;
-    console.log(`[Roleplay Service] Generating scenarios for ${targetLanguageName} based on topic: "${topicHint}"`);
+    console.log(`[Roleplay Service] Generating 2 scenarios for ${targetLanguageName} based on topic: "${topicHint}" and user context.`);
 
     const llmConfig = await getActiveLLMConfig();
     if (!llmConfig) {
         console.error('[Roleplay Service] Cannot generate scenarios: Missing LLM configuration.');
         return [];
     }
-    console.log('[Roleplay Service] Using LLM Config:', llmConfig);
 
-    // 1. Embed the initial query/topic for RAG
-    const queryForEmbedding = `Roleplay scenarios for learning ${targetLanguageName} about ${topicHint}`;
-    let queryEmbeddingResult: EmbeddingResult | null = null;
-    {
-        const userCfg = await userConfigurationStorage.getValue();
-        if (userCfg.embeddingConfig) {
-            try {
-                queryEmbeddingResult = await getEmbedding(queryForEmbedding, userCfg.embeddingConfig);
-            } catch (error) {
-                console.error('[Roleplay Service] Error getting embedding for query:', error);
-            }
+    // 1. Fetch Rich User Context
+    let userContextSummary = "User's recent activity:\n";
+    try {
+        const moods = await getTodaysMoodHistory();
+        if (moods.length > 0) {
+            userContextSummary += `- Today's moods: ${moods.map(m => m.mood).join(', ')}\n`;
+        }
+        const pages = await getTodaysVisitedPagesSummary();
+        if (pages.count > 0) {
+            userContextSummary += `- Recently visited page topics: ${pages.topicsSummary}\n`;
+        }
+        const songs = await getTodaysSongsSummary(); // Placeholder, will indicate not available
+        if (songs.count > 0) {
+             userContextSummary += `- Recently listened songs: ${songs.summary}\n`;
         } else {
-            console.warn('[Roleplay Service] No unified embeddingConfig found in settings; skipping retrieval of contexts.');
+            userContextSummary += `- ${songs.summary}\n`; // e.g., "Song listening data for today is not available."
+        }
+        const flashcards = await getRecentFlashcardActivitySummary(10);
+        if (flashcards.count > 0) {
+            userContextSummary += `- Recent flashcards: ${flashcards.summary}\n`;
+        }
+    } catch (contextError) {
+        console.error("[Roleplay Service] Error fetching user context:", contextError);
+        userContextSummary += "- Could not retrieve all user activity data.\n";
+    }
+
+    // RAG context (existing logic, can be combined or prioritized with user context)
+    const queryForEmbedding = `Roleplay scenarios for learning ${targetLanguageName} about ${topicHint}`;
+    let ragContextString = 'No specific page context available from RAG.';
+    const embeddingConfig = userCfg.embeddingConfig;
+    if (embeddingConfig) {
+        try {
+            const queryEmbeddingResult = await getEmbedding(queryForEmbedding, embeddingConfig);
+            if (queryEmbeddingResult && queryEmbeddingResult.embedding && queryEmbeddingResult.dimension) {
+                const retrievedContexts = await searchPageSummariesByVector(
+                    queryEmbeddingResult.embedding,
+                    queryEmbeddingResult.dimension as 512 | 768 | 1024,
+                    1 // Fetch fewer RAG contexts if user context is rich
+                );
+                if (retrievedContexts.length > 0) {
+                    ragContextString = retrievedContexts
+                        .map((ctx, index) => `Supplementary Context Excerpt ${index + 1} (from ${ctx.url}):\n${ctx.summary_content}`)
+                        .join('\n\n---\n\n');
+                }
+            }
+        } catch (error) {
+            console.error('[Roleplay Service] Error during RAG context retrieval:', error);
         }
     }
-    let retrievedContexts: RetrievedPageContext[] = [];
-    if (queryEmbeddingResult && queryEmbeddingResult.embedding && queryEmbeddingResult.dimension) {
-        console.log(`[Roleplay Service] Query embedded. Dimension: ${queryEmbeddingResult.dimension}. Searching for contexts...`);
-        retrievedContexts = await searchPageSummariesByVector(
-            queryEmbeddingResult.embedding,
-            queryEmbeddingResult.dimension as 512 | 768 | 1024,
-            3
-        );
-        console.log(`[Roleplay Service] Retrieved ${retrievedContexts.length} contexts.`);
-    } else {
-        console.warn('[Roleplay Service] Could not retrieve contexts via embedding; proceeding with general generation.');
-    }
 
-    let contextString = 'No specific page context available.';
-    if (retrievedContexts.length > 0) {
-        contextString = retrievedContexts
-            .map((ctx, index) => `Context Excerpt ${index + 1} (from ${ctx.url}):\n${ctx.summary_content}`)
-            .join('\n\n---\n\n');
-    }
+    const combinedContext = `${userContextSummary}
+Relevant Web Page Context (if any):
+${ragContextString}`;
 
-    const systemPrompt = `You are a creative assistant helping a language learner. Your task is to generate 3 distinct roleplay scenarios for a user learning ${targetLanguageName}. Each scenario should have a clear title and a short, engaging description (1-3 sentences). Base the scenarios on the provided context if available, or general ${topicHint} if not. Focus on practical, conversational situations. RETURN the result as a VALID JSON ARRAY of objects, each with "title" and "description" fields, and no additional text.`;
+    const systemPrompt = `You are a creative assistant helping a language learner. Your task is to generate **TWO (2)** distinct roleplay scenarios for a user learning ${targetLanguageName}. 
+Each scenario should have a clear title **written in ${targetLanguageName}** and a short, engaging description (**a single sentence only**) **written in English**.
+Base the scenarios PRIMARILY on the user's recent activity and learning context provided below. Also consider the general topic hint: ${topicHint}. 
+Incorporate some of the user's recent flashcard vocabulary (especially ${targetLanguageName} words) naturally into the scenario descriptions (English) if possible, perhaps by mentioning the concept or a translation.
+Focus on practical, conversational situations. 
+RETURN the result as a VALID JSON ARRAY of objects, each with "id", "title" (in ${targetLanguageName}), and "description" (in English, single sentence) fields. Do not include any additional text, explanations, or markdown. The ID should be a unique string.`;
     
-    const userPrompt = `Please generate 3 roleplay scenarios for ${targetLanguageName} practice, and output only a JSON array of objects with keys "title" and "description".
+    const userPrompt = `Please generate **TWO (2)** roleplay scenarios for ${targetLanguageName} practice. 
+The title for each scenario **must be written in ${targetLanguageName}**. 
+The description for each scenario **must be a single sentence in English**.
+Output ONLY a VALID JSON array of objects, each with keys "id", "title" (in ${targetLanguageName}), and "description" (in English, single sentence).
 
-Available Context (use this for inspiration):
-${contextString}
+User's Recent Activity & Learning Context (Prioritize this for scenario ideas):
+${combinedContext}
 
-If the context is not relevant or too limited for varied scenarios, please generate scenarios based on general topics like: ${topicHint}.
+General Topic Hint (use if context is sparse or for variety): ${topicHint}.
 
-Format each scenario with a "Title:" and a "Description:". Separate scenarios clearly. For example:
-Title: Ordering Coffee
-Description: You are at a coffee shop in Paris. Order your favorite coffee and a croissant. Ask if they have Wi-Fi.
-
-Title: Asking for Directions
-Description: You are lost and need to find the nearest metro station. Ask a passerby for directions. 
-
-Ensure the descriptions are concise and give the user a clear idea of the situation and their role.`;
+Ensure the English descriptions are concise (a single sentence) and give the user a clear idea of the situation and their role. Make sure the generated IDs are unique strings (e.g., 'scenario-timestamp-index').`;
 
     const messages: ChatMessage[] = [
         { role: 'system', content: systemPrompt },
@@ -160,20 +183,13 @@ Ensure the descriptions are concise and give the user a clear idea of the situat
     ];
 
     try {
-        console.log('[Roleplay Service] Sending request to LLM...');
-        // This part needs to be dynamic based on llmConfig.provider
+        console.log('[Roleplay Service] Sending request to LLM for 2 scenarios...');
         let responseText: string | undefined;
-
         switch (llmConfig.provider) {
             case 'ollama':
                 const ollamaResponse = await ollamaChat(messages, llmConfig);
                 responseText = ollamaResponse.choices[0]?.message?.content;
                 break;
-            // Add cases for 'jan', 'lmstudio' if you have chat functions for them
-            // case 'jan':
-            //     const janResponse = await janChat(messages, llmConfig);
-            //     responseText = janResponse.choices[0]?.message?.content;
-            //     break;
             default:
                 console.error(`[Roleplay Service] Unsupported LLM provider: ${llmConfig.provider}`);
                 return [];
@@ -183,22 +199,33 @@ Ensure the descriptions are concise and give the user a clear idea of the situat
             console.error('[Roleplay Service] LLM response was empty or in an unexpected format.');
             return [];
         }
-        console.log('[Roleplay Service] Received LLM response. Attempting to parse JSON scenarios...');
+        console.log('[Roleplay Service] Received LLM response for 2 scenarios. Attempting to parse JSON...');
         let scenarios: ScenarioOption[] = [];
         try {
-            // Strip markdown code block fences if present
-            const cleanedJsonText = responseText.replace(/^```json\n?|\n?```$/g, '');
-            scenarios = JSON.parse(cleanedJsonText) as ScenarioOption[];
+            const cleanedJsonText = responseText.replace(/^```json\n?|\n?```$/g, '').trim();
+            const parsedScenarios = JSON.parse(cleanedJsonText);
+            // Ensure it's an array and has the expected structure
+            if (Array.isArray(parsedScenarios) && parsedScenarios.every(s => s.id && s.title && s.description)) {
+                scenarios = parsedScenarios.map(s => ({...s, id: String(s.id) })); // Ensure ID is string
+                 // If LLM returns more than 2, slice it.
+                if (scenarios.length > 2) {
+                    console.warn(`[Roleplay Service] LLM returned ${scenarios.length} scenarios, slicing to 2.`);
+                    scenarios = scenarios.slice(0, 2);
+                }
+            } else {
+                throw new Error('Parsed JSON is not an array of valid ScenarioOption objects.');
+            }
             console.log(`[Roleplay Service] Parsed ${scenarios.length} scenarios via JSON.`);
         } catch (jsonErr) {
-            console.warn('[Roleplay Service] JSON parse failed, falling back to markdown parser.', jsonErr);
-            scenarios = parseLLMResponseToScenarios(responseText);
-            console.log(`[Roleplay Service] Parsed ${scenarios.length} scenarios via markdown fallback.`);
+            console.warn('[Roleplay Service] JSON parse failed for 2 scenarios, falling back to markdown parser (if available and still needed).', jsonErr, "Raw response:", responseText);
+            // Fallback to old parser if JSON fails, though ideally the LLM follows JSON output for 2 scenarios
+            scenarios = parseLLMResponseToScenarios(responseText).slice(0, 2); 
+            console.log(`[Roleplay Service] Parsed ${scenarios.length} scenarios via markdown fallback (sliced to 2).`);
         }
         return scenarios;
 
     } catch (error) {
-        console.error('[Roleplay Service] Error calling LLM or parsing response:', error);
-        return []; 
+        console.error('[Roleplay Service] Error generating roleplay scenarios:', error);
+        return [];
     }
 } 
