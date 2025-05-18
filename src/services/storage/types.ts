@@ -109,4 +109,5 @@ export interface UserConfiguration {
     redirectSettings?: RedirectSettings;
     onboardingComplete?: boolean;
     newItemsPerDay?: number; // Added for daily new item limit
+    learningMotivation?: string | null; // User's stated reason for learning
 }

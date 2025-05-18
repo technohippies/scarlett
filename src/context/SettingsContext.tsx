@@ -103,6 +103,7 @@ const initialConfig: UserConfiguration = {
   redirectSettings: {},
   enableFocusMode: false, // UPDATED from isFocusModeActive
   focusModeBlockedDomains: [], // UPDATED from userBlockedDomains
+  learningMotivation: null, // Initialize new field
 };
 
 // --- Store Definition ---

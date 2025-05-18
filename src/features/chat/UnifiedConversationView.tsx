@@ -9,7 +9,7 @@ import { MicVAD } from '@ricky0123/vad-web';
 import { userConfigurationStorage } from '../../services/storage/storage';
 import { browser } from 'wxt/browser';
 import { generateElevenLabsSpeechWithTimestamps } from '../../services/tts/elevenLabsService';
-import { DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
+import { DEFAULT_ELEVENLABS_VOICE_ID, LANGUAGE_NAME_MAP } from '../../shared/constants';
 // Placeholder for STT service - will be properly imported later
 // import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService'; 
 import { Spinner, Sparkle } from 'phosphor-solid';
@@ -380,8 +380,12 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
   const handleGenerateRoleplays = async () => {
     setIsGeneratingRoleplays(true);
     try {
-      const userLang = props.userConfig?.targetLanguage ?? 'the target language';
-      const scenarios: RoleplayScenario[] | null = await generateRoleplayScenariosLLM(userLang, "");
+      const rawLang = props.userConfig?.targetLanguage ?? 'en'; // Default to 'en' if not set
+      const code = rawLang.toLowerCase();
+      const targetLanguageName = LANGUAGE_NAME_MAP[code] ?? rawLang; // Fallback to rawLang if no map entry
+
+      // Use targetLanguageName instead of userLang
+      const scenarios: RoleplayScenario[] | null = await generateRoleplayScenariosLLM(targetLanguageName, "");
 
       if (scenarios && scenarios.length > 0) {
         for (const scenario of scenarios) {

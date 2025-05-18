@@ -17,6 +17,7 @@ import { getTodaysMoodForContext } from '../db/mood'; // Import for mood
 import { getDbInstance } from '../db/init'; // Import getDbInstance
 
 import { userConfigurationStorage } from '../storage/storage'; // Import userConfigurationStorage
+import { LANGUAGE_NAME_MAP } from '../../shared/constants'; // Import an centrally managed language map
 
 const baseSystemPrompt = personality.system;
 
@@ -33,6 +34,37 @@ async function fetchAndFormatUserContext(): Promise<string> {
   console.log('[llmChatService DEBUG] Entered fetchAndFormatUserContext function.'); // VERY FIRST LOG
   let contextParts: string[] = [];
   const db = await getDbInstance(); // Get DB instance
+
+  // --- START: Add Target Language to Context ---
+  try {
+    const userCfg = await userConfigurationStorage.getValue();
+    if (userCfg && userCfg.targetLanguage) {
+      const rawLang = userCfg.targetLanguage;
+      const code = rawLang.toLowerCase();
+      const targetLanguageName = LANGUAGE_NAME_MAP[code] ?? rawLang; // Fallback to rawLang
+      contextParts.push(`User's Target Learning Language: ${targetLanguageName}`);
+      console.log(`[llmChatService DEBUG] Added target language to context: ${targetLanguageName}`);
+    } else {
+      console.log('[llmChatService DEBUG] Target language not configured or not found.');
+    }
+  } catch (e) {
+    console.warn("[llmChatService] Error fetching target language for context:", e);
+  }
+  // --- END: Add Target Language to Context ---
+
+  // --- START: Add Learning Motivation to Context ---
+  try {
+    const userCfg = await userConfigurationStorage.getValue(); // Already fetched, but getValue is cheap
+    if (userCfg && userCfg.learningMotivation && userCfg.learningMotivation.trim() !== "") {
+      contextParts.push(`User's Learning Motivation: ${userCfg.learningMotivation.trim()}`);
+      console.log(`[llmChatService DEBUG] Added learning motivation to context: ${userCfg.learningMotivation.trim()}`);
+    } else {
+      console.log('[llmChatService DEBUG] Learning motivation not configured or is empty.');
+    }
+  } catch (e) {
+    console.warn("[llmChatService] Error fetching learning motivation for context:", e);
+  }
+  // --- END: Add Learning Motivation to Context ---
 
   console.log('[llmChatService DEBUG] Attempting to fetch today\'s mood...'); // ADDED DEBUG LOG
   try {
@@ -346,7 +378,13 @@ export async function generateRoleplayScenariosLLM(
   }
 
   // Consolidated System Prompt for scenario generation
-  const consolidatedSystemPrompt = `You are a helpful assistant. Your task is to generate 1 distinct roleplay scenario for a user learning ${targetLanguageName}. The scenario must have a 'title' (string), a 'description' (string, 1-3 sentences for scene setting), and an 'ai_opening_line' (string, the first thing the AI character says to the user to start the interaction). RETURN the result as a VALID JSON ARRAY containing a single object, like this: [{ "title": "Example Title", "description": "Example scene description.", "ai_opening_line": "Hello! How can I help you today?" }] . Do not include any other text, explanations, or markdown formatting outside the JSON array.
+  const consolidatedSystemPrompt = `You are a helpful assistant. Your task is to generate 1 distinct roleplay scenario for a user learning ${targetLanguageName}. The scenario must have a 'title' (string), a 'description' (string, 1-3 sentences for scene setting), and an 'ai_opening_line' (string, the first thing the AI character says to the user to start the interaction).
+
+IMPORTANT INSTRUCTIONS:
+1.  For the 'title': If you use ${targetLanguageName} text in the title, it MUST NOT include phonetic transcriptions (like Pinyin for Chinese) or parenthetical English translations. For example, a title like "咖啡馆奇遇 - Coffee Shop Adventure" is good; "咖啡馆奇遇 (Kāfēiguǎn Qíyù) - Coffee Shop Adventure" is not.
+2.  For the 'ai_opening_line': This line MUST consist ONLY of pure ${targetLanguageName} text. Do NOT include any phonetic transcriptions (like Pinyin for Chinese), translations, or parenthetical explanations.
+
+RETURN the result as a VALID JSON ARRAY containing a single object, like this: [{ "title": "Example Title", "description": "Example scene description.", "ai_opening_line": "Hello! How can I help you today?" }] . Do not include any other text, explanations, or markdown formatting outside the JSON array.
 
 ${contextString ? `Available Context (use this for inspiration if relevant, otherwise ignore):
 ${contextString}
@@ -470,7 +508,7 @@ export async function generateThreadTitleLLM(firstUserMessage: string): Promise<
 
     const trimmedTitle = title.trim();
     // Basic cleanup: remove quotes if LLM accidentally adds them
-    const finalTitle = trimmedTitle.replace(/^["'“‘]|["'”’]$/g, ''); 
+    const finalTitle = trimmedTitle.replace(/^["'"'']|["'""']$/g, ''); 
 
     console.log(`[llmChatService] Generated thread title: "${finalTitle}"`);
     return finalTitle;
