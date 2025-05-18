@@ -310,11 +310,16 @@ const App: Component = () => {
       const threadWithEmptyMessages = { ...createdThread, messages: [] }; 
       setThreads(prev => [threadWithEmptyMessages, ...prev]);
       setCurrentThreadId(createdThread.id);
-      // No automatic AI kickoff for these general new chats, user initiates.
-      // await loadMessagesForThreadAndKickoff(createdThread.id); // Not needed if no kickoff and messages are empty
+      
+      // Automatically send a "Hello!" from the user to kick off the AI in the new thread
+      // if it's a general chat (i.e., systemPromptForDB is empty or a generic one).
+      // For now, let's assume any user-created thread via this button is general.
+      console.log(`[App.tsx] New general thread ${createdThread.id} created. Sending initial 'Hello!' as user.`);
+      await handleSendMessageToUnifiedView("Hello!", createdThread.id, true);
+
       return createdThread.id;
     } catch (error) {
-      console.error('[App.tsx] Error creating new thread:', error);
+      console.error('[App.tsx] Error creating new thread or sending initial message:', error);
       return '';
     }
   };

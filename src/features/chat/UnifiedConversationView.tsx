@@ -9,6 +9,7 @@ import { MicVAD } from '@ricky0123/vad-web';
 import { userConfigurationStorage } from '../../services/storage/storage';
 import { browser } from 'wxt/browser';
 import { generateElevenLabsSpeechWithTimestamps, ElevenLabsVoiceSettings } from '../../services/tts/elevenLabsService';
+import { DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
 // Placeholder for STT service - will be properly imported later
 // import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService'; 
 
@@ -168,6 +169,7 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
   const [ttsError, setTtsError] = createSignal<string | null>(null);
   const [activeSpokenMessageId, setActiveSpokenMessageId] = createSignal<string | null>(null);
   const [ttsAnimationFrameId, setTtsAnimationFrameId] = createSignal<number | null>(null);
+  const [currentPlaybackRate, setCurrentPlaybackRate] = createSignal(1.0);
 
   const processTTSAlignment = (text: string, alignmentData: any, lang: string): WordInfo[] => {
     const words: WordInfo[] = [];
@@ -221,52 +223,142 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
 
   const handlePlayTTS = async (messageId: string, text: string, lang: string, alignmentDataParam?: any) => {
     const effectiveLang = lang || 'en';
-    stopAndClearTTS();
-    setIsTTSSpeaking(true); setTtsError(null); setActiveSpokenMessageId(messageId);
+    
+    // If this message is already playing, and we click again, treat as pause.
+    // If it's paused (and is this message), treat as play.
+    const currentAudio = currentTTSAudioInfo()?.audio;
+    if (activeSpokenMessageId() === messageId && currentAudio) {
+        if (!currentAudio.paused) {
+            currentAudio.pause();
+            setIsTTSSpeaking(false); // No longer actively playing
+            // Highlight loop will stop due to audio.paused
+            return;
+        } else {
+            await currentAudio.play();
+            currentAudio.playbackRate = currentPlaybackRate(); // Ensure rate is set on resume
+            setIsTTSSpeaking(true); // Actively playing again
+            // Highlight loop will restart on audio.onplay
+            return;
+        }
+    }
+
+    // If different message or no audio, proceed to generate/play new
+    stopAndClearTTS(); // Stop any currently playing audio
+    setActiveSpokenMessageId(messageId);
+    setIsTTSSpeaking(true); // Set to true as we are initiating TTS
+    setTtsError(null); 
+    
     try {
-      const userCfg = await userConfigurationStorage.getValue();
-      // Assert ttsConfig to TTSConfigForView or be more specific based on actual UserConfiguration structure
-      const ttsConfig = userCfg.ttsConfig as TTSConfigForView | undefined; 
+      // Determine if we need to fetch new audio or use existing
+      let audioSrc: string;
+      let alignmentToUse = alignmentDataParam;
 
-      const elevenLabsApiKey = ttsConfig?.apiKey;
-      const elevenLabsModelId = ttsConfig?.modelId || 'eleven_multilingual_v2';
-      const elevenLabsVoiceId = ttsConfig?.voiceId;
-      const voiceSettings: ElevenLabsVoiceSettings = ttsConfig?.voiceSettings || {};
-      if (!elevenLabsApiKey) throw new Error("ElevenLabs API key not found in ttsConfig.");
+      if (alignmentDataParam && currentTTSAudioInfo()?.url) {
+        // This path is less common now with stopAndClearTTS before new plays for different messages
+        // but could be relevant if replaying the *same* message without forcing regenerate
+        console.log("[TTS] Using existing alignment data for message:", messageId);
+        audioSrc = currentTTSAudioInfo()!.url; // Assume audio is already loaded
+      } else {
+        const userCfg = await userConfigurationStorage.getValue();
+        const ttsConfigObj = userCfg?.ttsConfig;
+        // Determine the TTS provider: preference given to ttsConfig.providerId, fallback to selectedTtsVendor
+        const providerId = ttsConfigObj?.providerId ?? userCfg?.selectedTtsVendor;
+        console.log(`[TTS] Selected TTS provider: ${providerId}`);
+        if (providerId === 'elevenlabs') {
+          const apiKey = ttsConfigObj?.apiKey;
+          if (!apiKey) {
+            throw new Error('ElevenLabs API key missing in ttsConfig.');
+          }
+          const selectedModelId = ttsConfigObj?.modelId || 'eleven_multilingual_v2';
+          // Voice ID comes from top-level config or default
+          const voiceId = userCfg?.elevenLabsVoiceId || DEFAULT_ELEVENLABS_VOICE_ID;
+          console.log(`[TTS] Generating ElevenLabs speech: Model=${selectedModelId}, Voice=${voiceId}, Lang=${effectiveLang}, Speed=${currentPlaybackRate()}`);
+          const { audioBlob, alignmentData: newAlignmentData } = await generateElevenLabsSpeechWithTimestamps(
+            apiKey,
+            text,
+            selectedModelId,
+            voiceId,
+            undefined, // No custom voiceSettings
+            currentPlaybackRate(),
+            effectiveLang
+          );
+          audioSrc = URL.createObjectURL(audioBlob);
+          alignmentToUse = newAlignmentData;
+        } else if (providerId === 'browser') {
+          // Browser TTS fallback
+          console.log('[TTS] Using browser SpeechSynthesis for TTS');
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.lang = effectiveLang;
+          utterance.rate = currentPlaybackRate();
+          utterance.onend = () => {
+            setIsTTSSpeaking(false);
+            setActiveSpokenMessageId(null);
+          };
+          speechSynthesis.speak(utterance);
+          // No audioSrc for browser TTS; skip alignment
+          return;
+        } else {
+          throw new Error('TTS provider not configured or unsupported: ' + providerId);
+        }
+      }
 
-      const { audioBlob, alignmentData: fetchedAlignmentData } = await generateElevenLabsSpeechWithTimestamps(
-        elevenLabsApiKey, text, elevenLabsModelId, elevenLabsVoiceId, voiceSettings, undefined, effectiveLang
-      );
-      const finalAlignmentData = alignmentDataParam || fetchedAlignmentData;
-      const processedWords = processTTSAlignment(text, finalAlignmentData, effectiveLang);
-      setTtsWordMap(processedWords);
+      const wordMapData = processTTSAlignment(text, alignmentToUse, effectiveLang);
+      setTtsWordMap(wordMapData);
 
-      const localAudioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(localAudioUrl);
-      setCurrentTTSAudioInfo({ audio, url: localAudioUrl });
-      audio.onplay = () => { if (ttsAnimationFrameId()) cancelAnimationFrame(ttsAnimationFrameId()!); setTtsAnimationFrameId(requestAnimationFrame(updateTTSHighlightLoop)); };
-      audio.onpause = () => { if (ttsAnimationFrameId()) cancelAnimationFrame(ttsAnimationFrameId()!); setTtsAnimationFrameId(null); };
+      const audio = new Audio(audioSrc);
+      audio.playbackRate = currentPlaybackRate(); // Apply current playback rate
+      setCurrentTTSAudioInfo({ audio, url: audioSrc });
+
+      audio.onplay = () => {
+        setIsTTSSpeaking(true);
+        updateTTSHighlightLoop(); 
+      };
+      audio.onpause = () => {
+        setIsTTSSpeaking(false);
+        if (ttsAnimationFrameId()) { cancelAnimationFrame(ttsAnimationFrameId()!); setTtsAnimationFrameId(null); }
+      };
       audio.onended = () => {
-        setIsTTSSpeaking(false); setCurrentTTSHighlightIndex(null);
-        if (ttsAnimationFrameId()) cancelAnimationFrame(ttsAnimationFrameId()!); setTtsAnimationFrameId(null);
-        const latestAudioInfo = currentTTSAudioInfo();
-        if (latestAudioInfo && latestAudioInfo.audio === audio) setCurrentTTSAudioInfo(null);
-        URL.revokeObjectURL(localAudioUrl);
+        stopAndClearTTS();
+        setActiveSpokenMessageId(null); // Clear active message ID when playback finishes
       };
       audio.onerror = (e) => {
-        console.error('[TTS] Audio error:', e, audio.error);
-        setTtsError('Error playing TTS audio.'); setIsTTSSpeaking(false);
-        const latestAudioInfo = currentTTSAudioInfo();
-        if (latestAudioInfo && latestAudioInfo.audio === audio) setCurrentTTSAudioInfo(null);
-        URL.revokeObjectURL(localAudioUrl);
+        console.error('[TTS] Audio playback error:', e);
+        setTtsError(`Audio playback error: ${typeof e === 'string' ? e : (e as Event).type}`);
+        stopAndClearTTS();
+        setActiveSpokenMessageId(null);
       };
+
       await audio.play();
+      console.log(`[TTS] Started playing audio for ${messageId}. Set playbackRate to: ${audio.playbackRate}`);
     } catch (error: any) {
       console.error('[TTS] handlePlayTTS error:', error);
-      setTtsError(error.message || 'Failed to generate/play TTS.');
-      setIsTTSSpeaking(false); setActiveSpokenMessageId(null); setTtsWordMap([]);
+      setTtsError(`TTS generation error: ${error.message}`);
+      stopAndClearTTS();
+      setActiveSpokenMessageId(null);
     }
   };
+
+  const handleChangePlaybackSpeed = (messageId: string, newRate: number) => {
+    console.log(`[UnifiedConversationView] Requested playback speed change to: ${newRate} for message: ${messageId}`);
+    setCurrentPlaybackRate(newRate);
+
+    const targetMessage = currentMessages().find(m => m.id === messageId);
+
+    if (!targetMessage) {
+      console.error(`[UnifiedConversationView] handleChangePlaybackSpeed: Target message with id ${messageId} not found.`);
+      return;
+    }
+
+    // Stop any currently playing audio before starting the new one or restarting the current one.
+    stopAndClearTTS(); 
+    
+    console.log(`[UnifiedConversationView] Re-initiating TTS for message ${messageId} at new speed ${newRate}.`);
+    // handlePlayTTS will use the new currentPlaybackRate internally.
+    // It will also set activeSpokenMessageId.
+    handlePlayTTS(targetMessage.id, targetMessage.text_content, targetMessage.ttsLang || 'en', targetMessage.alignmentData)
+      .catch(error => console.error("[UnifiedConversationView] Error during TTS re-initiation after speed change:", error));
+  };
+  
   onCleanup(stopAndClearTTS);
   
   createEffect(() => {
@@ -275,7 +367,8 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
     if (isSpeechModeActive() && thread && thread.id === JUST_CHAT_THREAD_ID && messages.length > 0) {
         const lastMessage = messages[messages.length - 1];
         if (lastMessage.sender === 'ai' && activeSpokenMessageId() !== lastMessage.id && !isTTSSpeaking()) {
-            setActiveSpokenMessageId(lastMessage.id);
+            // In speech mode, always play at normal speed.
+            setCurrentPlaybackRate(1.0); 
             handlePlayTTS(lastMessage.id, lastMessage.text_content, lastMessage.ttsLang || 'en', lastMessage.alignmentData);
         }
     }
@@ -356,6 +449,8 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
                   currentHighlightIndex={activeSpokenMessageId() === message.id ? currentTTSHighlightIndex() : null}
                   onPlayTTS={handlePlayTTS}
                   isStreaming={message.isStreaming}
+                  isGlobalTTSSpeaking={isTTSSpeaking()}
+                  onChangeSpeed={handleChangePlaybackSpeed}
                 />
               )}
             </For>

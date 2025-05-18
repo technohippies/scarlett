@@ -22,6 +22,8 @@ export interface ChatMessageItemProps {
   currentHighlightIndex?: number | null;
   onPlayTTS?: (messageId: string, text: string, lang: string, alignmentDataParam?: any) => Promise<void>;
   isStreaming?: boolean; // Controls TTS button visibility
+  isGlobalTTSSpeaking?: boolean; // Added to reflect global TTS state
+  onChangeSpeed?: (messageId: string, speed: number) => void; // Modified for speed control
 }
 
 const POPOVER_CONTENT_CLASS = "absolute right-0 bottom-full mb-2 z-10 w-56 rounded-md bg-popover p-1 text-popover-foreground shadow-md outline-none";
@@ -30,55 +32,36 @@ const POPOVER_ITEM_CLASS = `${POPOVER_ITEM_CLASS_BASE} justify-start`;
 
 export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
   const { message } = props;
-
-  // Local state for mock TTS button interactions (Generate Audio, Play, etc.)
-  // This part is kept as is for now, as it's separate from the text rendering/highlighting logic.
-  const [isGeneratingAudio, setIsGeneratingAudio] = createSignal(false);
-  const [isAudioReady, setIsAudioReady] = createSignal(false);
-  const [isPlayingAudio, setIsPlayingAudio] = createSignal(false);
   const [isPopoverOpen, setIsPopoverOpen] = createSignal(false);
 
-  const handleTTSAction = () => {
-    if (!isAudioReady()) {
-      setIsGeneratingAudio(true);
-      setTimeout(() => {
-        setIsGeneratingAudio(false);
-        setIsAudioReady(true);
-      }, 1500);
-    } else {
-      setIsPlayingAudio(!isPlayingAudio());
+  const canInteractWithTTS = () => !props.isStreaming && message.text_content && message.text_content.trim() !== '';
+  const isThisMessagePlaying = () => props.isGlobalTTSSpeaking && props.isCurrentSpokenMessage;
+  const isAnotherMessagePlaying = () => props.isGlobalTTSSpeaking && !props.isCurrentSpokenMessage;
+
+  const handlePrimaryTTSAction = () => {
+    if (props.onPlayTTS && canInteractWithTTS()) {
+      props.onPlayTTS(message.id, message.text_content, message.ttsLang || 'en', message.alignmentData)
+        .catch(error => console.error("[ChatMessageItem] Error calling onPlayTTS:", error));
     }
   };
   
   const handlePlaySpeed = (speed: number) => {
-    console.log('Change speed to:', speed);
     setIsPopoverOpen(false);
-    if (isPlayingAudio()) {
-        setIsPlayingAudio(false); 
-        setIsGeneratingAudio(true);
-        setTimeout(() => {
-            setIsGeneratingAudio(false);
-            setIsAudioReady(true);
-        }, 1000);
-    } else if (isAudioReady()) {
-         setIsGeneratingAudio(true);
-        setTimeout(() => {
-            setIsGeneratingAudio(false);
-            setIsAudioReady(true);
-        }, 1000);
+    if (props.onChangeSpeed) {
+      props.onChangeSpeed(props.message.id, speed);
+    } else {
+      console.warn("[ChatMessageItem] onChangeSpeed prop is not provided.");
     }
   };
 
   const handleRegenerate = () => {
-    console.log('Regenerate audio');
+    console.log('[ChatMessageItem] Regenerate audio');
     setIsPopoverOpen(false);
-    setIsAudioReady(false);
-    setIsPlayingAudio(false);
-    setIsGeneratingAudio(true);
-    setTimeout(() => {
-      setIsGeneratingAudio(false);
-      setIsAudioReady(true);
-    }, 1500);
+    if (props.onPlayTTS && canInteractWithTTS()) {
+      // Call onPlayTTS, UnifiedConversationView's handlePlayTTS will stop existing and regenerate
+      props.onPlayTTS(message.id, message.text_content, message.ttsLang || 'en', undefined) // Pass undefined for alignment to force refetch
+        .catch(error => console.error("[ChatMessageItem] Error calling onPlayTTS for regenerate:", error));
+    }
   };
 
   return (
@@ -87,87 +70,75 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
         class={`max-w-[75%] md:max-w-[70%] p-2 px-3 rounded-lg shadow-sm break-words no-underline outline-none ${
           message.sender === 'user'
             ? 'bg-neutral-700 text-neutral-50'
-            : 'bg-transparent text-foreground' // AI messages have transparent background for highlighting to show through
+            : 'bg-transparent text-foreground'
         }`}
       >
         <Show 
-          when={message.sender === 'ai' && props.isCurrentSpokenMessage && props.wordMap && props.wordMap.length > 0}
-          fallback={<p class="text-md whitespace-pre-wrap">{message.text_content}</p>}
+          when={message.sender === 'ai' && props.isStreaming && (!message.text_content || message.text_content.trim() === '')}
+          fallback={
+            <Show 
+              when={message.sender === 'ai' && props.isCurrentSpokenMessage && props.wordMap && props.wordMap.length > 0}
+              fallback={<p class="text-md whitespace-pre-wrap">{message.text_content}</p>}
+            >
+              <p class="text-md whitespace-pre-wrap">
+                <For each={props.wordMap || []}>{(item, index) => (
+                  <span 
+                    class="scarlett-unified-word-span"
+                    classList={{ 'scarlett-unified-word-highlight': props.currentHighlightIndex === index() }}
+                    data-word-index={index()}
+                  >
+                    {item.word.replace(/ /g, '\u00A0')} 
+                  </span>
+                )}</For>
+              </p>
+            </Show>
+          }
         >
-          <p class="text-md whitespace-pre-wrap">
-            <For each={props.wordMap || []}>{(item, index) => (
-              <span 
-                class="scarlett-unified-word-span"
-                classList={{ 'scarlett-unified-word-highlight': props.currentHighlightIndex === index() }}
-                data-word-index={index()}
-              >
-                {item.word.replace(/ /g, '\u00A0')} 
-              </span>
-            )}</For>
-          </p>
+          <div class="flex items-center justify-center h-full">
+            <Spinner class="size-5 text-muted-foreground" />
+          </div>
         </Show>
       </div>
 
-      {/* TTS Action Buttons - show only when AI message is not streaming and has content */}
-      <Show when={message.sender === 'ai' && !props.isStreaming && message.text_content.trim() !== ''}>
+      <Show when={message.sender === 'ai' && canInteractWithTTS()}>
         <div class="mt-2 w-full max-w-[75%] md:max-w-[70%]">
-          <Show when={isGeneratingAudio()}
-            fallback={
-              <Show when={isAudioReady()}
-                fallback={ 
-                  <Button 
-                    variant="outline" 
-                    size="lg"
-                    onClick={handleTTSAction} 
-                    class="" 
-                    disabled={isGeneratingAudio()}
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 mr-2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
-                    Generate Audio
-                  </Button>
-                }
+            <div class="flex items-center"> 
+              <Button 
+                variant="outline" 
+                size="lg"
+                onClick={handlePrimaryTTSAction}
+                class="flex-grow rounded-r-none" // Occupy available space, remove right rounding
+                disabled={isAnotherMessagePlaying()}
               >
-                <div class="flex items-center"> 
-                  <Button 
-                    variant="outline" 
-                    size="lg"
-                    onClick={handleTTSAction}
-                    class="rounded-r-none"
-                    disabled={isGeneratingAudio()}
-                  >
-                    <Show when={isPlayingAudio()} fallback={
-                      <><Play weight="fill" class="size-4 mr-2" /> Play Audio</>
-                    }>
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 mr-2 animate-pulse"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
-                       Playing...
-                    </Show>
-                  </Button>
-                  <Popover placement="top-end" gutter={4} open={isPopoverOpen()} onOpenChange={setIsPopoverOpen}>
-                    <Popover.Trigger
-                      aria-label="More options"
-                      disabled={isGeneratingAudio()}
-                      class="inline-flex items-center justify-center whitespace-nowrap rounded-l-none rounded-r-md border-l-0 w-11 h-11 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input hover:bg-accent hover:text-accent-foreground cursor-pointer"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4"><path d="m6 9 6 6 6-6" /></svg>
-                    </Popover.Trigger>
-                    <Show when={isPopoverOpen()}>
-                      <Popover.Content class={POPOVER_CONTENT_CLASS} onOpenAutoFocus={(e) => e.preventDefault()}>
-                        <div class="flex flex-col">
-                          <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.85)} disabled={isGeneratingAudio()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.85x </Button>
-                          <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.70)} disabled={isGeneratingAudio()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.70x </Button>
-                          <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={handleRegenerate} disabled={isGeneratingAudio()}> <ArrowClockwise weight="regular" class="mr-2 size-4" /> Regenerate </Button>
-                        </div>
-                      </Popover.Content>
-                    </Show>
-                  </Popover>
-                </div>
-              </Show>
-            }
-          >
-            <Button variant="outline" size="lg" disabled class="">
-              <Spinner class="size-4 mr-2" /> Generating...
-            </Button>
-          </Show>
+                <Show 
+                  when={isThisMessagePlaying()} 
+                  fallback={
+                    <><Play weight="fill" class="size-4 mr-2" /> Play Audio</>
+                  }
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4 mr-2 animate-pulse"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                  Playing...
+                </Show>
+              </Button>
+              <Popover placement="top-end" gutter={4} open={isPopoverOpen()} onOpenChange={setIsPopoverOpen}>
+                <Popover.Trigger
+                  aria-label="More options"
+                  disabled={isAnotherMessagePlaying()}
+                  class="inline-flex items-center justify-center whitespace-nowrap rounded-l-none rounded-r-md border-l-0 w-11 h-11 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4"><path d="m6 9 6 6 6-6" /></svg>
+                </Popover.Trigger>
+                <Show when={isPopoverOpen()}>
+                  <Popover.Content class={POPOVER_CONTENT_CLASS} onOpenAutoFocus={(e) => e.preventDefault()}>
+                    <div class="flex flex-col">
+                      <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.85)} disabled={isAnotherMessagePlaying()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.85x </Button>
+                      <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.70)} disabled={isAnotherMessagePlaying()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.70x </Button>
+                      <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={handleRegenerate} disabled={isAnotherMessagePlaying()}> <ArrowClockwise weight="regular" class="mr-2 size-4" /> Regenerate </Button>
+                    </div>
+                  </Popover.Content>
+                </Show>
+              </Popover>
+            </div>
         </div>
       </Show>
     </div>
