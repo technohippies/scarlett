@@ -21,6 +21,7 @@ export interface ChatMessageItemProps {
   wordMap?: WordInfo[]; 
   currentHighlightIndex?: number | null;
   onPlayTTS?: (messageId: string, text: string, lang: string, alignmentDataParam?: any) => Promise<void>;
+  isStreaming?: boolean; // Controls TTS button visibility
 }
 
 const POPOVER_CONTENT_CLASS = "absolute right-0 bottom-full mb-2 z-10 w-56 rounded-md bg-popover p-1 text-popover-foreground shadow-md outline-none";
@@ -107,8 +108,8 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
         </Show>
       </div>
 
-      {/* TTS Action Buttons - this section's logic remains for local UI interaction for now */}
-      <Show when={message.sender === 'ai'}>
+      {/* TTS Action Buttons - show only when AI message is not streaming and has content */}
+      <Show when={message.sender === 'ai' && !props.isStreaming && message.text_content.trim() !== ''}>
         <div class="mt-2 w-full max-w-[75%] md:max-w-[70%]">
           <Show when={isGeneratingAudio()}
             fallback={

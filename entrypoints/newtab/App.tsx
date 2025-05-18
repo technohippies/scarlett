@@ -17,7 +17,7 @@ import {
   addChatMessage
 } from '../../src/services/db/chat';
 import { getAiChatResponseStream } from '../../src/services/llm/llmChatService';
-import type { ChatMessage as LLMChatMessage, LLMConfig, LLMProviderId, StreamedChatResponsePart } from '../../src/services/llm/types';
+import type { ChatMessage as LLMChatMessage, LLMConfig, LLMProviderId } from '../../src/services/llm/types';
 
 const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
 
@@ -442,12 +442,13 @@ const App: Component = () => {
     const initialAiMessage: ChatMessage = {
       id: aiStreamingMessageId,
       thread_id: threadId,
-      timestamp: new Date().toISOString(), // Placeholder, will update with last chunk
+      timestamp: new Date().toISOString(), 
       sender: 'ai',
-      text_content: '', // Start with empty content
+      text_content: '', 
       ttsWordMap: undefined,
       alignmentData: undefined,
       ttsLang: ttsLangForAiResponse || effectiveLangCode(),
+      isStreaming: true,
     };
 
     // Add initial AI message to local state
@@ -463,6 +464,7 @@ const App: Component = () => {
     
     let accumulatedResponse = '';
     let finalTimestamp = initialAiMessage.timestamp;
+    let streamErrorOccurred = false;
 
     try {
       console.log('[App.tsx Stream] Starting to iterate getAiChatResponseStream...');
@@ -498,6 +500,7 @@ const App: Component = () => {
           console.error('[App.tsx Stream] Streaming error part from LLM:', part.error);
           accumulatedResponse += `\n[Stream Error: ${part.error}]`;
           finalTimestamp = new Date().toISOString();
+          streamErrorOccurred = true;
           setThreads(prevThreads =>
             prevThreads.map(t => {
               if (t.id === threadId) {
@@ -519,12 +522,15 @@ const App: Component = () => {
         }
       }
       console.log('[App.tsx Stream] Finished iterating getAiChatResponseStream. Final accumulated text:', accumulatedResponse);
-      // After stream finishes (or errors out), save the final accumulated message to DB
+      
+      // After stream finishes (or errors out), update the message with isStreaming: false and save final to DB
       const finalAiMessage: ChatMessage = {
-        ...initialAiMessage, // Retains id, sender, ttsLang etc.
+        ...initialAiMessage, 
         text_content: accumulatedResponse.trim(),
         timestamp: finalTimestamp, 
+        isStreaming: false,
       };
+      
       // Update the message in DB (or add if it was purely local during streaming)
       // For simplicity, we'll assume addChatMessage can handle an existing ID by updating,
       // or we'd need an updateChatMessage DB function.
@@ -543,15 +549,17 @@ const App: Component = () => {
           return t;
         })
       );
-      if (finalAiMessage.text_content) { // Only save to DB if there's content
-         await addChatMessage(finalAiMessage); // Save the complete message to DB
+      if (finalAiMessage.text_content && streamErrorOccurred) {
+         await addChatMessage(finalAiMessage);
       }
 
     } catch (error) {
       console.error('[App.tsx] Outer error during AI stream processing or DB save:', error);
       const streamErrorText = `Sorry, an error occurred while streaming the response: ${String(error)}.`;
       const finalErrorTimestamp = new Date().toISOString();
-      // Update the existing streaming message with the error, or add a new error message if it wasn't created.
+      streamErrorOccurred = true;
+
+      // Update the existing streaming message with the error and isStreaming: false
       setThreads(prevThreads =>
         prevThreads.map(t => {
           if (t.id === threadId) {
@@ -560,34 +568,34 @@ const App: Component = () => {
               const updatedMessages = [...t.messages];
               updatedMessages[streamingMsgIndex] = {
                 ...updatedMessages[streamingMsgIndex],
-                text_content: accumulatedResponse + `\n[Error: ${String(error)}]`, // Append error to any partial content
+                text_content: accumulatedResponse + `\n[Outer Error: ${String(error)}]`, 
                 timestamp: finalErrorTimestamp,
+                isStreaming: false,
               };
               return { ...t, messages: updatedMessages, lastActivity: finalErrorTimestamp };
             } else {
-              // If streaming message wasn't even added, add a new error message
               const newErrorMsg: ChatMessage = {
-                id: `msg-error-stream-outer-${Date.now()}`, thread_id: threadId, timestamp: finalErrorTimestamp,
+                id: `msg-error-stream-outer-${Date.now()}`,
+                thread_id: threadId, timestamp: finalErrorTimestamp,
                 sender: 'ai', text_content: streamErrorText, ttsLang: effectiveLangCode(),
+                isStreaming: false,
               };
-              // Not saving this particular error to DB for now, just showing in UI.
               return { ...t, messages: [...t.messages, newErrorMsg], lastActivity: finalErrorTimestamp };
             }
           }
           return t;
         })
       );
-       // Attempt to save the error state to the DB if the message exists.
+      
+      // Attempt to save the error state to the DB if the message exists.
       const finalErrorAiMessage: ChatMessage = {
         ...initialAiMessage,
-        id: aiStreamingMessageId, // Ensure we use the same ID
-        text_content: accumulatedResponse.trim() + `\n[Error: ${String(error)}]`,
+        id: aiStreamingMessageId, 
+        text_content: accumulatedResponse.trim() + `\n[Outer Error: ${String(error)}]`,
         timestamp: finalErrorTimestamp, 
+        isStreaming: false,
       };
-      if (finalErrorAiMessage.text_content) {
-          // As above, to prevent duplicates without upsert, first ensure local state is correct, then save.
-          // The local state is already updated above to show the error.
-          // Now attempt to save this error-appended message to DB.
+      if (finalErrorAiMessage.text_content && streamErrorOccurred) {
           await addChatMessage(finalErrorAiMessage);
       }
     }

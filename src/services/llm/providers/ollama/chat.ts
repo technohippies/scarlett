@@ -1,5 +1,5 @@
 import type { LLMConfig, LLMChatResponse, ChatMessage, StreamedChatResponsePart } from '../../types'; // Path relative to chat.ts
-import { parseSseChunk } from '../../../../lib/utils'; // Path to utils where parseSseChunk is
+import { parseSseChunk } from '../../utils/sse'; // Path to utils where parseSseChunk is
 
 // --- Overload Signatures --- 
 // Signature for non-streaming (stream: false or undefined)

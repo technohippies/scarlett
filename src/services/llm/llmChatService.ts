@@ -29,7 +29,7 @@ async function fetchAndFormatUserContext(): Promise<string> {
   try {
     const recentPages = await getRecentVisitedPages(5);
     if (recentPages.length > 0) {
-      const pageLines = recentPages.map(p => `- Visited: "${p.title || 'Untitled Page'}" (${p.url})`);
+      const pageLines = recentPages.map(p => `- Visited: "${p.title || 'Untitled Page'}"`);
       contextParts.push("Recently Visited Pages:\n" + pageLines.join('\n'));
     }
   } catch (e) {
@@ -39,7 +39,7 @@ async function fetchAndFormatUserContext(): Promise<string> {
   try {
     const recentBookmarks = await getRecentBookmarks(3);
     if (recentBookmarks.length > 0) {
-      const bookmarkLines = recentBookmarks.map(b => `- Bookmarked: "${b.title || 'Untitled Bookmark'}" (${b.url})`);
+      const bookmarkLines = recentBookmarks.map(b => `- Bookmarked: "${b.title || 'Untitled Bookmark'}"`);
       contextParts.push("Recent Bookmarks:\n" + bookmarkLines.join('\n'));
     }
   } catch (e) {

@@ -355,6 +355,7 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
                   wordMap={activeSpokenMessageId() === message.id ? ttsWordMap() : (message.ttsWordMap || [])}
                   currentHighlightIndex={activeSpokenMessageId() === message.id ? currentTTSHighlightIndex() : null}
                   onPlayTTS={handlePlayTTS}
+                  isStreaming={message.isStreaming}
                 />
               )}
             </For>

@@ -8,6 +8,7 @@ export interface ChatMessage {
   ttsWordMap?: Array<{ word: string; start: number; end: number }>;
   alignmentData?: any; // Consider defining a more specific type
   ttsLang?: string; // Language for this specific AI message's TTS
+  isStreaming?: boolean; // Added for UI control during streaming
   // Embedding fields
   embedding_512?: number[] | null;
   embedding_768?: number[] | null;
