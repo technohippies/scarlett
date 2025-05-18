@@ -434,3 +434,51 @@ ${contextString}
     throw new Error(`Failed to generate roleplay scenarios: ${error instanceof Error ? error.message : String(error)}`);
   }
 } 
+
+// --- NEW FUNCTION FOR THREAD TITLE GENERATION ---
+export async function generateThreadTitleLLM(firstUserMessage: string): Promise<string> {
+  console.log(`[llmChatService] Generating thread title for first message: "${firstUserMessage.substring(0, 50)}..."`);
+  
+  const userCfg = await userConfigurationStorage.getValue();
+  if (!userCfg || !userCfg.llmConfig || !userCfg.llmConfig.providerId || !userCfg.llmConfig.modelId) {
+    console.error('[llmChatService] LLM not configured for title generation.');
+    throw new Error('LLM not configured. Please check settings.');
+  }
+
+  const llmServiceConfig: LLMConfig = {
+    provider: userCfg.llmConfig.providerId as LLMConfig['provider'],
+    model: userCfg.llmConfig.modelId,
+    baseUrl: userCfg.llmConfig.baseUrl ?? '',
+    apiKey: userCfg.llmConfig.apiKey ?? undefined,
+    stream: false, // Non-streaming for a short title
+  };
+
+  // System prompt instructing the LLM to generate a 3-word title
+  // The user message is part of the "user" message to the LLM, not directly in system prompt here.
+  const titleGenSystemPrompt = "Based on the user's first message in a new conversation, generate a concise and relevant 3-word title for this conversation. Only return the title itself, with no extra formatting, quotation marks, or introductory phrases. For example, if the user says 'Tell me about the history of Rome', a good title would be 'Roman History Inquiry'.";
+
+  try {
+    const title = await getAiChatResponse(
+      [], // No prior conversation history for this specific task
+      firstUserMessage, // The user's first message is the prompt content
+      llmServiceConfig,
+      { 
+        threadSystemPrompt: titleGenSystemPrompt, 
+        excludeBaseSystem: true // Exclude the main personality and its context
+      } 
+    );
+
+    const trimmedTitle = title.trim();
+    // Basic cleanup: remove quotes if LLM accidentally adds them
+    const finalTitle = trimmedTitle.replace(/^["'“‘]|["'”’]$/g, ''); 
+
+    console.log(`[llmChatService] Generated thread title: "${finalTitle}"`);
+    return finalTitle;
+
+  } catch (error) {
+    console.error('[llmChatService] Error generating thread title via LLM:', error);
+    // Fallback or re-throw. For now, let's re-throw so caller can decide.
+    throw new Error(`Failed to generate thread title: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+// --- END NEW FUNCTION --- 

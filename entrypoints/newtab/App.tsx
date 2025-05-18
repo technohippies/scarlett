@@ -14,9 +14,10 @@ import {
   getAllChatThreads,
   getChatMessagesByThreadId,
   addChatThread,
-  addChatMessage
+  addChatMessage,
+  updateChatThreadTitle
 } from '../../src/services/db/chat';
-import { getAiChatResponseStream } from '../../src/services/llm/llmChatService';
+import { getAiChatResponseStream, generateThreadTitleLLM } from '../../src/services/llm/llmChatService';
 import type { ChatMessage as LLMChatMessage, LLMConfig, LLMProviderId } from '../../src/services/llm/types';
 
 const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
@@ -378,6 +379,33 @@ const App: Component = () => {
     }
 
     const currentIsoTimestamp = new Date().toISOString();
+
+    // --- Automatic Title Generation Logic ---
+    if (isUserMessage && 
+        currentThreadSignalValue.title.startsWith("New Chat") && 
+        (currentThreadSignalValue.messages?.length || 0) === 0) { // Only for the very first user message in a new chat
+      
+      console.log(`[App.tsx] First user message in a new chat. Attempting to generate title for thread: ${threadId}`);
+      generateThreadTitleLLM(text).then(async (newTitle) => {
+        if (newTitle && newTitle.trim() !== '') {
+          console.log(`[App.tsx] Generated title "${newTitle}" for thread ${threadId}. Updating DB and local state.`);
+          try {
+            await updateChatThreadTitle(threadId, newTitle);
+            setThreads(prevThreads =>
+              prevThreads.map(t =>
+                t.id === threadId ? { ...t, title: newTitle, lastActivity: new Date().toISOString() } : t
+              )
+            );
+          } catch (e) {
+            console.error(`[App.tsx] Error updating thread title in DB for ${threadId}:`, e);
+          }
+        }
+      }).catch(error => {
+        console.warn(`[App.tsx] Failed to generate or apply thread title for ${threadId}:`, error);
+      });
+    }
+    // --- End Automatic Title Generation Logic ---
+
     const userMessage: UIChatMessage = {
       id: `msg-user-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       thread_id: threadId,

@@ -302,6 +302,22 @@ export const updateChatThread = async (
   }
 };
 
+export const updateChatThreadTitle = async (threadId: string, newTitle: string): Promise<void> => {
+  const db: PGlite = await getDbInstance();
+  const now = new Date().toISOString(); // To update last_activity_at as well
+  try {
+    console.log(`[DB ChatService] Updating title for thread ${threadId} to "${newTitle}"`);
+    await db.query(
+      'UPDATE chat_threads SET title = $1, last_activity_at = $2 WHERE id = $3',
+      [newTitle, now, threadId]
+    );
+    console.log(`[DB ChatService] Successfully updated title for thread ${threadId}.`);
+  } catch (error) {
+    console.error(`[DB ChatService] Error updating title for thread ${threadId}:`, error);
+    throw error; // Re-throw to allow caller to handle
+  }
+};
+
 export const deleteChatThread = async (db: PGlite, threadId: string): Promise<boolean> => {
   if (threadId === JUST_CHAT_THREAD_ID) {
     console.warn("Attempted to delete JUST_CHAT_THREAD_ID. This is not allowed.");
