@@ -14,8 +14,7 @@ import {
   getAllChatThreads,
   getChatMessagesByThreadId,
   addChatThread,
-  addChatMessage,
-  updateThreadLastActivity
+  addChatMessage
 } from '../../src/services/db/chat';
 import { getAiChatResponse } from '../../src/services/llm/llmChatService';
 import type { ChatMessage as LLMChatMessage, LLMConfig } from '../../src/services/llm/types';
@@ -296,18 +295,23 @@ const App: Component = () => {
     }
   };
 
-  const handleCreateNewThread = async (title: string, systemPrompt: string): Promise<string> => {
-    console.log(`[App.tsx] Creating new thread: \"${title}\"`);
+  const handleCreateNewThread = async (baseTitle: string, systemPromptForDB: string): Promise<string> => {
+    const uniqueTitle = `${baseTitle} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+    console.log(`[App.tsx] Creating new thread: "${uniqueTitle}" with system prompt (for DB): "${systemPromptForDB}"`);
+    
     const newThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
       id: `thread-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      title: title,
-      systemPrompt: systemPrompt,
+      title: uniqueTitle, // Use the generated unique title
+      systemPrompt: systemPromptForDB, // This will be empty for general chats from the UI
     };
     try {
       const createdThread = await addChatThread(newThreadData);
-      setThreads(prev => [createdThread, ...prev]);
+      // Ensure messages array is initialized for the new thread in the local state
+      const threadWithEmptyMessages = { ...createdThread, messages: [] }; 
+      setThreads(prev => [threadWithEmptyMessages, ...prev]);
       setCurrentThreadId(createdThread.id);
-      await loadMessagesForThreadAndKickoff(createdThread.id);
+      // No automatic AI kickoff for these general new chats, user initiates.
+      // await loadMessagesForThreadAndKickoff(createdThread.id); // Not needed if no kickoff and messages are empty
       return createdThread.id;
     } catch (error) {
       console.error('[App.tsx] Error creating new thread:', error);

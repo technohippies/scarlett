@@ -1,4 +1,4 @@
-import { Component, For, createSignal, createEffect, onCleanup } from 'solid-js';
+import { Component, For, createSignal, createEffect, onCleanup, Show } from 'solid-js';
 import { Dynamic } from 'solid-js/web';
 import { Button } from '../../components/ui/button';
 import { TextField, TextFieldInput } from '../../components/ui/text-field';
@@ -284,167 +284,121 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
     }
   });
   
-  const handleCreateNewThread = async () => {
-    const newSysPrompt = window.prompt("Enter system prompt for new roleplay:", "You are a helpful French tutor.") || "You are a helpful French tutor.";
-    const newTitle = window.prompt("Enter title for new thread:", "French Practice") || "French Practice";
-    const newThreadId = await props.onCreateNewThread(newTitle, newSysPrompt);
-    props.onSelectThread(newThreadId);
-    // Optional: AI kickoff for new thread
-    // await props.onSendMessage("Bonjour! Comment ça va?", newThreadId, false, 'fr');
+  const handleCreateNewGeneralChat = async () => {
+    // App.tsx will handle default title and empty system prompt for DB
+    await props.onCreateNewThread("New Chat", ""); // Pass a placeholder title and empty system prompt
+  };
+
+  const handleGenerateRoleplays = () => {
+    console.log("[UnifiedConversationView] Generate Roleplays clicked - placeholder");
+    // TODO: Implement roleplay generation logic
+    // This might involve:
+    // 1. Calling a service (like the one in roleplayScenarios.ts) to get a scenario
+    // 2. Extracting title and systemPrompt from the scenario
+    // 3. Calling props.onCreateNewThread(roleplayTitle, roleplaySystemPrompt)
+    // 4. Potentially sending an initial AI message for the roleplay
   };
 
   return (
-    <div class="flex flex-col h-screen bg-background text-foreground">
+    <div class="flex flex-col h-screen bg-bg-primary text-fg-primary relative">
       <Dynamic component="style" id={HIGHLIGHT_STYLE_ID}>{HIGHLIGHT_CSS}</Dynamic>
-      <header class="flex items-center p-2 md:p-4 border-b border-border/40 sticky top-0 bg-background z-10">
-        <Sheet>
-          <SheetTrigger as={Button} variant="ghost" class="mr-1 p-2 md:hidden" disabled={isSpeechModeActive()}>
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-          </SheetTrigger>
-          <SheetContent position="left" class="w-full sm:max-w-xs p-0 flex flex-col">
-            <div class="p-2 pt-4 overflow-y-auto flex-grow">
-              <For each={props.threads.filter(t => t.id !== JUST_CHAT_THREAD_ID)}>
-                {(thread) => (
-                  <Button
-                    variant={props.currentSelectedThreadId === thread.id && !isSpeechModeActive() ? "secondary" : "ghost"}
-                    class="w-full justify-start mb-1 text-sm p-2 h-auto text-left"
-                    onClick={() => { if (!isSpeechModeActive()) props.onSelectThread(thread.id); }}
-                    title={thread.title}
-                    disabled={isSpeechModeActive()}
-                  >
-                    <span class="block w-full truncate">
-                      {thread.title}
-                    </span>
-                  </Button>
-                )}
-              </For>
-            </div>
-            <div class="p-2 border-t border-border/40">
-              <Button variant="outline" class="w-full" onClick={handleCreateNewThread} disabled={isSpeechModeActive()}>
-                New Thread
-              </Button>
-            </div>
-          </SheetContent>
-        </Sheet>
-
-        <Button variant="ghost" onClick={props.onNavigateBack} class="mr-2 p-2">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      <header class="flex items-center p-2 border-b border-border-secondary sticky top-0 z-10 bg-bg-primary">
+        <Button variant="ghost" size="icon" onClick={props.onNavigateBack} class="mr-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
         </Button>
-        
-        <div class="flex-1 truncate pr-2">
-           <Show when={currentThread() && !isSpeechModeActive()}>
-             <span class="text-sm font-medium truncate">{currentThread()?.title}</span>
-           </Show>
-           <Show when={isSpeechModeActive()}>
-             <span class="text-sm font-medium">Just Chat (Speech Mode)</span>
-           </Show>
-        </div>
-
-        <div class="flex items-center mr-2">
-          <Switch 
-            id="speech-mode-toggle" 
-            class="flex items-center"
-            checked={isSpeechModeActive()}
-            onChange={(checked) => {
-                stopAndClearTTS();
-                if (isRecording()) handleStopRecording();
-                setIsSpeechModeActive(checked);
-            }}
-          >
-            <SwitchLabel class="mr-2 text-sm whitespace-nowrap">Speech Mode</SwitchLabel>
-            <SwitchControl>
-              <SwitchThumb />
-            </SwitchControl>
-          </Switch>
-        </div>
+        <h1 class="text-lg font-semibold">{currentThread()?.title || 'Chat'}</h1>
+        <div class="flex-grow"></div>
+        <Switch checked={isSpeechModeActive()} onChange={setIsSpeechModeActive} class="ml-auto mr-2">
+          <SwitchControl><SwitchThumb /></SwitchControl>
+          <SwitchLabel>Speech Mode</SwitchLabel>
+        </Switch>
       </header>
 
       <div class="flex flex-1 overflow-hidden">
-        <Show when={!isSpeechModeActive()}>
-          <aside class="hidden md:flex flex-col w-64 lg:w-72 border-r border-border/40 bg-muted/20">
-            <div class="p-2 pt-4 overflow-y-auto flex-grow">
-              <For each={props.threads.filter(t => t.id !== JUST_CHAT_THREAD_ID)}>
-                {(thread) => (
-                  <Button
-                    variant={props.currentSelectedThreadId === thread.id ? "secondary" : "ghost"}
-                    class="w-full justify-start mb-1 text-sm p-2 h-auto text-left"
-                    onClick={() => props.onSelectThread(thread.id)}
-                    title={thread.title}
-                  >
-                    <span class="block w-full truncate">
-                      {thread.title}
-                    </span>
-                  </Button>
-                )}
-              </For>
+        <aside class="w-64 md:w-72 flex flex-col border-r border-border-secondary bg-bg-secondary p-2 overflow-y-auto">
+          <div class="mb-2 flex justify-center">
+            <Button 
+              variant="outline" 
+              size="icon"
+              class="w-full"
+              onClick={handleCreateNewGeneralChat}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
+                <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4z"/>
+              </svg>
+            </Button>
+          </div>
+
+          <For each={props.threads.filter(t => t.id !== JUST_CHAT_THREAD_ID)} fallback={<div>No active threads.</div>}>
+            {(thread) => (
+              <Button
+                variant={currentThread()?.id === thread.id ? 'secondary' : 'ghost'}
+                class="w-full justify-start mb-1 truncate"
+                onClick={() => props.onSelectThread(thread.id)}
+              >
+                {thread.title}
+              </Button>
+            )}
+          </For>
+
+          <div class="mt-auto pt-2 border-t border-border-tertiary">
+            <Button variant="outline" class="w-full" onClick={handleGenerateRoleplays}>
+              Generate Roleplays
+            </Button>
+          </div>
+        </aside>
+
+        <main class="flex-1 flex flex-col bg-bg-primary overflow-hidden">
+          <div ref={scrollHostRef} class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
+            <For each={currentMessages()} fallback={<div class="text-center text-fg-muted">No messages yet.</div>}>
+              {(message, index) => (
+                <ChatMessageItem
+                  message={message}
+                  isLastInGroup={index() === currentMessages().length - 1 || currentMessages()[index() + 1]?.sender !== message.sender}
+                  isCurrentSpokenMessage={activeSpokenMessageId() === message.id}
+                  wordMap={activeSpokenMessageId() === message.id ? ttsWordMap() : (message.ttsWordMap || [])}
+                  currentHighlightIndex={activeSpokenMessageId() === message.id ? currentTTSHighlightIndex() : null}
+                  onPlayTTS={handlePlayTTS}
+                />
+              )}
+            </For>
+            <Show when={ttsError()}>
+              <div class="text-red-500 text-sm p-2 bg-red-100 rounded-md">TTS Error: {ttsError()}</div>
+            </Show>
+          </div>
+
+          <Show when={!isSpeechModeActive() && currentThread()?.id !== JUST_CHAT_THREAD_ID}>
+            <div class="p-2 border-t border-border-secondary bg-bg-primary">
+              <div class="flex items-center space-x-2">
+                <TextField class="flex-1">
+                  <TextFieldInput 
+                    type="text" 
+                    placeholder="Type your message..." 
+                    value={inputText()} 
+                    onInput={(e) => setInputText(e.currentTarget.value)} 
+                    onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendText())}
+                  />
+                </TextField>
+                <Button onClick={handleSendText} disabled={!inputText().trim()}>Send</Button>
+              </div>
             </div>
-            <div class="p-2 border-t border-border/40">
-              <Button variant="outline" class="w-full" onClick={handleCreateNewThread}>
-                New Thread
+          </Show>
+
+          <Show when={isSpeechModeActive() && currentThread()?.id === JUST_CHAT_THREAD_ID}>
+            <div class="p-4 border-t border-border-secondary bg-bg-primary flex justify-center items-center">
+              <Button 
+                onClick={isRecording() ? handleStopRecording : handleStartRecording}
+                variant={isRecording() ? "destructive" : 'default'}
+                class="w-16 h-16 rounded-full text-2xl flex items-center justify-center"
+              >
+                {isRecording() ? 
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg> : 
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/></svg>
+                }
               </Button>
             </div>
-          </aside>
-        </Show>
-
-        <div ref={scrollHostRef} class="flex-1 flex flex-col overflow-y-auto bg-background">
-          <main class="w-full max-w-4xl mx-auto flex flex-col flex-grow">
-            <div 
-              class="flex-grow p-4 space-y-6"
-              id="message-list-container"
-            >
-              <For each={currentMessages()}>
-                {(message) => (
-                  <ChatMessageItem 
-                    message={message} 
-                    isCurrentSpokenMessage={isSpeechModeActive() && activeSpokenMessageId() === message.id}
-                    wordMap={isSpeechModeActive() && activeSpokenMessageId() === message.id ? ttsWordMap() : undefined}
-                    currentHighlightIndex={isSpeechModeActive() && activeSpokenMessageId() === message.id ? currentTTSHighlightIndex() : undefined}
-                  />
-                )}
-              </For>
-            </div>
-
-            <Show when={!isSpeechModeActive()}>
-              <div class="p-2 md:p-4 border-t border-border/40 bg-background sticky bottom-0">
-                <div class="flex items-center space-x-2">
-                  <TextField class="w-full">
-                    <TextFieldInput type="text" placeholder="Type your message..." value={inputText()} 
-                      onInput={(e) => setInputText(e.currentTarget.value)}
-                      onKeyPress={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendText(); } }}
-                      class="text-md md:text-base h-10" />
-                  </TextField>
-                  <Button onClick={handleSendText} class="h-10 px-4 w-24">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                  </Button>
-                </div>
-              </div>
-            </Show>
-
-            <Show when={isSpeechModeActive()}>
-              <div class="p-2 md:p-4 border-t border-border/40 bg-background sticky bottom-0 flex flex-col items-center justify-center space-y-2">
-                <Show when={ttsError()}><p class="text-destructive text-xs text-center">TTS Error: {ttsError()}</p></Show>
-                <div class="flex items-center justify-center space-x-3">
-                  <Show when={!isRecording() && !isTTSSpeaking()}>
-                      <Button onClick={handleStartRecording} title="Start Recording" class="p-0 rounded-full bg-primary text-primary-foreground hover:bg-primary/90 aspect-square w-16 h-16 flex items-center justify-center">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="22"></line></svg>
-                      </Button>
-                  </Show>
-                  <Show when={isRecording() && !isTTSSpeaking()}>
-                      <Button onClick={handleStopRecording} title="Stop Recording" class="p-0 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90 aspect-square w-16 h-16 flex items-center justify-center">
-                          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12"></rect></svg>
-                      </Button>
-                  </Show>
-                  <Show when={isTTSSpeaking()}>
-                     <Button onClick={stopAndClearTTS} title="Stop Speech" class="p-0 rounded-full bg-amber-500 text-white hover:bg-amber-600 aspect-square w-16 h-16 flex items-center justify-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-                     </Button>
-                  </Show>
-                </div>
-              </div>
-            </Show>
-
-          </main>
-        </div>
+          </Show>
+        </main>
       </div>
     </div>
   );

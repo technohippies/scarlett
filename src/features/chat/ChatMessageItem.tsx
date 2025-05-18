@@ -15,11 +15,12 @@ interface WordInfo {
 
 export interface ChatMessageItemProps {
   message: ChatMessage;
+  isLastInGroup?: boolean;
   // Props for TTS highlighting, passed from UnifiedConversationView
   isCurrentSpokenMessage?: boolean;
   wordMap?: WordInfo[]; 
   currentHighlightIndex?: number | null;
-  // TTS action-related props (if any) could be added here if ChatMessageItem controls TTS directly
+  onPlayTTS?: (messageId: string, text: string, lang: string, alignmentDataParam?: any) => Promise<void>;
 }
 
 const POPOVER_CONTENT_CLASS = "absolute right-0 bottom-full mb-2 z-10 w-56 rounded-md bg-popover p-1 text-popover-foreground shadow-md outline-none";
