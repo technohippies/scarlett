@@ -380,43 +380,41 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
   const handleGenerateRoleplays = async () => {
     setIsGeneratingRoleplays(true);
     try {
-      // Temporarily hardcode targetLanguage, will revisit userConfig access for learningLanguage
-      const targetLanguage = 'English'; 
-      console.log(`[UnifiedConversationView] Generating roleplays for language: ${targetLanguage}`);
-      
-      // Pass an empty string for topicHint instead of undefined
-      const scenarios: RoleplayScenario[] = await generateRoleplayScenariosLLM(targetLanguage, "");
+      const userLang = props.userConfig?.targetLanguage ?? 'the target language';
+      const scenarios: RoleplayScenario[] | null = await generateRoleplayScenariosLLM(userLang, "");
 
-      if (!scenarios || scenarios.length === 0) {
-        console.warn('[UnifiedConversationView] No roleplay scenarios generated.');
-        alert('Could not generate roleplay scenarios. Please try again later.');
-        return;
+      if (scenarios && scenarios.length > 0) {
+        for (const scenario of scenarios) {
+          const sceneMessage: ChatMessage = {
+            id: crypto.randomUUID(),
+            thread_id: '', 
+            text_content: scenario.description, 
+            timestamp: new Date().toISOString(),
+            sender: 'ai'
+            // metadata: { roleplay_scene: true } // Removed as ChatMessage type doesn't have metadata
+          };
+          
+          const newThreadId = await props.onCreateNewThread(
+            scenario.title, 
+            scenario.description, 
+            [sceneMessage], 
+            { roleplay_scenario: scenario } // Thread metadata contains the scenario info
+          );
+
+          if (newThreadId && scenario.ai_opening_line) {
+            await props.onSendMessage(scenario.ai_opening_line, newThreadId, false);
+          }
+        }
+        if (scenarios.length > 0) {
+          // Placeholder for potential future logic, e.g. auto-selecting the new thread
+        }
+      } else {
+        console.warn('[RoleplayGen] No scenarios generated or an error occurred.');
+        // TODO: Display error to user more gracefully
       }
-
-      console.log(`[UnifiedConversationView] Generated ${scenarios.length} scenarios. Creating threads...`);
-      for (const scenario of scenarios) {
-        const sceneMessage: ChatMessage = {
-          id: crypto.randomUUID(),
-          thread_id: '', 
-          sender: 'ai', 
-          text_content: scenario.description,
-          timestamp: new Date().toISOString(),
-          isStreaming: false,
-          ttsWordMap: undefined,
-          alignmentData: undefined,
-          // Temporarily use hardcoded targetLanguage for ttsLang as well
-          ttsLang: targetLanguage.split('-')[0].toLowerCase() || 'en',
-        };
-
-        console.log(`[UnifiedConversationView] Creating thread for scenario: "${scenario.title}"`);
-        // Pass empty string for systemPrompt for now. App.tsx will apply its own defaults for roleplay type.
-        await props.onCreateNewThread(scenario.title, "", [sceneMessage]);
-      }
-      alert(`${scenarios.length} new roleplay scenarios generated and threads created!`);
-
     } catch (error) {
-      console.error("[UnifiedConversationView] Error generating roleplay scenarios:", error);
-      alert(`An error occurred while generating roleplay scenarios: ${error instanceof Error ? error.message : String(error)}`);
+      console.error('[RoleplayGen] Error generating roleplay scenarios:', error);
+      // TODO: Display error to user more gracefully
     } finally {
       setIsGeneratingRoleplays(false);
     }
@@ -478,7 +476,7 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
               ) : (
                 <>
                   <Sparkle class="mr-2 h-4 w-4" />
-                  Generate Roleplays
+                  Generate Roleplay
                 </>
               )}
             </Button>
