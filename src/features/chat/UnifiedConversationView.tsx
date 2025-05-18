@@ -8,7 +8,7 @@ import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../component
 import { MicVAD } from '@ricky0123/vad-web';
 import { userConfigurationStorage } from '../../services/storage/storage';
 import { browser } from 'wxt/browser';
-import { generateElevenLabsSpeechWithTimestamps, ElevenLabsVoiceSettings } from '../../services/tts/elevenLabsService';
+import { generateElevenLabsSpeechWithTimestamps } from '../../services/tts/elevenLabsService';
 import { DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
 // Placeholder for STT service - will be properly imported later
 // import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService'; 
@@ -40,14 +40,6 @@ const HIGHLIGHT_CSS = `
     background-color: hsl(240, 5%, 25%);
   }
 `;
-
-// Define a more specific type for TTS Config if possible, or use 'any' if too complex for now
-interface TTSConfigForView {
-    apiKey?: string;
-    modelId?: string;
-    voiceId?: string;
-    voiceSettings?: ElevenLabsVoiceSettings;
-}
 
 interface UnifiedConversationViewProps {
   threads: Thread[];
@@ -392,7 +384,8 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
       const targetLanguage = 'English'; 
       console.log(`[UnifiedConversationView] Generating roleplays for language: ${targetLanguage}`);
       
-      const scenarios: RoleplayScenario[] = await generateRoleplayScenariosLLM(targetLanguage, undefined);
+      // Pass an empty string for topicHint instead of undefined
+      const scenarios: RoleplayScenario[] = await generateRoleplayScenariosLLM(targetLanguage, "");
 
       if (!scenarios || scenarios.length === 0) {
         console.warn('[UnifiedConversationView] No roleplay scenarios generated.');

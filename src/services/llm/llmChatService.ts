@@ -13,7 +13,6 @@ import personality from './prompts/personality.json';
 import { getRecentVisitedPages } from '../db/visited_pages';
 import { getRecentBookmarks } from '../db/bookmarks'; // Assuming BookmarkForContext is exported
 
-import { getRoleplaySystemPrompt, getRoleplayUserPrompt } from './prompts/roleplayScenarios';
 import { userConfigurationStorage } from '../storage/storage'; // Import userConfigurationStorage
 
 const baseSystemPrompt = personality.system;
@@ -22,6 +21,7 @@ interface UnifiedChatOptions {
   // basePersonality can be overridden if needed, otherwise defaults to personality.json
   baseSystemOverride?: string; 
   threadSystemPrompt?: string;
+  excludeBaseSystem?: boolean; // Added option to exclude base system prompt
   // No need to pass context string via options if fetched internally by prepareLLMMessages
 }
 
@@ -74,12 +74,26 @@ async function prepareLLMMessages(
   const systemMessages: ChatMessage[] = [];
 
   // Construct the full system prompt string
-  let fullSystemPrompt = effectiveBaseSystem;
-  if (userActivityContext) {
-    fullSystemPrompt += `\n\n${userActivityContext}`;
-  }
-  if (options.threadSystemPrompt) {
-    fullSystemPrompt += `\n\n[Current Thread Focus]\n${options.threadSystemPrompt}`;
+  let fullSystemPrompt = "";
+
+  if (options.excludeBaseSystem) {
+    // If excluding base, the system prompt is ONLY the threadSystemPrompt.
+    // User context is handled by the caller in the user message for this specific task (scenario generation).
+    if (options.threadSystemPrompt) {
+      fullSystemPrompt = options.threadSystemPrompt;
+    }
+    // DO NOT append userActivityContext here when excludeBaseSystem is true,
+    // as it's expected to be part of the user message for specific tasks like scenario generation.
+  } else {
+    // Default behavior: start with base system prompt
+    fullSystemPrompt = effectiveBaseSystem;
+    if (userActivityContext) {
+      fullSystemPrompt += "\n\n" + userActivityContext;
+    }
+    if (options.threadSystemPrompt) {
+      // Append as [Current Thread Focus] only if not excluding base system
+      fullSystemPrompt += "\n\n[Current Thread Focus]\n" + options.threadSystemPrompt;
+    }
   }
 
   if (fullSystemPrompt.trim()) {
@@ -244,13 +258,14 @@ export async function* getAiChatResponseStream(
 export interface RoleplayScenario {
   title: string;
   description: string;
+  ai_opening_line: string; // Added for the AI's first interactive line
 }
 
 export async function generateRoleplayScenariosLLM(
   targetLanguageName: string,
-  topicHint: string
+  topicHint: string // topicHint is now a string, can be empty
 ): Promise<RoleplayScenario[]> {
-  console.log(`[llmChatService] Generating roleplay scenarios for ${targetLanguageName}, topic: ${topicHint}`);
+  console.log(`[llmChatService] Generating 1 roleplay scenario (with AI opening line) for ${targetLanguageName}, topic: "${topicHint}"`);
   
   const userCfg = await userConfigurationStorage.getValue();
   if (!userCfg || !userCfg.llmConfig || !userCfg.llmConfig.providerId || !userCfg.llmConfig.modelId) {
@@ -273,20 +288,21 @@ export async function generateRoleplayScenariosLLM(
     console.warn("[llmChatService] Failed to fetch user context for roleplay scenarios, proceeding without it:", e);
   }
 
-  const systemPromptForScenarios = getRoleplaySystemPrompt({ targetLanguageName, topicHint });
-  const userPromptForScenarios = getRoleplayUserPrompt({ targetLanguageName, topicHint, contextString });
+  // Consolidated System Prompt for scenario generation
+  const consolidatedSystemPrompt = `You are a helpful assistant. Your task is to generate 1 distinct roleplay scenario for a user learning ${targetLanguageName}. The scenario must have a 'title' (string), a 'description' (string, 1-3 sentences for scene setting), and an 'ai_opening_line' (string, the first thing the AI character says to the user to start the interaction). RETURN the result as a VALID JSON ARRAY containing a single object, like this: [{ "title": "Example Title", "description": "Example scene description.", "ai_opening_line": "Hello! How can I help you today?" }] . Do not include any other text, explanations, or markdown formatting outside the JSON array.
 
-  console.log("[llmChatService] Roleplay System Prompt:", systemPromptForScenarios);
-  console.log("[llmChatService] Roleplay User Prompt:", userPromptForScenarios);
+${contextString ? `Available Context (use this for inspiration if relevant, otherwise ignore):
+${contextString}
+` : ''}If the context is not relevant or too limited, please generate a scenario based on a general conversational topic${topicHint ? ` related to: "${topicHint}"` : ''}.`;
+
+  console.log("[llmChatService] Consolidated System Prompt (for scenario generation):", consolidatedSystemPrompt);
 
   try {
-    // For generating scenarios, the "history" is empty, and the "latestUserMessageContent" is the specific user prompt.
-    // The system prompt for the LLM call is the one designed to elicit JSON.
     const scenariosJsonString = await getAiChatResponse(
       [], // No prior conversation history for this specific task
-      userPromptForScenarios, // The detailed prompt asking for scenarios
+      "", // Empty user message, as all instructions are in the system prompt
       llmServiceConfig,
-      { threadSystemPrompt: systemPromptForScenarios } // The system prompt guides the LLM to produce JSON
+      { threadSystemPrompt: consolidatedSystemPrompt, excludeBaseSystem: true } 
     );
 
     console.log("[llmChatService] Raw scenarios JSON string from LLM:", scenariosJsonString);
@@ -324,15 +340,21 @@ export async function generateRoleplayScenariosLLM(
     // Validate structure of each scenario
     const validScenarios: RoleplayScenario[] = [];
     for (const item of parsedScenarios) {
-      if (item && typeof item.title === 'string' && typeof item.description === 'string') {
-        validScenarios.push({ title: item.title, description: item.description });
+      if (item && typeof item.title === 'string' && 
+          typeof item.description === 'string' && 
+          typeof item.ai_opening_line === 'string') { // Validate new field
+        validScenarios.push({ 
+          title: item.title, 
+          description: item.description, 
+          ai_opening_line: item.ai_opening_line 
+        });
       } else {
-        console.warn('[llmChatService] Invalid scenario item from LLM:', item);
+        console.warn('[llmChatService] Invalid scenario item from LLM (missing title, description, or ai_opening_line): ', item);
       }
     }
 
     if (validScenarios.length === 0 && parsedScenarios.length > 0) {
-        throw new Error('LLM returned scenario items with incorrect structure (missing title/description).');
+        throw new Error('LLM returned scenario items with incorrect structure (missing title, description, or ai_opening_line).');
     }
     
     console.log(`[llmChatService] Successfully generated ${validScenarios.length} roleplay scenarios.`);
