@@ -237,6 +237,7 @@ CREATE TABLE IF NOT EXISTS page_versions (
     embedding_768 vector(768) NULL,
     embedding_1024 vector(1024) NULL,
     active_embedding_dimension INTEGER NULL, -- Which dimension is currently populated?
+    visit_count INTEGER DEFAULT 0 NOT NULL, -- ADDED: To track visits for this specific version
     processing_error TEXT NULL          -- Store any error message during processing/embedding
 );
 

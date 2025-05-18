@@ -78,13 +78,33 @@ export async function recordPageVisitVersion(data: PageVisitData): Promise<void>
     const markdownHash = markdown_content ? await calculateHash(markdown_content) : null;
     console.log(`[DB VisitedPages] Calculated markdown hash: ${markdownHash ? markdownHash.substring(0,10)+'...' : 'null'}`);
 
-    // 3. Insert new version into page_versions
+    // --- MODIFICATION START: Check for existing identical version ---
+    if (markdownHash) { // Only check if we have a hash
+      const findExistingSql = `
+        SELECT version_id FROM page_versions
+        WHERE url = $1 AND markdown_hash = $2
+        ORDER BY captured_at DESC LIMIT 1;
+      `;
+      const existingResult = await db.query<{ version_id: number }>(findExistingSql, [url, markdownHash]);
+      if (existingResult.rows.length > 0) {
+        const existingVersionId = existingResult.rows[0].version_id;
+        console.log(`[DB VisitedPages] Found existing identical page_version (id: ${existingVersionId}) for URL: ${url} with hash: ${markdownHash}. Incrementing count.`);
+        await incrementPageVersionVisitCount(existingVersionId);
+        // The main page record's last_visited_at was already updated, so we can return.
+        return;
+      }
+    }
+    // --- MODIFICATION END ---
+
+    // 3. Insert new version into page_versions (if no identical version was found)
+    // MODIFIED: Set visit_count to 1 for new versions
     const insertVersionSql = `
       INSERT INTO page_versions (
           url, markdown_content, markdown_hash, captured_at,
-          embedding_model_id, last_embedded_at, processed_for_embedding_at
+          embedding_model_id, last_embedded_at, processed_for_embedding_at,
+          visit_count 
       )
-      VALUES ($1, $2, $3, $4, NULL, NULL, NULL);
+      VALUES ($1, $2, $3, $4, NULL, NULL, NULL, 1); -- visit_count is now 1
     `;
     const versionParams = [
       url,              // $1
@@ -473,6 +493,7 @@ export async function getTopVisitedPages(limit: number = 8): Promise<{ title: st
   let db: PGlite | null = null;
   try {
     db = await getDbInstance();
+    // Ensure pv.visit_count is used here.
     const query = `
       SELECT p.url, p.title, SUM(pv.visit_count) AS total_visits
       FROM page_versions pv
@@ -481,17 +502,28 @@ export async function getTopVisitedPages(limit: number = 8): Promise<{ title: st
       ORDER BY total_visits DESC
       LIMIT $1;
     `;
-    // console.log("[DB VisitedPages DEBUG getTopVisitedPages] Query:", query, "Limit:", limit);
-    const results = await db.query<{ url: string; title: string | null; total_visits: number }>(query, [limit]);
-    // console.log('[DB VisitedPages DEBUG getTopVisitedPages] Raw results.rows:', JSON.stringify(results.rows, null, 2));
+    const result = await db.query<{ url: string; title: string | null; total_visits: number }>(query, [limit]);
     
-    return results.rows.map(row => ({
+    if (result.rows.length === 0) {
+      console.log('[DB VisitedPages] No top visited pages found.');
+      return [];
+    }
+    
+    console.log(`[DB VisitedPages] Found ${result.rows.length} top visited pages. Details:`);
+    result.rows.forEach(row => {
+      console.log(`  - URL: ${row.url}, Title: ${row.title || 'N/A'}, Total Visits: ${row.total_visits}`);
+    });
+
+    return result.rows.map(row => ({
       url: row.url,
-      title: row.title,
+      title: row.title
     }));
+
   } catch (error: any) {
     console.error('[DB VisitedPages] Error fetching top visited pages:', error);
-    return []; // Return empty array on error
+    // It's often good to re-throw or return an empty array/error indicator
+    // For now, returning empty on error to prevent cascading failures in context building.
+    return []; 
   }
 }
 // --- END NEW FUNCTION --- 

@@ -406,6 +406,17 @@ const App: Component = () => {
     }
     // --- End Automatic Title Generation Logic ---
 
+    // --- MODIFICATION START: Prepare history BEFORE adding the current user message to the signal ---
+    // This history is what existed *before* the current user typed their message.
+    const historyForLLMSnapshot = threads().find(t => t.id === threadId)?.messages || [];
+    const conversationHistoryForLLM: LLMChatMessage[] = historyForLLMSnapshot
+        .filter(msg => typeof msg.text_content === 'string' && (msg.sender === 'user' || msg.sender === 'ai'))
+        .map(msg => ({
+            role: msg.sender === 'user' ? 'user' : 'assistant',
+            content: msg.text_content!
+        }));
+    // --- MODIFICATION END ---
+
     const userMessage: UIChatMessage = {
       id: `msg-user-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       thread_id: threadId,
@@ -502,14 +513,14 @@ const App: Component = () => {
     }
     
     // Prepare history for LLM, using messages up to and including the latest user message
-    const historyForLLM = threads().find(t => t.id === threadId)?.messages || [];
-    const conversationHistoryForLLM: LLMChatMessage[] = historyForLLM
-        // Ensure we only map messages that have text_content, and are from user or ai
-        .filter(msg => typeof msg.text_content === 'string' && (msg.sender === 'user' || msg.sender === 'ai'))
-        .map(msg => ({
-            role: msg.sender === 'user' ? 'user' : 'assistant', // Map 'ai' to 'assistant' for LLM
-            content: msg.text_content! 
-        }));
+    // const historyForLLM = threads().find(t => t.id === threadId)?.messages || []; // OLD LOCATION - REMOVED
+    // const conversationHistoryForLLM: LLMChatMessage[] = historyForLLM // OLD LOCATION - REMOVED
+    //     // Ensure we only map messages that have text_content, and are from user or ai
+    //     .filter(msg => typeof msg.text_content === 'string' && (msg.sender === 'user' || msg.sender === 'ai'))
+    //     .map(msg => ({
+    //         role: msg.sender === 'user' ? 'user' : 'assistant', // Map 'ai' to 'assistant' for LLM
+    //         content: msg.text_content! 
+    //     }));
 
     // Create an initial placeholder AI message for streaming
     const aiStreamingMessageId = `msg-ai-stream-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -543,7 +554,7 @@ const App: Component = () => {
     try {
       console.log('[App.tsx Stream] Starting to iterate getAiChatResponseStream...');
       for await (const part of getAiChatResponseStream(
-        conversationHistoryForLLM, 
+        conversationHistoryForLLM, // Now using the snapshot prepared earlier
         text, 
         llmServiceConfig,
         { threadSystemPrompt: currentThreadSignalValue.systemPrompt }
