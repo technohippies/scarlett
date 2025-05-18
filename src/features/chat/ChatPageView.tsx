@@ -4,6 +4,7 @@ import { TextField, TextFieldInput } from '../../components/ui/text-field';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../../components/ui/sheet';
 import type { ChatMessage, ChatSession } from './types';
 import { ChatMessageItem } from './ChatMessageItem';
+import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../components/ui/switch';
 
 interface ChatPageViewProps {
   chatSessions: ChatSession[];
@@ -39,8 +40,8 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
           <SheetTrigger as={Button} variant="ghost" class="mr-1 p-2 md:hidden">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
           </SheetTrigger>
-          <SheetContent position="left" class="w-full sm:max-w-xs p-0">
-            <div class="p-2 pt-4 overflow-y-auto">
+          <SheetContent position="left" class="w-full sm:max-w-xs p-0 flex flex-col">
+            <div class="p-2 pt-4 overflow-y-auto flex-grow">
               <For each={props.chatSessions}>
                 {(session) => (
                   <Button
@@ -56,12 +57,25 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
                 )}
               </For>
             </div>
+            <div class="p-2 border-t border-border/40">
+              <Button variant="outline" class="w-full">
+                Generate Roleplays
+              </Button>
+            </div>
           </SheetContent>
         </Sheet>
         <Button variant="ghost" onClick={props.onNavigateBack} class="mr-2 p-2">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
         </Button>
         <div class="flex-1"></div>
+        <div class="flex items-center mr-4">
+          <Switch id="speech-mode-toggle" class="flex items-center">
+            <SwitchLabel class="mr-2">Speech Mode</SwitchLabel>
+            <SwitchControl>
+              <SwitchThumb />
+            </SwitchControl>
+          </Switch>
+        </div>
       </header>
 
       <div class="flex flex-1 overflow-hidden">
@@ -81,6 +95,11 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
                 </Button>
               )}
             </For>
+          </div>
+          <div class="p-2 border-t border-border/40">
+            <Button variant="outline" class="w-full">
+              Generate Roleplays
+            </Button>
           </div>
         </aside>
 
