@@ -10,18 +10,23 @@ export interface BookmarkForContext {
 }
 
 export async function getRecentBookmarks(limit: number = 3): Promise<BookmarkForContext[]> {
-  console.log(`[DB Bookmarks] Fetching ${limit} recent bookmarks.`);
+  console.log(`[DB Bookmarks] Fetching recent bookmarks (TEMPORARILY NO LIMIT).`);
   let db: PGlite | null = null;
   try {
     db = await getDbInstance();
     const query = `
       SELECT url, title
       FROM bookmarks
-      ORDER BY saved_at DESC
-      LIMIT $1;
+      ORDER BY saved_at DESC;
     `;
-    const results = await db.query(query, [limit]);
-    return results.rows.map((row: any) => ({
+    console.log("[DB Bookmarks DEBUG] About to execute query (NO LIMIT):"); // LOG BEFORE QUERY
+    const results = await db.query(query);
+    console.log('[DB Bookmarks DEBUG] Raw results object from query (NO LIMIT):', JSON.stringify(results, null, 2)); // LOG RAW RESULTS
+    console.log('[DB Bookmarks DEBUG] Raw results.rows from query (NO LIMIT):', JSON.stringify(results.rows, null, 2));
+    
+    const limitedRows = results.rows.slice(0, limit);
+
+    return limitedRows.map((row: any) => ({
       url: row.url as string,
       title: row.title as string | null,
     }));

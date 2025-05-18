@@ -462,4 +462,36 @@ export async function getRecentVisitedPages(limit: number = 5): Promise<{ title:
     return []; // Return empty array on error
   }
 }
+
+/**
+ * Fetches the top N most visited pages based on the sum of visit_counts from page_versions.
+ * @param limit The maximum number of top visited pages to return.
+ * @returns A promise that resolves to an array of page objects with title and URL.
+ */
+export async function getTopVisitedPages(limit: number = 8): Promise<{ title: string | null, url: string }[]> {
+  console.log(`[DB VisitedPages] Fetching top ${limit} visited pages by sum of version visit counts.`);
+  let db: PGlite | null = null;
+  try {
+    db = await getDbInstance();
+    const query = `
+      SELECT p.url, p.title, SUM(pv.visit_count) AS total_visits
+      FROM page_versions pv
+      JOIN pages p ON pv.url = p.url
+      GROUP BY p.url, p.title
+      ORDER BY total_visits DESC
+      LIMIT $1;
+    `;
+    // console.log("[DB VisitedPages DEBUG getTopVisitedPages] Query:", query, "Limit:", limit);
+    const results = await db.query<{ url: string; title: string | null; total_visits: number }>(query, [limit]);
+    // console.log('[DB VisitedPages DEBUG getTopVisitedPages] Raw results.rows:', JSON.stringify(results.rows, null, 2));
+    
+    return results.rows.map(row => ({
+      url: row.url,
+      title: row.title,
+    }));
+  } catch (error: any) {
+    console.error('[DB VisitedPages] Error fetching top visited pages:', error);
+    return []; // Return empty array on error
+  }
+}
 // --- END NEW FUNCTION --- 

@@ -10,7 +10,7 @@ import { janChat } from './providers/jan/chat';
 import personality from './prompts/personality.json';
 
 // --- Import DB functions for context --- 
-import { getRecentVisitedPages } from '../db/visited_pages';
+import { getRecentVisitedPages, getTopVisitedPages } from '../db/visited_pages';
 import { getRecentBookmarks } from '../db/bookmarks'; // Assuming BookmarkForContext is exported
 import { getRecentlyStudiedFlashcardsForContext } from '../db/learning'; // Import new function and type
 import { getTodaysMoodForContext } from '../db/mood'; // Import for mood
@@ -45,21 +45,49 @@ async function fetchAndFormatUserContext(): Promise<string> {
       console.log('[llmChatService DEBUG] todaysMood is falsy, NOT adding to contextParts.'); // ADDED DEBUG LOG
     }
   } catch (e) {
-    console.warn("[llmChatService DEBUG] CRITICAL ERROR fetching today's mood for context:", e); // Enhanced log
+    console.warn("[llmChatService DEBUG] CRITICAL ERROR fetching today\'s mood for context:", e); // Enhanced log
   }
 
   try {
-    const recentPages = await getRecentVisitedPages(5);
-    if (recentPages.length > 0) {
-      const pageLines = recentPages.map(p => `- Visited: "${p.title || 'Untitled Page'}"`);
-      contextParts.push("Recently Visited Pages:\n" + pageLines.join('\n'));
+    const recentPagesLimit = 5;
+    const topPagesLimit = 8;
+    const [recentPages, topPages] = await Promise.all([
+      getRecentVisitedPages(recentPagesLimit),
+      getTopVisitedPages(topPagesLimit)
+    ]);
+
+    const combinedPages: { title: string | null, url: string }[] = [];
+    const seenUrls = new Set<string>();
+
+    // Add recent pages first, then top pages, ensuring no duplicates
+    recentPages.forEach(page => {
+      if (!seenUrls.has(page.url)) {
+        combinedPages.push(page);
+        seenUrls.add(page.url);
+      }
+    });
+
+    topPages.forEach(page => {
+      if (!seenUrls.has(page.url)) {
+        combinedPages.push(page);
+        seenUrls.add(page.url);
+      }
+    });
+    
+    // Log combined and deduplicated pages
+    console.log('[llmChatService DEBUG] Combined and deduplicated visited pages:', JSON.stringify(combinedPages, null, 2));
+
+    if (combinedPages.length > 0) {
+      const pageLines = combinedPages.map(p => `- Visited: "${p.title || 'Untitled Page'}" (URL: ${p.url})`); // Added URL for clarity during debug/prompt inspection
+      contextParts.push("Visited Pages (Recent & Top):\n" + pageLines.join('\n'));
     }
   } catch (e) {
-    console.warn("[llmChatService] Error fetching recent pages for context:", e);
+    console.warn("[llmChatService] Error fetching and processing visited pages for context:", e);
   }
 
   try {
     const recentBookmarks = await getRecentBookmarks(3);
+    console.log('[llmChatService DEBUG] Received recentBookmarks:', JSON.stringify(recentBookmarks, null, 2)); // ADDED LOG
     if (recentBookmarks.length > 0) {
       const bookmarkLines = recentBookmarks.map(b => `- Bookmarked: "${b.title || 'Untitled Bookmark'}"`);
       contextParts.push("Recent Bookmarks:\n" + bookmarkLines.join('\n'));
