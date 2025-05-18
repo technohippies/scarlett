@@ -2,12 +2,10 @@ import { Component, For, createSignal, createEffect, onCleanup, Show } from 'sol
 import { Dynamic } from 'solid-js/web';
 import { Button } from '../../components/ui/button';
 import { TextField, TextFieldInput } from '../../components/ui/text-field';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '../../components/ui/sheet';
-import type { ChatMessage, Thread } from './types';
+import type { Thread } from './types';
 import { ChatMessageItem } from './ChatMessageItem';
 import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../components/ui/switch';
 import { MicVAD } from '@ricky0123/vad-web';
-import { pcmToWavBlob } from '../../lib/utils';
 import { userConfigurationStorage } from '../../services/storage/storage';
 import { browser } from 'wxt/browser';
 import { generateElevenLabsSpeechWithTimestamps, ElevenLabsVoiceSettings } from '../../services/tts/elevenLabsService';
@@ -118,7 +116,6 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
         onSpeechEnd: async (audio) => {
           console.log('[VAD] onSpeechEnd');
           setIsRecording(false);
-          const wavBlob = pcmToWavBlob(audio, 16000);
           let transcribedText: string | null = "Simulated STT: " + new Date().toLocaleTimeString();
           // Actual STT logic placeholder
           // const userCfg = await userConfigurationStorage.getValue();
@@ -306,7 +303,6 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
         <Button variant="ghost" size="icon" onClick={props.onNavigateBack} class="mr-2">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
         </Button>
-        <h1 class="text-lg font-semibold">{currentThread()?.title || 'Chat'}</h1>
         <div class="flex-grow"></div>
         <Switch checked={isSpeechModeActive()} onChange={setIsSpeechModeActive} class="ml-auto mr-2">
           <SwitchControl><SwitchThumb /></SwitchControl>
@@ -341,7 +337,7 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
             )}
           </For>
 
-          <div class="mt-auto pt-2 border-t border-border-tertiary">
+          <div class="mt-auto pt-2">
             <Button variant="outline" class="w-full" onClick={handleGenerateRoleplays}>
               Generate Roleplays
             </Button>
@@ -368,7 +364,7 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
           </div>
 
           <Show when={!isSpeechModeActive() && currentThread()?.id !== JUST_CHAT_THREAD_ID}>
-            <div class="p-2 border-t border-border-secondary bg-bg-primary">
+            <div class="p-2 bg-bg-primary">
               <div class="flex items-center space-x-2">
                 <TextField class="flex-1">
                   <TextFieldInput 

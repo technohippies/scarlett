@@ -38,23 +38,42 @@ async function _ollamaChatNonStream(
     ...(config.options ? config.options : {}),
   };
   const baseUrl = config.baseUrl || 'http://localhost:11434';
-  console.log('[ollamaChat] Sending non-streaming request body:', JSON.stringify(body));
+  console.log('[ollamaChat _ollamaChatNonStream] Sending non-streaming request. Body:', JSON.stringify(body, null, 2), 'URL:', `${baseUrl}/v1/chat/completions`);
 
-  const res = await fetch(`${baseUrl}/v1/chat/completions`, { // Assuming OpenAI compatible endpoint
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  });
+  try {
+    const response = await fetch(`${baseUrl}/v1/chat/completions`, { // Assuming OpenAI compatible endpoint
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
 
-  if (!res.ok) {
-    const errorBody = await res.text();
-    console.error('[ollamaChat] Non-stream error response body:', errorBody);
-    throw new Error(`Ollama chat non-stream error: ${res.status} ${res.statusText}`);
+    console.log(`[ollamaChat _ollamaChatNonStream] Received response status: ${response.status}`);
+
+    if (!response.ok) {
+      let errorBody = 'Could not retrieve error body.';
+      try {
+        console.log('[ollamaChat _ollamaChatNonStream] Response not OK. Attempting to read error body as text...');
+        errorBody = await response.text();
+        console.log('[ollamaChat _ollamaChatNonStream] Error body received:', errorBody);
+      } catch (e: any) {
+        console.error('[ollamaChat _ollamaChatNonStream] Failed to read error body:', e.message);
+      }
+      console.error(`[ollamaChat _ollamaChatNonStream] Non-stream error. Status: ${response.status}, Body: ${errorBody}`);
+      throw new Error(`Ollama chat non-stream error: ${response.status} ${response.statusText}. Body: ${errorBody}`);
+    }
+
+    console.log('[ollamaChat _ollamaChatNonStream] Response OK. Attempting to parse JSON...');
+    const jsonResponse = await response.json();
+    console.log('[ollamaChat _ollamaChatNonStream] JSON parsed successfully.');
+    return jsonResponse;
+
+  } catch (error: any) {
+    console.error('[ollamaChat _ollamaChatNonStream] Error during fetch or processing:', error.message, error.stack);
+    // Re-throw the original error or a new one wrapping it
+    throw new Error(`Error in _ollamaChatNonStream: ${error.message}`);
   }
-  // Assuming Ollama response structure matches LLMChatResponse
-  return res.json();
 }
 
 // Streaming implementation for Ollama (adapted from Jan)

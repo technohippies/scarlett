@@ -16,8 +16,8 @@ import {
   addChatThread,
   addChatMessage
 } from '../../src/services/db/chat';
-import { getAiChatResponse } from '../../src/services/llm/llmChatService';
-import type { ChatMessage as LLMChatMessage, LLMConfig } from '../../src/services/llm/types';
+import { getAiChatResponseStream } from '../../src/services/llm/llmChatService';
+import type { ChatMessage as LLMChatMessage, LLMConfig, LLMProviderId, StreamedChatResponsePart } from '../../src/services/llm/types';
 
 const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
 
@@ -325,201 +325,271 @@ const App: Component = () => {
     isUserMessage: boolean,
     ttsLangForAiResponse?: string
   ) => {
-    console.log(`[App.tsx] handleSendMessageToUnifiedView. Thread: ${threadId}, User: ${isUserMessage}, Text: \"${text}\"`);
     const currentThreadSignalValue = threads().find(t => t.id === threadId);
     if (!currentThreadSignalValue) {
-      console.error(`[App.tsx] Thread with id ${threadId} not found. Cannot send message.`);
+      console.error(`[App.tsx] handleSendMessageToUnifiedView: Thread with id ${threadId} not found.`);
       return;
     }
 
     const currentIsoTimestamp = new Date().toISOString();
-
-    const newMessage: ChatMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      thread_id: threadId, 
+    const userMessage: ChatMessage = {
+      id: `msg-user-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+      thread_id: threadId,
       timestamp: currentIsoTimestamp,
-      sender: isUserMessage ? 'user' : 'ai',
+      sender: 'user',
       text_content: text,
       ttsWordMap: undefined,
       alignmentData: undefined,
-      ttsLang: isUserMessage ? undefined : ttsLangForAiResponse || effectiveLangCode(),
+      ttsLang: undefined,
     };
 
-    try {
-      await addChatMessage(newMessage);
-
-      const newMessagesAfterUser = [...(currentThreadSignalValue.messages || []), newMessage];
-      const updatedThreadAfterUserMessage: Thread = {
-        ...currentThreadSignalValue,
-        messages: newMessagesAfterUser,
-        lastActivity: currentIsoTimestamp,
-      };
-      setThreads(prevThreads =>
-        prevThreads.map(t => (t.id === threadId ? updatedThreadAfterUserMessage : t))
-      );
-
-      if (isUserMessage) {
-        const userConfig = await userConfigurationStorage.getValue();
-
-        if (!userConfig
-            || !userConfig.selectedLlmProvider
-            || userConfig.selectedLlmProvider === 'none'
-            || !userConfig.llmConfig
-            || !userConfig.llmConfig.modelId
-            || !userConfig.llmConfig.baseUrl
-        ) {
-          console.error('[App.tsx] LLM provider, config, or modelId not properly set. Cannot get AI response.');
-          const errorText = !userConfig || !userConfig.llmConfig
-            ? "AI provider is not set."
-            : !userConfig.llmConfig.modelId
-              ? "LLM model is not configured."
-              : "LLM baseUrl is not configured.";
-          const errorTimestamp = new Date().toISOString();
-          const errorAiMessage: ChatMessage = {
-            id: `msg-error-cfg-${Date.now()}`,
-            thread_id: threadId, 
-            timestamp: errorTimestamp,
-            sender: 'ai',
-            text_content: errorText + " Please check settings.",
-            ttsWordMap: undefined, alignmentData: undefined, ttsLang: effectiveLangCode(),
-          };
-          await addChatMessage(errorAiMessage);
-
-          const newMessagesAfterError = [...newMessagesAfterUser, errorAiMessage];
-          const updatedThreadAfterError: Thread = {
-            ...updatedThreadAfterUserMessage,
-            messages: newMessagesAfterError,
-            lastActivity: errorTimestamp,
-          };
-          setThreads(prevThreads =>
-            prevThreads.map(t => (t.id === threadId ? updatedThreadAfterError : t))
-          );
-          return;
-        }
-
-        const modelIdSafe: string = userConfig.llmConfig.modelId;
-        const baseUrlSafe: string = userConfig.llmConfig.baseUrl; // guaranteed non-null by guard
-
-        const llmSpecificConfig: LLMConfig = {
-          provider: userConfig.selectedLlmProvider,
-          model: modelIdSafe,
-          baseUrl: baseUrlSafe,
-          apiKey: userConfig.llmConfig.apiKey ?? '',
-          stream: false,
+    // Add user message to DB and update local state immediately
+    if (isUserMessage) {
+      try {
+        await addChatMessage(userMessage);
+        const updatedMessages = [...(currentThreadSignalValue.messages || []), userMessage];
+        const updatedThreadAfterUser: Thread = {
+          ...currentThreadSignalValue,
+          messages: updatedMessages,
+          lastActivity: currentIsoTimestamp,
         };
-        
-        // Additional check for empty model string if the LLM provider cannot handle it.
-        if (llmSpecificConfig.model === "") {
-            console.error('[App.tsx] LLM model ID is an empty string after safety check. Cannot get AI response.');
-            const errorModelEmptyTimestamp = new Date().toISOString();
-            const errorModelEmptyMessage: ChatMessage = {
-                id: `msg-error-model-empty-${Date.now()}`,
-                thread_id: threadId,
-                timestamp: errorModelEmptyTimestamp,
-                sender: 'ai',
-                text_content: "LLM model is not configured (empty). Please check settings.",
-                ttsWordMap: undefined, alignmentData: undefined, ttsLang: effectiveLangCode(),
-            };
-            await addChatMessage(errorModelEmptyMessage);
-            const newMessagesAfterModelError = [...newMessagesAfterUser, errorModelEmptyMessage];
-            const updatedThreadAfterModelError: Thread = {
-                ...updatedThreadAfterUserMessage,
-                messages: newMessagesAfterModelError,
-                lastActivity: errorModelEmptyTimestamp,
-            };
-            setThreads(prevThreads =>
-                prevThreads.map(t => (t.id === threadId ? updatedThreadAfterModelError : t))
-            );
-            return;
-        }
+        setThreads(prevThreads =>
+          prevThreads.map(t => (t.id === threadId ? updatedThreadAfterUser : t))
+        );
+      } catch (error) {
+        console.error('[App.tsx] Error saving user message or updating UI:', error);
+        // Optionally, inform the user that their message couldn't be sent/saved
+        return; 
+      }
+    } else {
+      // This branch handles AI-initiated messages (e.g., kickoff)
+      // It assumes 'text' is the full message content from the AI already.
+      const aiKickoffMessage: ChatMessage = {
+        id: `msg-ai-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        thread_id: threadId,
+        timestamp: currentIsoTimestamp,
+        sender: 'ai',
+        text_content: text, // Full text for AI kickoff
+        ttsWordMap: undefined,
+        alignmentData: undefined,
+        ttsLang: ttsLangForAiResponse || effectiveLangCode(),
+      };
+      try {
+        await addChatMessage(aiKickoffMessage);
+        const updatedMessagesWithKickoff = [...(currentThreadSignalValue.messages || []), aiKickoffMessage];
+        const updatedThreadWithKickoff: Thread = {
+          ...currentThreadSignalValue,
+          messages: updatedMessagesWithKickoff,
+          lastActivity: currentIsoTimestamp,
+        };
+        setThreads(prevThreads =>
+          prevThreads.map(t => (t.id === threadId ? updatedThreadWithKickoff : t))
+        );
+      } catch (error) {
+        console.error('[App.tsx] Error saving AI kickoff message or updating UI:', error);
+      }
+      return; // AI kickoff doesn't need to fetch a response for itself
+    }
 
-        const historyForLLM = currentThreadSignalValue.messages || [];
-        const conversationHistoryForLLM: LLMChatMessage[] = historyForLLM.map(msg => ({
-          role: msg.sender === 'user' ? 'user' : 'assistant',
-          content: msg.text_content
+    // --- Streaming AI Response Logic (only if isUserMessage was true) ---
+    const userConfig = await userConfigurationStorage.getValue();
+    if (!userConfig || !userConfig.llmConfig || !userConfig.llmConfig.providerId || userConfig.llmConfig.providerId === 'none' || !userConfig.llmConfig.modelId) {
+      console.error('[App.tsx] LLM config not properly set for streaming response.', userConfig?.llmConfig);
+      const errorText = "AI provider/model not configured. Please check settings.";
+      // Add error message to chat
+      const errorMsgTimestamp = new Date().toISOString();
+      const errorAiMessage: ChatMessage = {
+        id: `msg-error-cfg-stream-${Date.now()}`, thread_id: threadId, timestamp: errorMsgTimestamp,
+        sender: 'ai', text_content: errorText, ttsLang: effectiveLangCode(),
+      };
+      await addChatMessage(errorAiMessage);
+      setThreads(prev => prev.map(t => t.id === threadId ? { ...t, messages: [...(t.messages || []), errorAiMessage], lastActivity: errorMsgTimestamp } : t));
+      return;
+    }
+
+    const llmServiceConfig: LLMConfig = {
+      provider: userConfig.llmConfig.providerId as LLMProviderId,
+      model: userConfig.llmConfig.modelId,
+      baseUrl: userConfig.llmConfig.baseUrl ?? '',
+      apiKey: userConfig.llmConfig.apiKey ?? undefined,
+    };
+
+    if (!llmServiceConfig.model) {
+        console.error('[App.tsx] LLM Model ID is empty for streaming.');
+        const modelErrorMsg = "LLM model not configured for streaming. Check settings.";
+        const modelErrorTimestamp = new Date().toISOString();
+        const errorModelMsg: ChatMessage = {
+            id: `msg-error-model-stream-${Date.now()}`, thread_id: threadId, timestamp: modelErrorTimestamp,
+            sender: 'ai', text_content: modelErrorMsg, ttsLang: effectiveLangCode(),
+        };
+        await addChatMessage(errorModelMsg);
+        setThreads(prev => prev.map(t => t.id === threadId ? { ...t, messages: [...(t.messages || []), errorModelMsg], lastActivity: modelErrorTimestamp } : t));
+        return;
+    }
+    
+    // Prepare history for LLM, using messages up to and including the latest user message
+    const historyForLLM = threads().find(t => t.id === threadId)?.messages || [];
+    const conversationHistoryForLLM: LLMChatMessage[] = historyForLLM
+        // Ensure we only map messages that have text_content, and are from user or ai
+        .filter(msg => typeof msg.text_content === 'string' && (msg.sender === 'user' || msg.sender === 'ai'))
+        .map(msg => ({
+            role: msg.sender === 'user' ? 'user' : 'assistant', // Map 'ai' to 'assistant' for LLM
+            content: msg.text_content! 
         }));
 
-        console.log(`[App.tsx] Requesting AI response. Provider: ${llmSpecificConfig.provider}, Model: ${llmSpecificConfig.model}`);
+    // Create an initial placeholder AI message for streaming
+    const aiStreamingMessageId = `msg-ai-stream-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const initialAiMessage: ChatMessage = {
+      id: aiStreamingMessageId,
+      thread_id: threadId,
+      timestamp: new Date().toISOString(), // Placeholder, will update with last chunk
+      sender: 'ai',
+      text_content: '', // Start with empty content
+      ttsWordMap: undefined,
+      alignmentData: undefined,
+      ttsLang: ttsLangForAiResponse || effectiveLangCode(),
+    };
 
-        try {
-          const aiResponseText = await getAiChatResponse(
-            conversationHistoryForLLM,
-            text,
-            llmSpecificConfig,
-            { threadSystemPrompt: currentThreadSignalValue.systemPrompt }
-          );
+    // Add initial AI message to local state
+    setThreads(prevThreads =>
+      prevThreads.map(t =>
+        t.id === threadId
+          ? { ...t, messages: [...(t.messages || []), initialAiMessage] }
+          : t
+      )
+    );
+    
+    console.log(`[App.tsx] Requesting STREAMING AI response. Provider: ${llmServiceConfig.provider}, Model: ${llmServiceConfig.model}`);
+    
+    let accumulatedResponse = '';
+    let finalTimestamp = initialAiMessage.timestamp;
 
-          if (aiResponseText && typeof aiResponseText === 'string' && aiResponseText.trim() !== '') {
-            const aiMessageTimestamp = new Date().toISOString();
-            const aiMessage: ChatMessage = {
-              id: `msg-ai-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-              thread_id: threadId, 
-              timestamp: aiMessageTimestamp,
-              sender: 'ai',
-              text_content: aiResponseText,
-              ttsWordMap: undefined, alignmentData: undefined, 
-              ttsLang: ttsLangForAiResponse || effectiveLangCode(),
-            };
-            await addChatMessage(aiMessage);
-
-            const newMessagesAfterAI = [...newMessagesAfterUser, aiMessage];
-            const updatedThreadAfterAI: Thread = {
-              ...updatedThreadAfterUserMessage,
-              messages: newMessagesAfterAI,
-              lastActivity: aiMessageTimestamp,
-            };
-            setThreads(prevThreads =>
-              prevThreads.map(t => (t.id === threadId ? updatedThreadAfterAI : t))
-            );
-          } else {
-            console.error('[App.tsx] AI response text was empty or not a string:', aiResponseText);
-            const emptyErrorTimestamp = new Date().toISOString();
-            const errorResponseMessage: ChatMessage = {
-              id: `msg-error-empty-${Date.now()}`,
-              thread_id: threadId, 
-              timestamp: emptyErrorTimestamp,
-              sender: 'ai',
-              text_content: "Sorry, I received an empty or invalid response from the AI.",
-              ttsWordMap: undefined, alignmentData: undefined, ttsLang: effectiveLangCode(),
-            };
-            await addChatMessage(errorResponseMessage);
-
-            const newMessagesAfterEmptyError = [...newMessagesAfterUser, errorResponseMessage];
-            const updatedThreadAfterEmptyError: Thread = {
-              ...updatedThreadAfterUserMessage,
-              messages: newMessagesAfterEmptyError,
-              lastActivity: emptyErrorTimestamp,
-            };
-            setThreads(prevThreads =>
-              prevThreads.map(t => (t.id === threadId ? updatedThreadAfterEmptyError : t))
-            );
-          }
-        } catch (llmError) {
-          console.error('[App.tsx] Error getting AI response from LLM service:', llmError);
-          const llmErrorTimestamp = new Date().toISOString();
-          const errorLlmMessage: ChatMessage = {
-            id: `msg-error-llm-${Date.now()}`,
-            thread_id: threadId, 
-            timestamp: llmErrorTimestamp,
-            sender: 'ai',
-            text_content: `Sorry, I encountered an error trying to respond: ${String(llmError)}.`,
-            ttsWordMap: undefined, alignmentData: undefined, ttsLang: effectiveLangCode(),
-          };
-          await addChatMessage(errorLlmMessage);
-
-          const newMessagesAfterLlmError = [...newMessagesAfterUser, errorLlmMessage];
-          const updatedThreadAfterLlmError: Thread = {
-            ...updatedThreadAfterUserMessage,
-            messages: newMessagesAfterLlmError,
-            lastActivity: llmErrorTimestamp,
-          };
+    try {
+      console.log('[App.tsx Stream] Starting to iterate getAiChatResponseStream...');
+      for await (const part of getAiChatResponseStream(
+        conversationHistoryForLLM, 
+        text, 
+        llmServiceConfig,
+        { threadSystemPrompt: currentThreadSignalValue.systemPrompt }
+      )) {
+        console.log('[App.tsx Stream] Received part from getAiChatResponseStream:', JSON.stringify(part));
+        if (part.type === 'content') {
+          accumulatedResponse += part.content;
+          finalTimestamp = new Date().toISOString(); 
+          console.log(`[App.tsx Stream] Accumulated content: "${accumulatedResponse}"`);
           setThreads(prevThreads =>
-            prevThreads.map(t => (t.id === threadId ? updatedThreadAfterLlmError : t))
+            prevThreads.map(t => {
+              if (t.id === threadId) {
+                const updatedMessages = t.messages.map(m =>
+                    m.id === aiStreamingMessageId ? { ...m, text_content: accumulatedResponse, timestamp: finalTimestamp } : m
+                  );
+                // console.log('[App.tsx Stream] Updating thread messages for id:', threadId, 'New messages:', updatedMessages);
+                return {
+                  ...t,
+                  messages: updatedMessages,
+                  lastActivity: finalTimestamp,
+                };
+              }
+              return t;
+            })
           );
+          console.log('[App.tsx Stream] setThreads called with new content.');
+        } else if (part.type === 'error') {
+          console.error('[App.tsx Stream] Streaming error part from LLM:', part.error);
+          accumulatedResponse += `\n[Stream Error: ${part.error}]`;
+          finalTimestamp = new Date().toISOString();
+          setThreads(prevThreads =>
+            prevThreads.map(t => {
+              if (t.id === threadId) {
+                 const updatedMessages = t.messages.map(m =>
+                    m.id === aiStreamingMessageId ? { ...m, text_content: accumulatedResponse, timestamp: finalTimestamp } : m
+                  );
+                // console.log('[App.tsx Stream] Updating thread messages with error for id:', threadId, 'New messages:', updatedMessages);
+                return {
+                  ...t,
+                  messages: updatedMessages,
+                  lastActivity: finalTimestamp,
+                };
+              }
+              return t;
+            })
+          );
+          console.log('[App.tsx Stream] setThreads called with error content.');
+          break; 
         }
       }
+      console.log('[App.tsx Stream] Finished iterating getAiChatResponseStream. Final accumulated text:', accumulatedResponse);
+      // After stream finishes (or errors out), save the final accumulated message to DB
+      const finalAiMessage: ChatMessage = {
+        ...initialAiMessage, // Retains id, sender, ttsLang etc.
+        text_content: accumulatedResponse.trim(),
+        timestamp: finalTimestamp, 
+      };
+      // Update the message in DB (or add if it was purely local during streaming)
+      // For simplicity, we'll assume addChatMessage can handle an existing ID by updating,
+      // or we'd need an updateChatMessage DB function.
+      // For now, let's just update the local state which is already done,
+      // and then try to add the *final* version. DB might need upsert logic.
+      // To avoid duplicates if addChatMessage doesn't upsert, we remove the placeholder before adding final.
+      
+      // Remove placeholder, then add final. This is a bit inefficient but safer without an upsert.
+      setThreads(prevThreads =>
+        prevThreads.map(t => {
+          if (t.id === threadId) {
+            // Filter out the streaming message ID, then add the final one.
+            const messagesWithoutStreamingPlaceholder = t.messages.filter(m => m.id !== aiStreamingMessageId);
+            return { ...t, messages: [...messagesWithoutStreamingPlaceholder, finalAiMessage], lastActivity: finalTimestamp };
+          }
+          return t;
+        })
+      );
+      if (finalAiMessage.text_content) { // Only save to DB if there's content
+         await addChatMessage(finalAiMessage); // Save the complete message to DB
+      }
+
     } catch (error) {
-      console.error('[App.tsx] Error sending message or updating UI:', error);
+      console.error('[App.tsx] Outer error during AI stream processing or DB save:', error);
+      const streamErrorText = `Sorry, an error occurred while streaming the response: ${String(error)}.`;
+      const finalErrorTimestamp = new Date().toISOString();
+      // Update the existing streaming message with the error, or add a new error message if it wasn't created.
+      setThreads(prevThreads =>
+        prevThreads.map(t => {
+          if (t.id === threadId) {
+            const streamingMsgIndex = t.messages.findIndex(m => m.id === aiStreamingMessageId);
+            if (streamingMsgIndex !== -1) {
+              const updatedMessages = [...t.messages];
+              updatedMessages[streamingMsgIndex] = {
+                ...updatedMessages[streamingMsgIndex],
+                text_content: accumulatedResponse + `\n[Error: ${String(error)}]`, // Append error to any partial content
+                timestamp: finalErrorTimestamp,
+              };
+              return { ...t, messages: updatedMessages, lastActivity: finalErrorTimestamp };
+            } else {
+              // If streaming message wasn't even added, add a new error message
+              const newErrorMsg: ChatMessage = {
+                id: `msg-error-stream-outer-${Date.now()}`, thread_id: threadId, timestamp: finalErrorTimestamp,
+                sender: 'ai', text_content: streamErrorText, ttsLang: effectiveLangCode(),
+              };
+              // Not saving this particular error to DB for now, just showing in UI.
+              return { ...t, messages: [...t.messages, newErrorMsg], lastActivity: finalErrorTimestamp };
+            }
+          }
+          return t;
+        })
+      );
+       // Attempt to save the error state to the DB if the message exists.
+      const finalErrorAiMessage: ChatMessage = {
+        ...initialAiMessage,
+        id: aiStreamingMessageId, // Ensure we use the same ID
+        text_content: accumulatedResponse.trim() + `\n[Error: ${String(error)}]`,
+        timestamp: finalErrorTimestamp, 
+      };
+      if (finalErrorAiMessage.text_content) {
+          // As above, to prevent duplicates without upsert, first ensure local state is correct, then save.
+          // The local state is already updated above to show the error.
+          // Now attempt to save this error-appended message to DB.
+          await addChatMessage(finalErrorAiMessage);
+      }
     }
   };
 

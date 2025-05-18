@@ -50,6 +50,8 @@ export default defineConfig({
         border: "hsl(240 3.7% 15.9%)", // dark mode border
         ring: "hsl(217.2 91.2% 59.8%)", // dark mode ring
       },
+      "border-secondary": "hsl(240 4.8% 18%)", // Slightly lighter than primary border
+      "border-tertiary": "hsl(240 4.8% 23%)", // Even lighter, for less emphasis
     },
     spacing: {
       // Add standard spacing values needed

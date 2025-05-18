@@ -437,4 +437,29 @@ export async function countPagesNeedingEmbedding(): Promise<number> {
         console.error('[DB VisitedPages] Error counting page versions needing embedding:', error);
         throw error; 
     }
-} 
+}
+
+// --- NEW FUNCTION for fetching recent visited pages for context ---
+export async function getRecentVisitedPages(limit: number = 5): Promise<{ title: string | null, url: string }[]> {
+  console.log(`[DB VisitedPages] Fetching ${limit} recent visited pages.`);
+  let db: PGlite | null = null;
+  try {
+    db = await getDbInstance();
+    const query = `
+      SELECT url, title
+      FROM pages
+      ORDER BY last_visited_at DESC
+      LIMIT $1;
+    `;
+    const results = await db.query(query, [limit]);
+    // Ensure rows are mapped correctly, title can be null
+    return results.rows.map((row: any) => ({
+      url: row.url as string,
+      title: row.title as string | null
+    }));
+  } catch (error: any) {
+    console.error('[DB VisitedPages] Error fetching recent visited pages:', error);
+    return []; // Return empty array on error
+  }
+}
+// --- END NEW FUNCTION --- 
