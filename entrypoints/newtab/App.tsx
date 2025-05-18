@@ -83,24 +83,35 @@ const App: Component = () => {
   // Reset the flag if the App component itself is somehow re-mounted, for safety in some HMR scenarios.
   appScopeHasInitializedDefaultThreads = false;
 
-  const triggerAiKickoffMessage = async (thread: Thread) => { // Made async for safety if DB calls were added here
-    if (!thread || thread.messages.length > 0 || thread.id === JUST_CHAT_THREAD_ID) return;
+  const triggerAiKickoffMessage = async (thread: Thread) => {
+    // Guard: Only proceed if the thread exists and has no messages.
+    if (!thread || thread.messages.length > 0) return;
 
-    let kickoffText = "Hello! How can I assist you today based on my role?";
+    let kickoffText: string | null = null; // Initialize to null, only set if a specific condition matches.
     let kickoffTtsLang = 'en';
 
-    if (thread.systemPrompt.toLowerCase().includes("french tutor")) {
-      kickoffText = "Bonjour! Comment puis-je vous aider avec votre français aujourd'hui?";
-      kickoffTtsLang = 'fr';
-    } else if (thread.systemPrompt.toLowerCase().includes("introductions")) {
+    // Define kickoffs for specific predefined thread IDs
+    if (thread.id === 'thread-welcome-introductions') {
       kickoffText = "Welcome! This is the introductions thread. How can I help you get started?";
-    } else if (thread.systemPrompt.toLowerCase().includes("general chat")) {
-      kickoffText = "Hello! I'm your general assistant. What can I help you with?";
-    } // More conditions can be added here
+      // kickoffTtsLang can be set if needed, e.g., based on thread.systemPrompt or a new field in Thread
+    } else if (thread.id === 'thread-welcome-sharing') {
+      // Using a more tailored kickoff for the sharing thread based on its purpose
+      kickoffText = "It's great to connect. I'm here to listen or share some AI thoughts. What's on your mind?";
+    } else if (thread.id === JUST_CHAT_THREAD_ID) {
+      kickoffText = "Voice chat active! How can I help you concisely?";
+      // Potentially adjust kickoffTtsLang for JUST_CHAT_THREAD_ID if it should use user's target/native lang
+    }
+    // Add other specific kickoffs here by thread.id or specific system prompts if necessary
+    // Example: else if (thread.systemPrompt.toLowerCase().includes("french tutor")) { ... }
 
-    console.log(`[App.tsx] Triggering AI kickoff for thread ${thread.id} (${thread.title}) with: "${kickoffText}"`);
-    // This will be updated to use addChatMessage later
-    await handleSendMessageToUnifiedView(kickoffText, thread.id, false, kickoffTtsLang);
+    // Only send a message if a kickoffText was explicitly set for this thread type
+    if (kickoffText) {
+      console.log(`[App.tsx] Triggering AI kickoff for predefined thread ${thread.id} (${thread.title}) with: "${kickoffText}"`);
+      await handleSendMessageToUnifiedView(kickoffText, thread.id, false, kickoffTtsLang);
+    } else {
+      // This log is for debugging; for most other empty threads, no action is desired here.
+      console.log(`[App.tsx] No specific AI kickoff defined for empty thread ${thread.id} (${thread.title}). It will remain empty.`);
+    }
   };
 
   const loadMessagesForThreadAndKickoff = async (threadId: string) => {
@@ -347,15 +358,6 @@ const App: Component = () => {
       setThreads(prev => [threadWithMessages, ...prev]);
       setCurrentThreadId(createdThread.id);
       
-      // Conditionally send "Hello!" only if no initial messages were provided by the caller
-      // AND it's a general chat (empty system prompt from UnifiedConversationView implies general from its side)
-      if ((!initialMessages || initialMessages.length === 0) && (!systemPromptForDB || systemPromptForDB.trim() === "")) {
-        console.log(`[App.tsx] New general thread ${createdThread.id} created without initial messages. Sending 'Hello!' as user.`);
-        await handleSendMessageToUnifiedView("Hello!", createdThread.id, true);
-      } else if (initialMessages && initialMessages.length > 0) {
-        console.log(`[App.tsx] New thread ${createdThread.id} created with ${initialMessages.length} initial message(s). Not sending automatic "Hello!".`);
-      }
-
       return createdThread.id;
     } catch (error) {
       console.error('[App.tsx] Error creating new thread or saving initial messages:', error);

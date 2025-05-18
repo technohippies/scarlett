@@ -485,21 +485,36 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
 
         <main class="flex-1 flex flex-col bg-bg-primary overflow-hidden">
           <div ref={scrollHostRef} class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
-            <For each={currentMessages()} fallback={<div class="text-center text-fg-muted">No messages yet.</div>}>
-              {(message, index) => (
-                <ChatMessageItem
-                  message={message}
-                  isLastInGroup={index() === currentMessages().length - 1 || currentMessages()[index() + 1]?.sender !== message.sender}
-                  isCurrentSpokenMessage={activeSpokenMessageId() === message.id}
-                  wordMap={activeSpokenMessageId() === message.id ? ttsWordMap() : (message.ttsWordMap || [])}
-                  currentHighlightIndex={activeSpokenMessageId() === message.id ? currentTTSHighlightIndex() : null}
-                  onPlayTTS={handlePlayTTS}
-                  isStreaming={message.isStreaming}
-                  isGlobalTTSSpeaking={isTTSSpeaking()}
-                  onChangeSpeed={handleChangePlaybackSpeed}
-                />
-              )}
-            </For>
+            <Show
+              when={currentMessages().length > 0 || isSpeechModeActive()}
+              fallback={
+                <div class="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
+                  <img 
+                    src="/images/scarlett-supercoach/scarlett-proud-512x512.png" 
+                    alt="Scarlett Supercoach" 
+                    class="w-32 h-32 mb-4 opacity-80" 
+                  />
+                  <p class="text-lg font-medium">Let's chat!</p>
+                  <p class="text-sm">I have context of your browsing history, recent songs, and your mood.</p>
+                </div>
+              }
+            >
+              <For each={currentMessages()} /* Removed fallback from For, it's handled by Show */>
+                {(message, index) => (
+                  <ChatMessageItem
+                    message={message}
+                    isLastInGroup={index() === currentMessages().length - 1 || currentMessages()[index() + 1]?.sender !== message.sender}
+                    isCurrentSpokenMessage={activeSpokenMessageId() === message.id}
+                    wordMap={activeSpokenMessageId() === message.id ? ttsWordMap() : (message.ttsWordMap || [])}
+                    currentHighlightIndex={activeSpokenMessageId() === message.id ? currentTTSHighlightIndex() : null}
+                    onPlayTTS={handlePlayTTS}
+                    isStreaming={message.isStreaming}
+                    isGlobalTTSSpeaking={isTTSSpeaking()} // Kept as is from user's file
+                    onChangeSpeed={handleChangePlaybackSpeed}
+                  />
+                )}
+              </For>
+            </Show>
             <Show when={ttsError()}>
               <div class="text-red-500 text-sm p-2 bg-red-100 rounded-md">TTS Error: {ttsError()}</div>
             </Show>
