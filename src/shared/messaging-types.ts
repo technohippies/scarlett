@@ -2,6 +2,7 @@ import type { AlignmentData } from "../features/translator/TranslatorWidget";
 import type { Rating } from 'ts-fsrs';
 import type { DueLearningItem } from "../services/srs/types";
 import type { Bookmark, Tag } from "../services/db/types";
+import type { Thread, ChatMessage } from '../features/chat/types';
 
 /**
  * Payload sent from the background script to the content script
@@ -349,6 +350,13 @@ export interface BackgroundProtocolMap {
     notifyDailyGoalComplete(data: NotifyDailyGoalCompleteRequest): Promise<NotifyDailyGoalCompleteResponse>;
     recordStudyActivityToday(data: RecordStudyActivityTodayRequest): Promise<RecordStudyActivityTodayResponse>;
     songDetected(data: SongDetectedMessagePayload): Promise<void>;
+    
+    // Chat Operations
+    getAllChatThreads(): Promise<Thread[]>;
+    getChatMessages(data: { threadId: string }): Promise<ChatMessage[]>;
+    addChatThread(data: NewChatThreadDataForRpc): Promise<Thread>;
+    addChatMessage(data: NewChatMessageDataForRpc): Promise<ChatMessage>;
+    updateChatThreadTitle(data: { threadId: string; newTitle: string }): Promise<void>;
 }
 // ---- END: BackgroundProtocolMap Definition ----
 
@@ -390,3 +398,68 @@ export type BackgroundMessage = SongDetectedMessage;
 //   payload: { lrclibId: number; success: boolean };
 // }
 // export type UIMessage = LyricsStoredMessage;
+
+// --- START NEW CHAT RPC DEFINITIONS ---
+export interface NewChatThreadDataForRpc {
+  id: string;
+  title: string;
+  systemPrompt?: string;
+}
+
+export interface NewChatMessageDataForRpc {
+  id: string;
+  thread_id: string;
+  sender: 'user' | 'ai';
+  text_content: string;
+  tts_lang?: string;
+  tts_alignment_data?: any;
+}
+
+export interface BackgroundProtocolMap {
+    getDueItems(data: GetDueItemsRequest): Promise<GetDueItemsResponse>;
+    getDistractorsForItem(data: GetDistractorsRequest): Promise<GetDistractorsResponse>;
+    submitReviewResult(data: SubmitReviewRequest): Promise<SubmitReviewResponse>;
+    cacheDistractors(data: CacheDistractorsRequest): Promise<CacheDistractorsResponse>;
+    generateLLMDistractors(data: GenerateLLMDistractorsRequest): Promise<GenerateLLMDistractorsResponse>;
+    getStudySummary(data: GetStudySummaryRequest): Promise<GetStudySummaryResponse>;
+    saveBookmark(data: { url: string; title?: string | null; tags?: string | null; selectedText?: string | null }): 
+        Promise<SaveBookmarkResponse>;
+    loadBookmarks(): Promise<LoadBookmarksResponse>;
+    'tag:list': () => Promise<TagListResponse>;
+    'tag:suggest': (data: { title: string; url: string; pageContent?: string | null }) => 
+        Promise<TagSuggestResponse>;
+    getPageInfo: () => Promise<GetPageInfoResponse>;
+    getSelectedText: () => Promise<GetSelectedTextResponse>;
+    processPageVisit: (data: { url: string; title: string; htmlContent: string }) => Promise<void>;
+    triggerBatchEmbedding(): Promise<{ 
+        success: boolean; 
+        finalizedCount?: number; 
+        duplicateCount?: number; 
+        errorCount?: number;
+        error?: string;
+    }>;
+    getPendingEmbeddingCount(): Promise<{ count: number }>;
+    generateTTS(data: GenerateTTSPayload): Promise<void>; 
+    extractMarkdownFromHtml(data: ExtractMarkdownRequest): Promise<ExtractMarkdownResponse>; 
+    REQUEST_TTS_FROM_WIDGET(data: { text: string; lang: string; speed?: number }): 
+        Promise<{ success: boolean; audioDataUrl?: string; error?: string }>;
+    REQUEST_ACTIVE_LEARNING_WORDS(data: RequestActiveLearningWordsPayload): Promise<RequestActiveLearningWordsResponse>;
+    addLearningDeck(data: { deckIdentifier: string }): Promise<{ success: boolean, error?: string }>;
+    GET_LEARNING_WORDS_BY_TRANSLATION_IDS(data: { translationIds: number[] }): Promise<{ success: boolean; words?: any[]; error?: string }>;
+    REQUEST_LEARNING_WORDS_FOR_HIGHLIGHTING(): Promise<{ success: boolean; words?: any[]; error?: string }>;
+    fetchAvailableDeckFiles(): Promise<{ success: boolean; decks?: DeckInfoForFiltering[]; error?: string }>;
+    getDailyStudyStats(data: GetDailyStudyStatsRequest): Promise<GetDailyStudyStatsResponse>;
+    incrementDailyNewItemsStudied(data: IncrementDailyNewItemsStudiedRequest): Promise<IncrementDailyNewItemsStudiedResponse>;
+    getStudyStreakData(data: GetStudyStreakDataRequest): Promise<GetStudyStreakDataResponse>;
+    notifyDailyGoalComplete(data: NotifyDailyGoalCompleteRequest): Promise<NotifyDailyGoalCompleteResponse>;
+    recordStudyActivityToday(data: RecordStudyActivityTodayRequest): Promise<RecordStudyActivityTodayResponse>;
+    songDetected(data: SongDetectedMessagePayload): Promise<void>;
+    
+    // Chat Operations
+    getAllChatThreads(): Promise<Thread[]>;
+    getChatMessages(data: { threadId: string }): Promise<ChatMessage[]>;
+    addChatThread(data: NewChatThreadDataForRpc): Promise<Thread>;
+    addChatMessage(data: NewChatMessageDataForRpc): Promise<ChatMessage>;
+    updateChatThreadTitle(data: { threadId: string; newTitle: string }): Promise<void>;
+}
+// --- END NEW CHAT RPC DEFINITIONS ---

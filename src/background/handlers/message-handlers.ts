@@ -56,8 +56,20 @@ import {
 } from '../../services/db/streaks';
 import { registerLlmDistractorHandlers } from './llm-distractor-handlers';
 import type { EmbeddingResult } from '../../services/llm/embedding';
-// import type { LearningDirection, StudyItem } from '../../types/study';
-// import type { ITask } from 'pg-promise';
+import { Client as LrcLibClient } from 'lrclib-api';
+import { saveLyrics, type SongLyricsRecord } from '../../services/db/lyrics';
+import type { SongDetectedMessagePayload } from '../../shared/messaging-types';
+import {
+    getAllChatThreads as dbGetAllChatThreads,
+    getChatMessagesByThreadId as dbGetChatMessagesByThreadId,
+    addChatThread as dbAddChatThread,
+    addChatMessage as dbAddChatMessage,
+    updateChatThreadTitle as dbUpdateChatThreadTitle
+} from '../../services/db/chat';
+import type { 
+    NewChatThreadDataForRpc, 
+    NewChatMessageDataForRpc,
+} from '../../shared/messaging-types';
 
 // Define the threshold for reprocessing (e.g., 1 hour in milliseconds)
 const REPROCESS_INFO_THRESHOLD_MS = 1000;
@@ -970,6 +982,65 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         }
     });
     // --- END: Add new streak handlers ---
+
+    // --- START NEW CHAT HANDLERS ---
+    messaging.onMessage('getAllChatThreads', async () => {
+        console.log('[Message Handlers] Received getAllChatThreads request');
+        try {
+            return await dbGetAllChatThreads();
+        } catch (error) {
+            console.error('[Message Handlers getAllChatThreads] Error:', error);
+            return [];
+        }
+    });
+
+    messaging.onMessage('getChatMessages', async (message) => {
+        const { threadId } = message.data;
+        console.log(`[Message Handlers] Received getChatMessages request for threadId: ${threadId}`);
+        try {
+            return await dbGetChatMessagesByThreadId(threadId);
+        } catch (error) {
+            console.error(`[Message Handlers getChatMessages] Error for threadId ${threadId}:`, error);
+            return [];
+        }
+    });
+
+    messaging.onMessage('addChatThread', async (message) => {
+        const threadData: NewChatThreadDataForRpc = message.data;
+        console.log('[Message Handlers] Received addChatThread request:', threadData);
+        try {
+            // Ensure the data passed to dbAddChatThread matches its expected NewChatThreadData type
+            // This might involve mapping if NewChatThreadDataForRpc is different beyond just name
+            return await dbAddChatThread(threadData); 
+        } catch (error) {
+            console.error('[Message Handlers addChatThread] Error:', error);
+            throw error; 
+        }
+    });
+
+    messaging.onMessage('addChatMessage', async (message) => {
+        const messageData: NewChatMessageDataForRpc = message.data;
+        console.log('[Message Handlers] Received addChatMessage request:', messageData);
+        try {
+            // Ensure the data passed to dbAddChatMessage matches its expected NewChatMessageData type
+            return await dbAddChatMessage(messageData);
+        } catch (error) {
+            console.error('[Message Handlers addChatMessage] Error:', error);
+            throw error; 
+        }
+    });
+
+    messaging.onMessage('updateChatThreadTitle', async (message) => {
+        const { threadId, newTitle } = message.data;
+        console.log(`[Message Handlers] Received updateChatThreadTitle request for threadId: ${threadId}, newTitle: ${newTitle}`);
+        try {
+            await dbUpdateChatThreadTitle(threadId, newTitle);
+        } catch (error) {
+            console.error(`[Message Handlers updateChatThreadTitle] Error for threadId ${threadId}:`, error);
+            throw error; 
+        }
+    });
+    // --- END NEW CHAT HANDLERS ---
 
     console.log('[Message Handlers] Background message listeners registered using passed instance.');
 }

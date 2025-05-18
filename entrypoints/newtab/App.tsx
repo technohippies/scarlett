@@ -1,4 +1,4 @@
-import { Component, createSignal, Match, Switch, createResource, onCleanup, createEffect, Show } from 'solid-js';
+import { Component, createSignal, Match, Switch, createResource, onCleanup, createEffect, Show, JSX } from 'solid-js';
 import NewTabPage from '../../src/pages/newtab/NewTabPage';
 import BookmarksPage from '../../src/pages/bookmarks/BookmarksPage';
 import StudyPage from '../../src/pages/study/StudyPage';
@@ -10,17 +10,14 @@ import type { Messages } from '../../src/types/i18n';
 import { userConfigurationStorage } from '../../src/services/storage/storage';
 import type { UserConfiguration } from '../../src/services/storage/types';
 import { browser } from 'wxt/browser';
-import {
-  getAllChatThreads,
-  getChatMessagesByThreadId,
-  addChatThread,
-  addChatMessage,
-  updateChatThreadTitle
-} from '../../src/services/db/chat';
+import { defineExtensionMessaging } from '@webext-core/messaging';
+import type { BackgroundProtocolMap, NewChatThreadDataForRpc, NewChatMessageDataForRpc } from '../../src/shared/messaging-types';
 import { getAiChatResponseStream, generateThreadTitleLLM } from '../../src/services/llm/llmChatService';
 import type { ChatMessage as LLMChatMessage, LLMConfig, LLMProviderId } from '../../src/services/llm/types';
 
 const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
+
+const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
 
 const minimalNativeLanguagesList = [
   { value: 'en' }, { value: 'zh' }, { value: 'vi' }, { value: 'th' }, { value: 'id' }, 
@@ -59,7 +56,7 @@ const fetchMessages = async (langCode: string): Promise<Messages> => {
     const fallbackUrl = browser.runtime.getURL('/_locales/en/messages.json' as any);
     try {
       const fallbackResponse = await fetch(fallbackUrl);
-      if (!fallbackResponse.ok) throw new Error(`HTTP error! status: ${fallbackResponse.status} for fallback 'en'`);
+      if (!fallbackResponse.ok) throw new Error(`HTTP error! status: ${fallbackResponse.status} for fallback 'en'.`);
       return await fallbackResponse.json();
     } catch (fallbackError) {
       console.error('[NewTabApp] Failed to fetch fallback \'en\' messages.', fallbackError);
@@ -72,7 +69,7 @@ type ActiveView = 'newtab' | 'bookmarks' | 'study' | 'settings' | 'unifiedChat';
 
 let appScopeHasInitializedDefaultThreads = false;
 
-const App: Component = () => {
+const App: Component = (): JSX.Element => {
   const [activeView, setActiveView] = createSignal<ActiveView>('newtab');
   const [effectiveLangCode, setEffectiveLangCode] = createSignal<string>(getBestInitialLangCode());
   const [userConfig, setUserConfig] = createSignal<UserConfiguration | null>(null);
@@ -81,43 +78,30 @@ const App: Component = () => {
   const [currentThreadId, setCurrentThreadId] = createSignal<string | null>(null);
   const [isLoadingThreads, setIsLoadingThreads] = createSignal(true);
 
-  // Reset the flag if the App component itself is somehow re-mounted, for safety in some HMR scenarios.
   appScopeHasInitializedDefaultThreads = false;
 
   const triggerAiKickoffMessage = async (thread: Thread) => {
-    // Guard: Only proceed if the thread exists and has no messages.
     if (!thread || thread.messages.length > 0) return;
-
-    let kickoffText: string | null = null; // Initialize to null, only set if a specific condition matches.
+    let kickoffText: string | null = null;
     let kickoffTtsLang = 'en';
-
-    // Define kickoffs for specific predefined thread IDs
     if (thread.id === 'thread-welcome-introductions') {
       kickoffText = "Welcome! This is the introductions thread. How can I help you get started?";
-      // kickoffTtsLang can be set if needed, e.g., based on thread.systemPrompt or a new field in Thread
     } else if (thread.id === 'thread-welcome-sharing') {
-      // Using a more tailored kickoff for the sharing thread based on its purpose
       kickoffText = "It's great to connect. I'm here to listen or share some AI thoughts. What's on your mind?";
     } else if (thread.id === JUST_CHAT_THREAD_ID) {
       kickoffText = "Voice chat active! How can I help you concisely?";
-      // Potentially adjust kickoffTtsLang for JUST_CHAT_THREAD_ID if it should use user's target/native lang
     }
-    // Add other specific kickoffs here by thread.id or specific system prompts if necessary
-    // Example: else if (thread.systemPrompt.toLowerCase().includes("french tutor")) { ... }
-
-    // Only send a message if a kickoffText was explicitly set for this thread type
     if (kickoffText) {
       console.log(`[App.tsx] Triggering AI kickoff for predefined thread ${thread.id} (${thread.title}) with: "${kickoffText}"`);
       await handleSendMessageToUnifiedView(kickoffText, thread.id, false, kickoffTtsLang);
     } else {
-      // This log is for debugging; for most other empty threads, no action is desired here.
       console.log(`[App.tsx] No specific AI kickoff defined for empty thread ${thread.id} (${thread.title}). It will remain empty.`);
     }
   };
 
   const loadMessagesForThreadAndKickoff = async (threadId: string) => {
     try {
-      const messages = await getChatMessagesByThreadId(threadId);
+      const messages = await messaging.sendMessage('getChatMessages', { threadId });
       setThreads(prevThreads => 
         prevThreads.map(t => t.id === threadId ? { ...t, messages: messages } : t)
       );
@@ -135,28 +119,28 @@ const App: Component = () => {
       console.log('[App.tsx] Attempting to initialize default threads (run once check)...');
       setIsLoadingThreads(true);
       try {
-        const loadedThreads = await getAllChatThreads();
+        const loadedThreads = await messaging.sendMessage('getAllChatThreads', undefined);
         if (loadedThreads.length === 0) {
-          console.log('[App.tsx] No threads in DB. Creating default welcome threads...');
-          const introductionsThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
+          console.log('[App.tsx] No threads in DB. Creating default welcome threads via RPC...');
+          const introductionsThreadData: NewChatThreadDataForRpc = {
             id: 'thread-welcome-introductions',
             title: 'Introductions',
             systemPrompt: "I'm Scarlett, your friendly AI language companion. I'd love to get to know you a bit! Tell me about yourself - what are your interests, what languages are you learning, or anything else you'd like to share?"
           };
-          const sharingThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
+          const sharingThreadData: NewChatThreadDataForRpc = {
             id: 'thread-welcome-sharing',
             title: 'Sharing Thoughts',
             systemPrompt: "It's great to connect on a deeper level. As an AI, I have a unique perspective. I can share some 'AI thoughts' or how I learn if you're curious, and I'm always here to listen to yours. What's on your mind, or what would you like to ask me?"
           };
-          const justChatThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
+          const justChatThreadData: NewChatThreadDataForRpc = {
             id: JUST_CHAT_THREAD_ID,
             title: 'Just Chat (Speech)',
             systemPrompt: 'You are a friendly AI assistant for voice chat. Keep responses concise for speech.'
           };
 
-          const newIntroThread = await addChatThread(introductionsThreadData);
-          const newSharingThread = await addChatThread(sharingThreadData);
-          const newJustChatThread = await addChatThread(justChatThreadData);
+          const newIntroThread = await messaging.sendMessage('addChatThread', introductionsThreadData);
+          const newSharingThread = await messaging.sendMessage('addChatThread', sharingThreadData);
+          const newJustChatThread = await messaging.sendMessage('addChatThread', justChatThreadData);
 
           const initialSetupThreads = [newIntroThread, newSharingThread, newJustChatThread].filter(Boolean) as Thread[];
           setThreads(initialSetupThreads);
@@ -169,27 +153,26 @@ const App: Component = () => {
             setCurrentThreadId(null);
           }
           appScopeHasInitializedDefaultThreads = true;
-          console.log('[App.tsx] Default threads created and flag set.');
+          console.log('[App.tsx] Default threads created via RPC and flag set.');
         } else {
           let allThreads = [...loadedThreads];
           if (!allThreads.some(t => t.id === JUST_CHAT_THREAD_ID)) {
-            console.log('[App.tsx] JUST_CHAT_THREAD_ID missing from loaded threads. Creating it.');
-            const justChatData: Omit<Thread, 'messages' | 'lastActivity'> = {
+            console.log('[App.tsx] JUST_CHAT_THREAD_ID missing. Creating it via RPC.');
+            const justChatData: NewChatThreadDataForRpc = {
               id: JUST_CHAT_THREAD_ID,
               title: 'Just Chat (Speech)',
               systemPrompt: 'You are a friendly AI assistant for voice chat. Keep responses concise for speech.'
             };
             try {
-              const createdJustChatThread = await addChatThread(justChatData);
+              const createdJustChatThread = await messaging.sendMessage('addChatThread', justChatData);
               allThreads.push(createdJustChatThread);
             } catch (dbError) {
-              console.error('[App.tsx] Failed to create missing JUST_CHAT_THREAD_ID:', dbError);
+              console.error('[App.tsx] Failed to create missing JUST_CHAT_THREAD_ID via RPC:', dbError);
             }
           }
           setThreads(allThreads);
           const firstSelectableThread = allThreads.find(t => t.id !== JUST_CHAT_THREAD_ID);
           if (firstSelectableThread) {
-            // Only set currentThreadId if it's not already valid or set
             if (currentThreadId() === null || !allThreads.some(t=> t.id === currentThreadId())) {
                setCurrentThreadId(firstSelectableThread.id);
             }
@@ -198,27 +181,23 @@ const App: Component = () => {
             setCurrentThreadId(null);
           }
           appScopeHasInitializedDefaultThreads = true;
-          console.log('[App.tsx] Threads already existed or JUST_CHAT_THREAD_ID handled, flag set.');
+          console.log('[App.tsx] Threads already existed or JUST_CHAT_THREAD_ID handled via RPC, flag set.');
         }
       } catch (error) {
-        console.error('[App.tsx] Error during one-time thread initialization:', error);
+        console.error('[App.tsx] Error during one-time thread initialization via RPC:', error);
         setThreads([]);
         setCurrentThreadId(null);
-        // Do not set flag to true on error, to allow potential re-try if appropriate
       } finally {
         setIsLoadingThreads(false);
-        console.log('[App.tsx] Finished one-time thread initialization attempt.');
+        console.log('[App.tsx] Finished one-time thread initialization attempt via RPC.');
       }
     } else {
       console.log('[App.tsx] Default threads initialization routine already run, skipping DB seed section.');
-      // This section handles subsequent runs of the createEffect if it's triggered by other dependencies
-      // after the initial thread setup. For example, if effectiveLangCode changes.
-      // We might need to ensure threads are still loaded if not already.
       if (threads().length === 0 && appScopeHasInitializedDefaultThreads) {
-        console.warn("[App.tsx] Threads array is empty even though initialization flag is set. Re-fetching threads.");
+        console.warn("[App.tsx] Threads array is empty even though init flag is set. Re-fetching via RPC.");
         setIsLoadingThreads(true);
         try {
-            const currentDBThreads = await getAllChatThreads();
+            const currentDBThreads = await messaging.sendMessage('getAllChatThreads', undefined);
             setThreads(currentDBThreads);
             if (currentDBThreads.length > 0) {
                 const firstSelectable = currentDBThreads.find(t => t.id !== JUST_CHAT_THREAD_ID);
@@ -230,33 +209,28 @@ const App: Component = () => {
                 }
             }
         } catch (e) {
-            console.error("[App.tsx] Error re-fetching threads:", e);
+            console.error("[App.tsx] Error re-fetching threads via RPC:", e);
         } finally {
             setIsLoadingThreads(false);
         }
       }
     }
 
-    // Language loading logic (runs independently of the thread seeding guard)
     userConfigurationStorage.getValue().then(config => {
       if (config && config.nativeLanguage) {
         if (config.nativeLanguage !== effectiveLangCode()) {
             setEffectiveLangCode(config.nativeLanguage);
         }
       }
-      // Also set the userConfig signal here initially
       if (config) {
         setUserConfig(config);
       } else {
-        // Attempt to set a default or minimal config if none exists, 
-        // or ensure UnifiedConversationView handles null gracefully.
-        // For now, just log and it will be null.
         console.warn('[App.tsx] No user configuration found in storage during initial load.');
         setUserConfig(null); 
       }
     }).catch(e => {
       console.error('[NewTabApp] Error loading initial language or user config from storage during createEffect:', e);
-      setUserConfig(null); // Set to null on error too
+      setUserConfig(null);
     });
   });
 
@@ -264,7 +238,6 @@ const App: Component = () => {
     const storageKey = userConfigurationStorage.key;
     if (areaName === 'local' && changes[storageKey]) {
       const newConfig = changes[storageKey].newValue as UserConfiguration | undefined;
-      // Update userConfig signal
       if (newConfig) {
         setUserConfig(newConfig);
         if (newConfig.nativeLanguage) {
@@ -310,7 +283,6 @@ const App: Component = () => {
       get: (key: string, fallback: string) => messages?.[key]?.message || fallback,
     };
   };
-  // --- Handler modifications for DB interaction --- 
 
   const handleSelectThread = async (threadId: string) => {
     console.log('[App.tsx] handleSelectThread:', threadId);
@@ -318,7 +290,7 @@ const App: Component = () => {
     if (selectedThread) {
       setCurrentThreadId(threadId);
       if (!selectedThread.messages || selectedThread.messages.length === 0) {
-        console.log(`[App.tsx] Messages for thread ${threadId} not loaded or empty, fetching...`);
+        console.log(`[App.tsx] Messages for thread ${threadId} not loaded or empty, fetching via RPC...`);
         await loadMessagesForThreadAndKickoff(threadId);
       }
     } else {
@@ -328,30 +300,33 @@ const App: Component = () => {
 
   const handleCreateNewThread = async (
     title: string, 
-    systemPromptForDB: string,
+    systemPromptForRpc: string,
     initialMessages?: UIChatMessage[],
   ): Promise<string> => {
     const uniqueTitle = title || `New Chat ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-    console.log(`[App.tsx] Creating new thread: "${uniqueTitle}" with system prompt (for DB): "${systemPromptForDB}"`);
+    console.log(`[App.tsx] Creating new thread via RPC: "${uniqueTitle}" with system prompt: "${systemPromptForRpc}"`);
     
-    const newThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
+    const newThreadRpcData: NewChatThreadDataForRpc = {
       id: `thread-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       title: uniqueTitle, 
-      systemPrompt: systemPromptForDB, 
+      systemPrompt: systemPromptForRpc, 
     };
     try {
-      const createdThread = await addChatThread(newThreadData);
+      const createdThread = await messaging.sendMessage('addChatThread', newThreadRpcData);
       let messagesForNewThread: UIChatMessage[] = [];
 
       if (initialMessages && initialMessages.length > 0) {
         for (const msg of initialMessages) {
-          const messageToSave: UIChatMessage = {
-            ...msg,
+          const messageToSaveRpc: NewChatMessageDataForRpc = {
+            id: msg.id || `msg-initial-${Date.now()}-${Math.random().toString(36).substring(2,7)}`,
             thread_id: createdThread.id,
-            timestamp: msg.timestamp || new Date().toISOString(),
+            sender: msg.sender,
+            text_content: msg.text_content,
+            tts_lang: msg.ttsLang,
+            tts_alignment_data: msg.alignmentData
           };
-          await addChatMessage(messageToSave);
-          messagesForNewThread.push(messageToSave);
+          const savedMsg = await messaging.sendMessage('addChatMessage', messageToSaveRpc);
+          messagesForNewThread.push(savedMsg as UIChatMessage);
         }
       }
       
@@ -361,7 +336,7 @@ const App: Component = () => {
       
       return createdThread.id;
     } catch (error) {
-      console.error('[App.tsx] Error creating new thread or saving initial messages:', error);
+      console.error('[App.tsx] Error creating new thread via RPC or saving initial messages:', error);
       return '';
     }
   };
@@ -371,43 +346,36 @@ const App: Component = () => {
     threadId: string,
     isUserMessage: boolean,
     ttsLangForAiResponse?: string
-  ) => {
+  ): Promise<void> => {
     const currentThreadSignalValue = threads().find(t => t.id === threadId);
     if (!currentThreadSignalValue) {
       console.error(`[App.tsx] handleSendMessageToUnifiedView: Thread with id ${threadId} not found.`);
       return;
     }
 
-    const currentIsoTimestamp = new Date().toISOString();
-
-    // --- Automatic Title Generation Logic ---
     if (isUserMessage && 
         currentThreadSignalValue.title.startsWith("New Chat") && 
-        (currentThreadSignalValue.messages?.length || 0) === 0) { // Only for the very first user message in a new chat
-      
-      console.log(`[App.tsx] First user message in a new chat. Attempting to generate title for thread: ${threadId}`);
+        (currentThreadSignalValue.messages?.length || 0) === 0) {
+      console.log(`[App.tsx] First user message. Attempting title gen for thread: ${threadId}`);
       generateThreadTitleLLM(text).then(async (newTitle) => {
         if (newTitle && newTitle.trim() !== '') {
-          console.log(`[App.tsx] Generated title "${newTitle}" for thread ${threadId}. Updating DB and local state.`);
+          console.log(`[App.tsx] Generated title "${newTitle}" for thread ${threadId}. Updating via RPC.`);
           try {
-            await updateChatThreadTitle(threadId, newTitle);
+            await messaging.sendMessage('updateChatThreadTitle', { threadId, newTitle });
             setThreads(prevThreads =>
               prevThreads.map(t =>
                 t.id === threadId ? { ...t, title: newTitle, lastActivity: new Date().toISOString() } : t
               )
             );
           } catch (e) {
-            console.error(`[App.tsx] Error updating thread title in DB for ${threadId}:`, e);
+            console.error(`[App.tsx] Error updating thread title via RPC for ${threadId}:`, e);
           }
         }
       }).catch(error => {
         console.warn(`[App.tsx] Failed to generate or apply thread title for ${threadId}:`, error);
       });
     }
-    // --- End Automatic Title Generation Logic ---
 
-    // --- MODIFICATION START: Prepare history BEFORE adding the current user message to the signal ---
-    // This history is what existed *before* the current user typed their message.
     const historyForLLMSnapshot = threads().find(t => t.id === threadId)?.messages || [];
     const conversationHistoryForLLM: LLMChatMessage[] = historyForLLMSnapshot
         .filter(msg => typeof msg.text_content === 'string' && (msg.sender === 'user' || msg.sender === 'ai'))
@@ -415,116 +383,89 @@ const App: Component = () => {
             role: msg.sender === 'user' ? 'user' : 'assistant',
             content: msg.text_content!
         }));
-    // --- MODIFICATION END ---
 
-    const userMessage: UIChatMessage = {
+    const userMessageRpcData: NewChatMessageDataForRpc = {
       id: `msg-user-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
       thread_id: threadId,
-      timestamp: currentIsoTimestamp,
       sender: 'user',
       text_content: text,
-      ttsWordMap: undefined,
-      alignmentData: undefined,
-      ttsLang: undefined,
     };
 
-    // Add user message to DB and update local state immediately
     if (isUserMessage) {
       try {
-        await addChatMessage(userMessage);
-        const updatedMessages = [...(currentThreadSignalValue.messages || []), userMessage];
+        const savedUserMessage = await messaging.sendMessage('addChatMessage', userMessageRpcData);
+        const updatedMessages = [...(currentThreadSignalValue.messages || []), savedUserMessage as UIChatMessage];
         const updatedThreadAfterUser: Thread = {
           ...currentThreadSignalValue,
           messages: updatedMessages,
-          lastActivity: currentIsoTimestamp,
+          lastActivity: savedUserMessage.timestamp,
         };
         setThreads(prevThreads =>
           prevThreads.map(t => (t.id === threadId ? updatedThreadAfterUser : t))
         );
       } catch (error) {
-        console.error('[App.tsx] Error saving user message or updating UI:', error);
-        // Optionally, inform the user that their message couldn't be sent/saved
+        console.error('[App.tsx] Error saving user message via RPC or updating UI:', error);
         return; 
       }
     } else {
-      // This branch handles AI-initiated messages (e.g., kickoff)
-      // It assumes 'text' is the full message content from the AI already.
-      const aiKickoffMessage: UIChatMessage = {
+      const aiKickoffMessageRpcData: NewChatMessageDataForRpc = {
         id: `msg-ai-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
         thread_id: threadId,
-        timestamp: currentIsoTimestamp,
         sender: 'ai',
-        text_content: text, // Full text for AI kickoff
-        ttsWordMap: undefined,
-        alignmentData: undefined,
-        ttsLang: ttsLangForAiResponse || effectiveLangCode(),
+        text_content: text,
+        tts_lang: ttsLangForAiResponse || effectiveLangCode(),
       };
       try {
-        await addChatMessage(aiKickoffMessage);
-        const updatedMessagesWithKickoff = [...(currentThreadSignalValue.messages || []), aiKickoffMessage];
+        const savedAiKickoffMessage = await messaging.sendMessage('addChatMessage', aiKickoffMessageRpcData);
+        const updatedMessagesWithKickoff = [...(currentThreadSignalValue.messages || []), savedAiKickoffMessage as UIChatMessage];
         const updatedThreadWithKickoff: Thread = {
           ...currentThreadSignalValue,
           messages: updatedMessagesWithKickoff,
-          lastActivity: currentIsoTimestamp,
+          lastActivity: savedAiKickoffMessage.timestamp,
         };
         setThreads(prevThreads =>
           prevThreads.map(t => (t.id === threadId ? updatedThreadWithKickoff : t))
         );
       } catch (error) {
-        console.error('[App.tsx] Error saving AI kickoff message or updating UI:', error);
+        console.error('[App.tsx] Error saving AI kickoff message via RPC or updating UI:', error);
       }
-      return; // AI kickoff doesn't need to fetch a response for itself
+      return;
     }
 
-    // --- Streaming AI Response Logic (only if isUserMessage was true) ---
-    const userConfig = await userConfigurationStorage.getValue();
-    if (!userConfig || !userConfig.llmConfig || !userConfig.llmConfig.providerId || userConfig.llmConfig.providerId === 'none' || !userConfig.llmConfig.modelId) {
-      console.error('[App.tsx] LLM config not properly set for streaming response.', userConfig?.llmConfig);
+    const userConfigVal = userConfig();
+    if (!userConfigVal || !userConfigVal.llmConfig || !userConfigVal.llmConfig.providerId || userConfigVal.llmConfig.providerId === 'none' || !userConfigVal.llmConfig.modelId) {
+      console.error('[App.tsx] LLM config not set for streaming.', userConfigVal?.llmConfig);
       const errorText = "AI provider/model not configured. Please check settings.";
-      // Add error message to chat
-      const errorMsgTimestamp = new Date().toISOString();
-      const errorAiMessage: UIChatMessage = {
-        id: `msg-error-cfg-stream-${Date.now()}`, thread_id: threadId, timestamp: errorMsgTimestamp,
-        sender: 'ai', text_content: errorText, ttsLang: effectiveLangCode(),
+      const errorAiMessageRpc: NewChatMessageDataForRpc = {
+        id: `msg-error-cfg-stream-${Date.now()}`, thread_id: threadId, sender: 'ai', 
+        text_content: errorText, tts_lang: effectiveLangCode(),
       };
-      await addChatMessage(errorAiMessage);
-      setThreads(prev => prev.map(t => t.id === threadId ? { ...t, messages: [...(t.messages || []), errorAiMessage], lastActivity: errorMsgTimestamp } : t));
+      const savedErrorMsg = await messaging.sendMessage('addChatMessage', errorAiMessageRpc);
+      setThreads(prev => prev.map(t => t.id === threadId ? { ...t, messages: [...(t.messages || []), savedErrorMsg as UIChatMessage], lastActivity: savedErrorMsg.timestamp } : t));
       return;
     }
 
     const llmServiceConfig: LLMConfig = {
-      provider: userConfig.llmConfig.providerId as LLMProviderId,
-      model: userConfig.llmConfig.modelId,
-      baseUrl: userConfig.llmConfig.baseUrl ?? '',
-      apiKey: userConfig.llmConfig.apiKey ?? undefined,
+      provider: userConfigVal.llmConfig.providerId as LLMProviderId,
+      model: userConfigVal.llmConfig.modelId,
+      baseUrl: userConfigVal.llmConfig.baseUrl ?? '',
+      apiKey: userConfigVal.llmConfig.apiKey ?? undefined,
     };
 
     if (!llmServiceConfig.model) {
         console.error('[App.tsx] LLM Model ID is empty for streaming.');
-        const modelErrorMsg = "LLM model not configured for streaming. Check settings.";
-        const modelErrorTimestamp = new Date().toISOString();
-        const errorModelMsg: UIChatMessage = {
-            id: `msg-error-model-stream-${Date.now()}`, thread_id: threadId, timestamp: modelErrorTimestamp,
-            sender: 'ai', text_content: modelErrorMsg, ttsLang: effectiveLangCode(),
+        const modelErrorMsg = "LLM model not configured. Check settings.";
+        const errorModelRpc: NewChatMessageDataForRpc = {
+            id: `msg-error-model-stream-${Date.now()}`, thread_id: threadId, 
+            sender: 'ai', text_content: modelErrorMsg, tts_lang: effectiveLangCode(),
         };
-        await addChatMessage(errorModelMsg);
-        setThreads(prev => prev.map(t => t.id === threadId ? { ...t, messages: [...(t.messages || []), errorModelMsg], lastActivity: modelErrorTimestamp } : t));
+        const savedModelError = await messaging.sendMessage('addChatMessage', errorModelRpc);
+        setThreads(prev => prev.map(t => t.id === threadId ? { ...t, messages: [...(t.messages || []), savedModelError as UIChatMessage], lastActivity: savedModelError.timestamp } : t));
         return;
     }
     
-    // Prepare history for LLM, using messages up to and including the latest user message
-    // const historyForLLM = threads().find(t => t.id === threadId)?.messages || []; // OLD LOCATION - REMOVED
-    // const conversationHistoryForLLM: LLMChatMessage[] = historyForLLM // OLD LOCATION - REMOVED
-    //     // Ensure we only map messages that have text_content, and are from user or ai
-    //     .filter(msg => typeof msg.text_content === 'string' && (msg.sender === 'user' || msg.sender === 'ai'))
-    //     .map(msg => ({
-    //         role: msg.sender === 'user' ? 'user' : 'assistant', // Map 'ai' to 'assistant' for LLM
-    //         content: msg.text_content! 
-    //     }));
-
-    // Create an initial placeholder AI message for streaming
     const aiStreamingMessageId = `msg-ai-stream-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    const initialAiMessage: UIChatMessage = {
+    const initialAiMessageForUI: UIChatMessage = {
       id: aiStreamingMessageId,
       thread_id: threadId,
       timestamp: new Date().toISOString(), 
@@ -536,11 +477,10 @@ const App: Component = () => {
       isStreaming: true,
     };
 
-    // Add initial AI message to local state
     setThreads(prevThreads =>
       prevThreads.map(t =>
         t.id === threadId
-          ? { ...t, messages: [...(t.messages || []), initialAiMessage] }
+          ? { ...t, messages: [...(t.messages || []), initialAiMessageForUI] }
           : t
       )
     );
@@ -548,29 +488,25 @@ const App: Component = () => {
     console.log(`[App.tsx] Requesting STREAMING AI response. Provider: ${llmServiceConfig.provider}, Model: ${llmServiceConfig.model}`);
     
     let accumulatedResponse = '';
-    let finalTimestamp = initialAiMessage.timestamp;
+    let finalTimestamp = initialAiMessageForUI.timestamp;
     let streamErrorOccurred = false;
 
     try {
-      console.log('[App.tsx Stream] Starting to iterate getAiChatResponseStream...');
       for await (const part of getAiChatResponseStream(
-        conversationHistoryForLLM, // Now using the snapshot prepared earlier
+        conversationHistoryForLLM,
         text, 
         llmServiceConfig,
         { threadSystemPrompt: currentThreadSignalValue.systemPrompt }
       )) {
-        console.log('[App.tsx Stream] Received part from getAiChatResponseStream:', JSON.stringify(part));
         if (part.type === 'content') {
           accumulatedResponse += part.content;
           finalTimestamp = new Date().toISOString(); 
-          console.log(`[App.tsx Stream] Accumulated content: "${accumulatedResponse}"`);
           setThreads(prevThreads =>
             prevThreads.map(t => {
               if (t.id === threadId) {
                 const updatedMessages = t.messages.map(m =>
                     m.id === aiStreamingMessageId ? { ...m, text_content: accumulatedResponse, timestamp: finalTimestamp } : m
                   );
-                // console.log('[App.tsx Stream] Updating thread messages for id:', threadId, 'New messages:', updatedMessages);
                 return {
                   ...t,
                   messages: updatedMessages,
@@ -580,7 +516,6 @@ const App: Component = () => {
               return t;
             })
           );
-          console.log('[App.tsx Stream] setThreads called with new content.');
         } else if (part.type === 'error') {
           console.error('[App.tsx Stream] Streaming error part from LLM:', part.error);
           accumulatedResponse += `\n[Stream Error: ${part.error}]`;
@@ -592,7 +527,6 @@ const App: Component = () => {
                  const updatedMessages = t.messages.map(m =>
                     m.id === aiStreamingMessageId ? { ...m, text_content: accumulatedResponse, timestamp: finalTimestamp } : m
                   );
-                // console.log('[App.tsx Stream] Updating thread messages with error for id:', threadId, 'New messages:', updatedMessages);
                 return {
                   ...t,
                   messages: updatedMessages,
@@ -602,91 +536,87 @@ const App: Component = () => {
               return t;
             })
           );
-          console.log('[App.tsx Stream] setThreads called with error content.');
           break; 
         }
       }
-      console.log('[App.tsx Stream] Finished iterating getAiChatResponseStream. Final accumulated text:', accumulatedResponse);
       
-      // After stream finishes (or errors out), update the message with isStreaming: false and save final to DB
-      const finalAiMessage: UIChatMessage = {
-        ...initialAiMessage, 
+      const finalAiMessageRpcData: NewChatMessageDataForRpc = {
+        id: aiStreamingMessageId, 
+        thread_id: threadId,
+        sender: 'ai',
         text_content: accumulatedResponse.trim(),
-        timestamp: finalTimestamp, 
-        isStreaming: false,
+        tts_lang: ttsLangForAiResponse || effectiveLangCode(),
       };
       
-      // Update the message in DB (or add if it was purely local during streaming)
-      // For simplicity, we'll assume addChatMessage can handle an existing ID by updating,
-      // or we'd need an updateChatMessage DB function.
-      // For now, let's just update the local state which is already done,
-      // and then try to add the *final* version. DB might need upsert logic.
-      // To avoid duplicates if addChatMessage doesn't upsert, we remove the placeholder before adding final.
+      const savedFinalAiMessage = await messaging.sendMessage('addChatMessage', finalAiMessageRpcData);
       
-      // Remove placeholder, then add final. This is a bit inefficient but safer without an upsert.
       setThreads(prevThreads =>
         prevThreads.map(t => {
           if (t.id === threadId) {
-            // Filter out the streaming message ID, then add the final one.
             const messagesWithoutStreamingPlaceholder = t.messages.filter(m => m.id !== aiStreamingMessageId);
-            return { ...t, messages: [...messagesWithoutStreamingPlaceholder, finalAiMessage], lastActivity: finalTimestamp };
+            return { ...t, messages: [...messagesWithoutStreamingPlaceholder, savedFinalAiMessage as UIChatMessage], lastActivity: savedFinalAiMessage.timestamp };
           }
           return t;
         })
       );
-      if (finalAiMessage.text_content && streamErrorOccurred) {
-         await addChatMessage(finalAiMessage);
-      }
 
     } catch (error) {
-      console.error('[App.tsx] Outer error during AI stream processing or DB save:', error);
+      console.error('[App.tsx] Outer error during AI stream processing or DB save via RPC:', error);
       const streamErrorText = `Sorry, an error occurred while streaming the response: ${String(error)}.`;
       const finalErrorTimestamp = new Date().toISOString();
       streamErrorOccurred = true;
 
-      // Update the existing streaming message with the error and isStreaming: false
-      setThreads(prevThreads =>
-        prevThreads.map(t => {
-          if (t.id === threadId) {
-            const streamingMsgIndex = t.messages.findIndex(m => m.id === aiStreamingMessageId);
-            if (streamingMsgIndex !== -1) {
-              const updatedMessages = [...t.messages];
-              updatedMessages[streamingMsgIndex] = {
-                ...updatedMessages[streamingMsgIndex],
-                text_content: accumulatedResponse + `\n[Outer Error: ${String(error)}]`, 
-                timestamp: finalErrorTimestamp,
-                isStreaming: false,
-              };
-              return { ...t, messages: updatedMessages, lastActivity: finalErrorTimestamp };
-            } else {
-              const newErrorMsg: UIChatMessage = {
-                id: `msg-error-stream-outer-${Date.now()}`,
-                thread_id: threadId, timestamp: finalErrorTimestamp,
-                sender: 'ai', text_content: streamErrorText, ttsLang: effectiveLangCode(),
-                isStreaming: false,
-              };
-              return { ...t, messages: [...t.messages, newErrorMsg], lastActivity: finalErrorTimestamp };
-            }
-          }
-          return t;
-        })
-      );
-      
-      // Attempt to save the error state to the DB if the message exists.
-      const finalErrorAiMessage: UIChatMessage = {
-        ...initialAiMessage,
+      const errorForDbRpc: NewChatMessageDataForRpc = {
         id: aiStreamingMessageId, 
-        text_content: accumulatedResponse.trim() + `\n[Outer Error: ${String(error)}]`,
-        timestamp: finalErrorTimestamp, 
-        isStreaming: false,
+        thread_id: threadId,
+        sender: 'ai',
+        text_content: accumulatedResponse + `\n[Outer Error: ${String(error)}]`,
+        tts_lang: ttsLangForAiResponse || effectiveLangCode(),
       };
-      if (finalErrorAiMessage.text_content && streamErrorOccurred) {
-          await addChatMessage(finalErrorAiMessage);
+      try {
+        const savedErrorToDb = await messaging.sendMessage('addChatMessage', errorForDbRpc);
+        setThreads(prevThreads =>
+            prevThreads.map(t => {
+              if (t.id === threadId) {
+                const streamingMsgIndex = t.messages.findIndex(m => m.id === aiStreamingMessageId);
+                if (streamingMsgIndex !== -1) {
+                  const updatedMessages = [...t.messages];
+                  updatedMessages[streamingMsgIndex] = {
+                    ...(savedErrorToDb as UIChatMessage),
+                    isStreaming: false, 
+                  };
+                  return { ...t, messages: updatedMessages, lastActivity: savedErrorToDb.timestamp };
+                } else { 
+                  return { ...t, messages: [...t.messages, { ...(savedErrorToDb as UIChatMessage), isStreaming: false }], lastActivity: savedErrorToDb.timestamp };
+                }
+              }
+              return t;
+            })
+          );
+      } catch (dbSaveError) {
+          console.error('[App.tsx] Failed to save outer stream error to DB via RPC:', dbSaveError);
+          setThreads(prevThreads =>
+            prevThreads.map(t => {
+              if (t.id === threadId) {
+                const streamingMsgIndex = t.messages.findIndex(m => m.id === aiStreamingMessageId);
+                if (streamingMsgIndex !== -1) {
+                  const updatedMessages = [...t.messages];
+                  updatedMessages[streamingMsgIndex] = {
+                    ...updatedMessages[streamingMsgIndex],
+                    text_content: accumulatedResponse + `\n[Outer Error: ${String(error)}] (DB Save Failed)`,
+                    timestamp: finalErrorTimestamp,
+                    isStreaming: false,
+                  };
+                  return { ...t, messages: updatedMessages, lastActivity: finalErrorTimestamp };
+                }
+              }
+              return t;
+            })
+          );
       }
     }
   };
 
-  // --- JSX --- 
   return (
     <SettingsProvider>
       <Switch fallback={<div>{i18n().get('newTabPageUnknownView', 'Unknown View')}</div>}>
@@ -712,19 +642,19 @@ const App: Component = () => {
         <Match when={activeView() === 'unifiedChat'}>
           <Show when={!isLoadingThreads() && userConfig()} fallback={<div>Loading chats and configuration...</div>}>
             <UnifiedConversationView
-              threads={threads()}
-              currentSelectedThreadId={currentThreadId()}
+              threads={threads()} 
+              currentSelectedThreadId={currentThreadId()} 
               onSelectThread={handleSelectThread}
               onCreateNewThread={handleCreateNewThread}
               onSendMessage={handleSendMessageToUnifiedView}
               onNavigateBack={() => navigateTo('newtab')}
-              userConfig={userConfig()!}
+              userConfig={userConfig()!} 
             />
           </Show>
         </Match>
       </Switch>
     </SettingsProvider>
   );
-};
+}; 
 
 export default App;
