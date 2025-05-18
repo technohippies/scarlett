@@ -70,6 +70,8 @@ const fetchMessages = async (langCode: string): Promise<Messages> => {
 
 type ActiveView = 'newtab' | 'bookmarks' | 'study' | 'settings' | 'unifiedChat';
 
+let appScopeHasInitializedDefaultThreads = false;
+
 const App: Component = () => {
   const [activeView, setActiveView] = createSignal<ActiveView>('newtab');
   const [effectiveLangCode, setEffectiveLangCode] = createSignal<string>(getBestInitialLangCode());
@@ -77,6 +79,9 @@ const App: Component = () => {
   const [threads, setThreads] = createSignal<Thread[]>([]);
   const [currentThreadId, setCurrentThreadId] = createSignal<string | null>(null);
   const [isLoadingThreads, setIsLoadingThreads] = createSignal(true);
+
+  // Reset the flag if the App component itself is somehow re-mounted, for safety in some HMR scenarios.
+  appScopeHasInitializedDefaultThreads = false;
 
   const triggerAiKickoffMessage = async (thread: Thread) => { // Made async for safety if DB calls were added here
     if (!thread || thread.messages.length > 0 || thread.id === JUST_CHAT_THREAD_ID) return;
@@ -114,85 +119,113 @@ const App: Component = () => {
   };
 
   createEffect(async () => {
-    console.log('[App.tsx] Initializing threads from DB...');
-    setIsLoadingThreads(true);
-    try {
-      const loadedThreads = await getAllChatThreads();
-      if (loadedThreads.length === 0) {
-        console.log('[App.tsx] No threads in DB. Creating default welcome threads...');
-        // Define the new welcome threads
-        const introductionsThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
-          id: 'thread-welcome-introductions',
-          title: 'Introductions',
-          systemPrompt: "I'm Scarlett, your friendly AI language companion. I'd love to get to know you a bit! Tell me about yourself - what are your interests, what languages are you learning, or anything else you'd like to share?"
-        };
-        const sharingThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
-          id: 'thread-welcome-sharing',
-          title: 'Sharing Thoughts',
-          systemPrompt: "It's great to connect on a deeper level. As an AI, I have a unique perspective. I can share some 'AI thoughts' or how I learn if you're curious, and I'm always here to listen to yours. What's on your mind, or what would you like to ask me?"
-        };
-        const justChatThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
-          id: JUST_CHAT_THREAD_ID,
-          title: 'Just Chat (Speech)',
-          systemPrompt: 'You are a friendly AI assistant for voice chat. Keep responses concise for speech.'
-        };
-
-        const newIntroThread = await addChatThread(introductionsThreadData);
-        const newSharingThread = await addChatThread(sharingThreadData);
-        const newJustChatThread = await addChatThread(justChatThreadData);
-
-        const initialSetupThreads = [newIntroThread, newSharingThread, newJustChatThread].filter(Boolean) as Thread[];
-        setThreads(initialSetupThreads);
-        
-        const firstSelectableThread = initialSetupThreads.find(t => t.id !== JUST_CHAT_THREAD_ID);
-        if (firstSelectableThread) {
-          setCurrentThreadId(firstSelectableThread.id);
-          // No automatic kickoff needed for these welcome threads beyond their system prompt
-          // Messages will be loaded if any exist, but expected to be empty initially.
-          await loadMessagesForThreadAndKickoff(firstSelectableThread.id); 
-        } else {
-          setCurrentThreadId(null);
-        }
-      } else {
-        // Ensure JUST_CHAT_THREAD_ID exists if other threads are loaded
-        let allThreads = [...loadedThreads];
-        if (!allThreads.some(t => t.id === JUST_CHAT_THREAD_ID)) {
-          console.log('[App.tsx] JUST_CHAT_THREAD_ID missing from loaded threads. Creating it.');
-          const justChatData: Omit<Thread, 'messages' | 'lastActivity'> = {
+    if (!appScopeHasInitializedDefaultThreads) {
+      console.log('[App.tsx] Attempting to initialize default threads (run once check)...');
+      setIsLoadingThreads(true);
+      try {
+        const loadedThreads = await getAllChatThreads();
+        if (loadedThreads.length === 0) {
+          console.log('[App.tsx] No threads in DB. Creating default welcome threads...');
+          const introductionsThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
+            id: 'thread-welcome-introductions',
+            title: 'Introductions',
+            systemPrompt: "I'm Scarlett, your friendly AI language companion. I'd love to get to know you a bit! Tell me about yourself - what are your interests, what languages are you learning, or anything else you'd like to share?"
+          };
+          const sharingThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
+            id: 'thread-welcome-sharing',
+            title: 'Sharing Thoughts',
+            systemPrompt: "It's great to connect on a deeper level. As an AI, I have a unique perspective. I can share some 'AI thoughts' or how I learn if you're curious, and I'm always here to listen to yours. What's on your mind, or what would you like to ask me?"
+          };
+          const justChatThreadData: Omit<Thread, 'messages' | 'lastActivity'> = {
             id: JUST_CHAT_THREAD_ID,
             title: 'Just Chat (Speech)',
             systemPrompt: 'You are a friendly AI assistant for voice chat. Keep responses concise for speech.'
           };
-          try {
-            const createdJustChatThread = await addChatThread(justChatData);
-            allThreads.push(createdJustChatThread);
-          } catch (dbError) {
-            console.error('[App.tsx] Failed to create missing JUST_CHAT_THREAD_ID:', dbError);
+
+          const newIntroThread = await addChatThread(introductionsThreadData);
+          const newSharingThread = await addChatThread(sharingThreadData);
+          const newJustChatThread = await addChatThread(justChatThreadData);
+
+          const initialSetupThreads = [newIntroThread, newSharingThread, newJustChatThread].filter(Boolean) as Thread[];
+          setThreads(initialSetupThreads);
+          
+          const firstSelectableThread = initialSetupThreads.find(t => t.id !== JUST_CHAT_THREAD_ID);
+          if (firstSelectableThread) {
+            setCurrentThreadId(firstSelectableThread.id);
+            await loadMessagesForThreadAndKickoff(firstSelectableThread.id); 
+          } else {
+            setCurrentThreadId(null);
           }
-        }
-        setThreads(allThreads);
-        const firstSelectableThread = allThreads.find(t => t.id !== JUST_CHAT_THREAD_ID);
-        if (firstSelectableThread) {
-          if (currentThreadId() === null || !allThreads.some(t=> t.id === currentThreadId())) {
-             setCurrentThreadId(firstSelectableThread.id);
-          }
-          // Load messages for the initially selected/persisted thread
-          // The currentThreadId() might already be set if it was persisted or from a previous state
-          await loadMessagesForThreadAndKickoff(currentThreadId() || firstSelectableThread.id);
+          appScopeHasInitializedDefaultThreads = true;
+          console.log('[App.tsx] Default threads created and flag set.');
         } else {
-          setCurrentThreadId(null); // No non-speech thread available
+          let allThreads = [...loadedThreads];
+          if (!allThreads.some(t => t.id === JUST_CHAT_THREAD_ID)) {
+            console.log('[App.tsx] JUST_CHAT_THREAD_ID missing from loaded threads. Creating it.');
+            const justChatData: Omit<Thread, 'messages' | 'lastActivity'> = {
+              id: JUST_CHAT_THREAD_ID,
+              title: 'Just Chat (Speech)',
+              systemPrompt: 'You are a friendly AI assistant for voice chat. Keep responses concise for speech.'
+            };
+            try {
+              const createdJustChatThread = await addChatThread(justChatData);
+              allThreads.push(createdJustChatThread);
+            } catch (dbError) {
+              console.error('[App.tsx] Failed to create missing JUST_CHAT_THREAD_ID:', dbError);
+            }
+          }
+          setThreads(allThreads);
+          const firstSelectableThread = allThreads.find(t => t.id !== JUST_CHAT_THREAD_ID);
+          if (firstSelectableThread) {
+            // Only set currentThreadId if it's not already valid or set
+            if (currentThreadId() === null || !allThreads.some(t=> t.id === currentThreadId())) {
+               setCurrentThreadId(firstSelectableThread.id);
+            }
+            await loadMessagesForThreadAndKickoff(currentThreadId() || firstSelectableThread.id);
+          } else {
+            setCurrentThreadId(null);
+          }
+          appScopeHasInitializedDefaultThreads = true;
+          console.log('[App.tsx] Threads already existed or JUST_CHAT_THREAD_ID handled, flag set.');
+        }
+      } catch (error) {
+        console.error('[App.tsx] Error during one-time thread initialization:', error);
+        setThreads([]);
+        setCurrentThreadId(null);
+        // Do not set flag to true on error, to allow potential re-try if appropriate
+      } finally {
+        setIsLoadingThreads(false);
+        console.log('[App.tsx] Finished one-time thread initialization attempt.');
+      }
+    } else {
+      console.log('[App.tsx] Default threads initialization routine already run, skipping DB seed section.');
+      // This section handles subsequent runs of the createEffect if it's triggered by other dependencies
+      // after the initial thread setup. For example, if effectiveLangCode changes.
+      // We might need to ensure threads are still loaded if not already.
+      if (threads().length === 0 && appScopeHasInitializedDefaultThreads) {
+        console.warn("[App.tsx] Threads array is empty even though initialization flag is set. Re-fetching threads.");
+        setIsLoadingThreads(true);
+        try {
+            const currentDBThreads = await getAllChatThreads();
+            setThreads(currentDBThreads);
+            if (currentDBThreads.length > 0) {
+                const firstSelectable = currentDBThreads.find(t => t.id !== JUST_CHAT_THREAD_ID);
+                if (firstSelectable && (currentThreadId() === null || !currentDBThreads.some(t => t.id === currentThreadId()))) {
+                    setCurrentThreadId(firstSelectable.id);
+                }
+                if(currentThreadId()){
+                    await loadMessagesForThreadAndKickoff(currentThreadId()!);
+                }
+            }
+        } catch (e) {
+            console.error("[App.tsx] Error re-fetching threads:", e);
+        } finally {
+            setIsLoadingThreads(false);
         }
       }
-    } catch (error) {
-      console.error('[App.tsx] Error initializing threads from DB:', error);
-      setThreads([]); // Set to empty array on error
-      setCurrentThreadId(null);
-    } finally {
-      setIsLoadingThreads(false);
-      console.log('[App.tsx] Finished initializing threads.');
     }
 
-    // Load language from storage (can remain as is)
+    // Language loading logic (runs independently of the thread seeding guard)
     userConfigurationStorage.getValue().then(config => {
       if (config && config.nativeLanguage) {
         if (config.nativeLanguage !== effectiveLangCode()) {
@@ -320,7 +353,6 @@ const App: Component = () => {
       setThreads(prevThreads =>
         prevThreads.map(t => (t.id === threadId ? updatedThreadAfterUserMessage : t))
       );
-      await updateThreadLastActivity(threadId);
 
       if (isUserMessage) {
         const userConfig = await userConfigurationStorage.getValue();
@@ -358,7 +390,6 @@ const App: Component = () => {
           setThreads(prevThreads =>
             prevThreads.map(t => (t.id === threadId ? updatedThreadAfterError : t))
           );
-          await updateThreadLastActivity(threadId);
           return;
         }
 
@@ -395,7 +426,6 @@ const App: Component = () => {
             setThreads(prevThreads =>
                 prevThreads.map(t => (t.id === threadId ? updatedThreadAfterModelError : t))
             );
-            await updateThreadLastActivity(threadId);
             return;
         }
 
@@ -437,7 +467,6 @@ const App: Component = () => {
             setThreads(prevThreads =>
               prevThreads.map(t => (t.id === threadId ? updatedThreadAfterAI : t))
             );
-            await updateThreadLastActivity(threadId);
           } else {
             console.error('[App.tsx] AI response text was empty or not a string:', aiResponseText);
             const emptyErrorTimestamp = new Date().toISOString();
@@ -460,7 +489,6 @@ const App: Component = () => {
             setThreads(prevThreads =>
               prevThreads.map(t => (t.id === threadId ? updatedThreadAfterEmptyError : t))
             );
-            await updateThreadLastActivity(threadId);
           }
         } catch (llmError) {
           console.error('[App.tsx] Error getting AI response from LLM service:', llmError);
@@ -484,7 +512,6 @@ const App: Component = () => {
           setThreads(prevThreads =>
             prevThreads.map(t => (t.id === threadId ? updatedThreadAfterLlmError : t))
           );
-          await updateThreadLastActivity(threadId);
         }
       }
     } catch (error) {

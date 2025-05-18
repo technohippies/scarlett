@@ -331,16 +331,21 @@ CREATE INDEX IF NOT EXISTS idx_song_lyrics_lrclib_id ON song_lyrics(lrclib_id);
 -- --- Chat / Conversation Tables ---
 
 CREATE TABLE IF NOT EXISTS chat_threads (
-    id TEXT PRIMARY KEY, 
-    title TEXT NOT NULL,
-    system_prompt TEXT, 
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    last_activity_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    -- metadata_embedding vector(1024) NULL -- Old single dimension
-    metadata_embedding_512 vector(512) NULL,
-    metadata_embedding_768 vector(768) NULL,
-    metadata_embedding_1024 vector(1024) NULL,
-    active_metadata_embedding_dimension INTEGER NULL -- Stores 512, 768, or 1024 etc.
+    id TEXT PRIMARY KEY,                      -- Unique ID for the thread (e.g., UUID)
+    title TEXT NOT NULL,                      -- Title of the chat thread
+    system_prompt TEXT NOT NULL DEFAULT '',   -- System prompt for this thread, default to empty string
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- When the thread was created
+    last_activity_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- Last user or AI interaction
+    -- For potential future "scenario-based" roleplay chats
+    scenario_description TEXT NULL,
+    -- Add other metadata as needed, e.g., user_id for multi-user
+    -- Embedding fields for the thread itself
+    embedding_model_id TEXT NULL,
+    last_embedded_at TIMESTAMPTZ NULL,
+    embedding_512 TEXT NULL, -- Changed from BLOB to TEXT
+    embedding_768 TEXT NULL, -- Changed from BLOB to TEXT
+    embedding_1024 TEXT NULL, -- Changed from BLOB to TEXT
+    active_embedding_dimension INTEGER NULL -- 512, 768, or 1024
 );
 
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -351,10 +356,9 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     tts_lang TEXT NULL, 
     tts_alignment_data TEXT NULL, 
-    -- embedding vector(1024) NULL, -- Old single dimension
-    embedding_512 vector(512) NULL,
-    embedding_768 vector(768) NULL,
-    embedding_1024 vector(1024) NULL,
+    embedding_512 TEXT NULL, -- Changed from vector(512) to TEXT
+    embedding_768 TEXT NULL, -- Changed from vector(768) to TEXT
+    embedding_1024 TEXT NULL, -- Changed from vector(1024) to TEXT
     active_embedding_dimension INTEGER NULL, -- Stores 512, 768, or 1024 etc.
     processed_for_embedding_at TIMESTAMPTZ NULL,
     embedding_model_id TEXT NULL

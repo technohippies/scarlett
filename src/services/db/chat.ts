@@ -70,6 +70,7 @@ export const getChatMessagesByThreadId = async (threadId: string): Promise<ChatM
     const results = await db.query(`
       SELECT 
         id, 
+        thread_id,
         sender, 
         text_content, 
         timestamp, 
@@ -80,7 +81,7 @@ export const getChatMessagesByThreadId = async (threadId: string): Promise<ChatM
         embedding_1024,
         active_embedding_dimension
       FROM chat_messages 
-      WHERE thread_id = ?1 
+      WHERE thread_id = $1 
       ORDER BY timestamp ASC
     `, [threadId]);
     const rows = results.rows;
@@ -109,14 +110,22 @@ export const addChatThread = async (threadData: NewChatThreadData): Promise<Thre
   const now = new Date().toISOString();
   try {
     await db.query(
-      `INSERT INTO chat_threads (id, title, system_prompt, created_at, last_activity_at, embedding_512, embedding_768, embedding_1024, active_embedding_dimension)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      `INSERT INTO chat_threads (
+         id, title, system_prompt, created_at, last_activity_at, 
+         scenario_description, embedding_model_id, last_embedded_at, 
+         embedding_512, embedding_768, embedding_1024, active_embedding_dimension
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
       [
         threadData.id,
         threadData.title,
-        threadData.systemPrompt || null,
+        threadData.systemPrompt || '',
         now,
         now,
+        
+        null,
+        null,
+        null,
+
         threadData.embedding_512 ? JSON.stringify(threadData.embedding_512) : null,
         threadData.embedding_768 ? JSON.stringify(threadData.embedding_768) : null,
         threadData.embedding_1024 ? JSON.stringify(threadData.embedding_1024) : null,
@@ -162,7 +171,7 @@ export const addChatMessage = async (messageData: NewChatMessageData): Promise<C
     await db.transaction(async (tx) => {
       await tx.query(
         `INSERT INTO chat_messages (id, thread_id, sender, text_content, timestamp, tts_lang, tts_alignment_data, embedding_512, embedding_768, embedding_1024, active_embedding_dimension)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
         [
           messageData.id,
           messageData.thread_id,
@@ -178,7 +187,7 @@ export const addChatMessage = async (messageData: NewChatMessageData): Promise<C
         ]
       );
       await tx.query(
-        'UPDATE chat_threads SET last_activity_at = ? WHERE id = ?',
+        'UPDATE chat_threads SET last_activity_at = $1 WHERE id = $2',
         [now, messageData.thread_id]
       );
     });
