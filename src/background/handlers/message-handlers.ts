@@ -59,7 +59,7 @@ import type { EmbeddingResult } from '../../services/llm/embedding';
 import { recordSongPlay } from '../../services/db/music';
 import { Client as LrcLibClient } from 'lrclib-api';
 import { saveLyrics, type SongLyricsRecord } from '../../services/db/lyrics';
-import type { SongDetectedMessagePayload } from '../../shared/messaging-types';
+
 import {
     getAllChatThreads as dbGetAllChatThreads,
     getChatMessagesByThreadId as dbGetChatMessagesByThreadId,

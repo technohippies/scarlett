@@ -109,11 +109,22 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
     vadInitializationPromise = new Promise<MicVAD | null>(r => resolveInit = r);
     try {
       const newVad = await MicVAD.new({
-        baseAssetPath: browser.runtime.getURL('/vad-assets/' as any),
-        onnxWASMBasePath: browser.runtime.getURL('/vad-assets/ort-wasm-simd.wasm' as any),
-        onSpeechStart: () => console.log('[VAD] onSpeechStart'),
+        baseAssetPath: '/vad-assets/',
+        onnxWASMBasePath: '/vad-assets/',
+        model: 'v5',
+        ortConfig: (ort) => {
+          // @ts-ignore
+          ort.env.wasm.proxy = false;
+          // @ts-ignore
+          ort.env.wasm.simd = false;
+          // @ts-ignore
+          ort.env.wasm.numThreads = 1;
+          // @ts-ignore
+          ort.env.wasm.workerPath = browser.runtime.getURL('/vad-assets/ort-wasm.js' as any);
+        },
+        onSpeechStart: () => console.log('[UnifiedConversationView] VAD onSpeechStart'),
         onSpeechEnd: async (/*audio*/) => {
-          console.log('[VAD] onSpeechEnd');
+          console.log('[UnifiedConversationView] VAD onSpeechEnd');
           setIsRecording(false);
           let transcribedText: string | null = "Simulated STT: " + new Date().toLocaleTimeString();
           // Actual STT logic placeholder

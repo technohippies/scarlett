@@ -1,43 +1,40 @@
 import { Component, createSignal, createEffect, onCleanup } from 'solid-js';
 
 export interface MicVisualizerProps {
-  /** When true, start animating the bars */
+  /** When true, start animating the waveform */
   active: boolean;
-  /** Number of bars to display */
+  /** Number of points in the waveform */
   barCount?: number;
-  /** Maximum height of bars in pixels */
+  /** Height of the waveform in pixels */
   maxHeight?: number;
-  /** Minimum height of bars in pixels */
-  minHeight?: number;
   /** Animation update interval in milliseconds */
   interval?: number;
 }
 
 export const MicVisualizer: Component<MicVisualizerProps> = (props) => {
-  const bars = props.barCount ?? 20;
-  const maxH = props.maxHeight ?? 30;
-  const minH = props.minHeight ?? 4;
+  const pointCount = props.barCount ?? 50;
+  const svgHeight = props.maxHeight ?? 30;
   const intervalMs = props.interval ?? 100;
 
-  // heights for each bar
-  const [heights, setHeights] = createSignal<number[]>(Array(bars).fill(minH));
+  // waveform values: each between -1 and 1
+  const [values, setValues] = createSignal<number[]>(Array(pointCount).fill(0));
   let timer: number | undefined;
 
-  const updateHeights = () => {
-    setHeights(
-      Array(bars)
+  const updateWaveform = () => {
+    setValues(
+      Array(pointCount)
         .fill(0)
-        .map(() => Math.random() * (maxH - minH) + minH)
+        .map(() => Math.random() * 2 - 1) // random between -1 and 1
     );
   };
 
   createEffect(() => {
     if (props.active) {
-      updateHeights();
-      timer = window.setInterval(updateHeights, intervalMs);
+      updateWaveform();
+      timer = window.setInterval(updateWaveform, intervalMs);
     } else {
       if (timer) window.clearInterval(timer);
-      setHeights(Array(bars).fill(minH));
+      setValues(Array(pointCount).fill(0));
     }
   });
 
@@ -45,15 +42,28 @@ export const MicVisualizer: Component<MicVisualizerProps> = (props) => {
     if (timer) window.clearInterval(timer);
   });
 
+  // Render SVG waveform
+  const pointsAttr = () =>
+    values()
+      .map((v, i) => {
+        const x = i;
+        const y = svgHeight / 2 - v * (svgHeight / 2);
+        return `${x},${y}`;
+      })
+      .join(' ');
   return (
-    <div class="flex items-end space-x-1 h-10">
-      {heights().map((h, i) => (
-        <div
-          key={i}
-          class="bg-white w-1 rounded-sm"
-          style={{ height: `${h}px`, transition: `height ${intervalMs}ms ease-in-out` }}
-        />
-      ))}
-    </div>
+    <svg
+      class="w-full"
+      style={{ height: `${svgHeight}px` }}
+      viewBox={`0 0 ${pointCount - 1} ${svgHeight}`}
+      preserveAspectRatio="none"
+    >
+      <polyline
+        fill="none"
+        stroke="white"
+        stroke-width="1"
+        points={pointsAttr()}
+      />
+    </svg>
   );
 }; 

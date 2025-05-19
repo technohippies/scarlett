@@ -10,6 +10,7 @@ import { browser } from 'wxt/browser';
 import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService';
 import { Spinner } from '../../components/ui/spinner';
 import { Pause, Microphone } from 'phosphor-solid';
+import { MicVisualizer } from '../../components/ui/MicVisualizer';
 
 interface ChatPageViewProps {
   threads: Thread[];
@@ -27,20 +28,33 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
   // --- Speech Mode & VAD State ---
   const [isSpeechMode, setIsSpeechMode] = createSignal(false);
   const [isRecording, setIsRecording] = createSignal(false);
+  const [isLLMGenerating, setIsLLMGenerating] = createSignal(false);
+  const [isTTSSpeaking, setIsTTSSpeaking] = createSignal(false);
   const [vadInstance, setVadInstance] = createSignal<MicVAD | null>(null);
   let vadInitPromise: Promise<MicVAD | null> | null = null;
   const initVad = async (): Promise<MicVAD | null> => {
     if (vadInstance()) return vadInstance();
     if (vadInitPromise) return await vadInitPromise;
     let resolveInit: (v: MicVAD | null) => void = () => {};
-    vadInitPromise = new Promise(r => resolveInit = r);
+    vadInitPromise = new Promise<MicVAD | null>(r => resolveInit = r);
     try {
       const v = await MicVAD.new({
-        baseAssetPath: browser.runtime.getURL('/vad-assets/' as any),
-        onnxWASMBasePath: browser.runtime.getURL('/vad-assets/ort-wasm-simd.wasm' as any),
-        onSpeechStart: () => console.log('[VAD] start'),
+        baseAssetPath: '/vad-assets/',
+        onnxWASMBasePath: '/vad-assets/',
+        model: 'v5',
+        ortConfig: (ort) => {
+          // @ts-ignore
+          ort.env.wasm.proxy = false;
+          // @ts-ignore
+          ort.env.wasm.simd = false;
+          // @ts-ignore
+          ort.env.wasm.numThreads = 1;
+          // @ts-ignore
+          ort.env.wasm.workerPath = browser.runtime.getURL('/vad-assets/ort-wasm.js' as any);
+        },
+        onSpeechStart: () => console.log('[ChatPage] VAD onSpeechStart'),
         onSpeechEnd: async (_audio) => {
-          console.log('[VAD] end');
+          console.log('[ChatPage] VAD onSpeechEnd');
           setIsRecording(false);
           // Perform STT when speech ends
           try {
@@ -48,19 +62,20 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
             const text = result?.text?.trim();
             if (text) props.onSendMessage(text);
           } catch (e) {
-            console.error('[VAD] STT error', e);
+            console.error('[ChatPage] VAD STT error', e);
           }
         }
       });
       setVadInstance(v);
       resolveInit(v);
     } catch (e) {
-      console.error('[VAD] init error', e);
+      console.error('[ChatPage] VAD init error', e);
       setVadInstance(null);
       resolveInit(null);
-    } finally {
       vadInitPromise = null;
+      return null;
     }
+    vadInitPromise = null;
     return vadInstance();
   };
   const destroyVadInstance = () => {
@@ -70,9 +85,9 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
     vadInitPromise = null;
   };
   const handleStartRecording = async () => {
-    if (!isSpeechMode()) return;
+    if (!isSpeechMode() || isRecording() || isLLMGenerating() || isTTSSpeaking()) return;
     const v = await initVad();
-    if (v && !isRecording()) {
+    if (v) {
       try { await v.start(); setIsRecording(true); } catch (e) { console.error('[VAD] start error', e); }
     }
   };
@@ -230,8 +245,21 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
                     }}
                   </Show>
                 </div>
+                <div class="px-4">
+                  <MicVisualizer
+                    active={isRecording()}
+                    barCount={60}
+                    maxHeight={48}
+                    interval={80}
+                  />
+                </div>
                 <div class="p-4 border-t flex justify-center items-center">
-                  <Button onClick={() => isRecording() ? handleStopRecording() : handleStartRecording()} variant="default" class="w-16 h-16 rounded-full text-2xl">
+                  <Button
+                    onClick={() => isRecording() ? handleStopRecording() : handleStartRecording()}
+                    variant="default"
+                    class="w-16 h-16 rounded-full text-2xl"
+                    disabled={isLLMGenerating() || isTTSSpeaking()}
+                  >
                     {isRecording() ? <Pause /> : <Microphone />}
                   </Button>
                 </div>
