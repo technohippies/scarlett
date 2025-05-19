@@ -17,6 +17,7 @@ import { generateRoleplayScenariosLLM, type RoleplayScenario } from '../../servi
 import type { UserConfiguration } from '../../services/storage/types';
 import type { ChatMessage } from './types';
 import { MicVisualizer } from '../../components/ui/MicVisualizer';
+import { ChatPageView } from './ChatPageView';
 
 const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
 
@@ -53,6 +54,7 @@ interface UnifiedConversationViewProps {
 }
 
 const [isGeneratingRoleplays, setIsGeneratingRoleplays] = createSignal(false);
+const [isLLMGenerating, setIsLLMGenerating] = createSignal(false);
 
 export const UnifiedConversationView: Component<UnifiedConversationViewProps> = (props) => {
   const [inputText, setInputText] = createSignal('');
@@ -385,7 +387,7 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
     console.log(`[UnifiedConversationView] Re-initiating TTS for message ${messageId} at new speed ${newRate}.`);
     // handlePlayTTS will use the new currentPlaybackRate internally.
     // It will also set activeSpokenMessageId.
-    handlePlayTTS(targetMessage.id, targetMessage.text_content, targetMessage.ttsLang || 'en', targetMessage.alignmentData)
+    handlePlayTTS(targetMessage.id, targetMessage.text_content, targetMessage.tts_lang || 'en', targetMessage.alignmentData)
       .catch(error => console.error("[UnifiedConversationView] Error during TTS re-initiation after speed change:", error));
   };
   
@@ -499,7 +501,7 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
     if (last.sender === 'ai' && !last.isStreaming && lastAutoPlayedId() !== last.id) {
       setLastAutoPlayedId(last.id);
       setCurrentPlaybackRate(1.0);
-      handlePlayTTS(last.id, last.text_content, last.ttsLang || 'en', last.alignmentData);
+      handlePlayTTS(last.id, last.text_content, last.tts_lang || 'en', last.alignmentData);
     }
     prevSpeechModeActiveForAutoPlay = currentSpeechModeActive;
   });
@@ -568,78 +570,96 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
         </aside>
 
         <main class="flex-1 flex flex-col bg-bg-primary overflow-hidden">
-          <div ref={scrollHostRef} class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
-            <Show
-              when={currentMessages().length > 0 || isSpeechModeActive()}
-              fallback={
-                <div class="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-                  <img 
-                    src="/images/scarlett-supercoach/scarlett-proud-512x512.png" 
-                    alt="Scarlett Supercoach" 
-                    class="w-32 h-32 mb-4 opacity-80" 
-                  />
-                  <p class="text-lg font-medium">Let's chat!</p>
-                  <p class="text-sm">I have context of your browsing history, recent songs, and your mood.</p>
-                </div>
-              }
-            >
-              <For each={currentMessages()} /* Removed fallback from For, it's handled by Show */>
-                {(message, index) => (
-                  <ChatMessageItem
-                    message={message}
-                    isLastInGroup={index() === currentMessages().length - 1 || currentMessages()[index() + 1]?.sender !== message.sender}
-                    isCurrentSpokenMessage={activeSpokenMessageId() === message.id}
-                    wordMap={activeSpokenMessageId() === message.id ? ttsWordMap() : (message.ttsWordMap || [])}
-                    currentHighlightIndex={activeSpokenMessageId() === message.id ? currentTTSHighlightIndex() : null}
-                    onPlayTTS={handlePlayTTS}
-                    isStreaming={message.isStreaming}
-                    isGlobalTTSSpeaking={isTTSSpeaking()}
-                    onChangeSpeed={handleChangePlaybackSpeed}
-                  />
-                )}
-              </For>
-            </Show>
-            <Show when={ttsError()}>
-              <div class="text-red-500 text-sm p-2 bg-red-100 rounded-md">TTS Error: {ttsError()}</div>
-            </Show>
-          </div>
-
-          <Show when={!isSpeechModeActive()}>
-            <div class="p-2 bg-bg-primary">
-              <div class="flex items-center space-x-2">
-                <TextField class="flex-1">
-                  <TextFieldInput 
-                    type="text" 
-                    placeholder="Type your message..." 
-                    value={inputText()} 
-                    onInput={(e) => setInputText(e.currentTarget.value)} 
-                    onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendText())}
-                  />
-                </TextField>
-                <Button onClick={handleSendText} disabled={!inputText().trim()}>Send</Button>
-              </div>
-            </div>
+          <Show when={isSpeechModeActive() && currentThread()?.id === JUST_CHAT_THREAD_ID}>
+            <ChatPageView
+              threads={props.threads.filter(t => t.id !== JUST_CHAT_THREAD_ID)}
+              currentChatMessages={currentMessages()}
+              onSendMessage={props.onSendMessage}
+              onSelectThread={props.onSelectThread}
+              onNavigateBack={props.onNavigateBack}
+              currentThreadId={currentThread()?.id ?? null}
+              activeSpokenMessageId={activeSpokenMessageId()}
+              isUnifiedTTSSpeaking={isTTSSpeaking()}
+              isUnifiedLLMGenerating={isLLMGenerating()}
+              ttsWordMap={ttsWordMap()}
+              currentTTSHighlightIndex={currentTTSHighlightIndex()}
+              userConfig={props.userConfig}
+            />
           </Show>
+          <Show when={!isSpeechModeActive() || currentThread()?.id !== JUST_CHAT_THREAD_ID}>
+            <div ref={scrollHostRef} class="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth">
+              <Show
+                when={currentMessages().length > 0 || isSpeechModeActive()}
+                fallback={
+                  <div class="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
+                    <img 
+                      src="/images/scarlett-supercoach/scarlett-proud-512x512.png" 
+                      alt="Scarlett Supercoach" 
+                      class="w-32 h-32 mb-4 opacity-80" 
+                    />
+                    <p class="text-lg font-medium">Let's chat!</p>
+                    <p class="text-sm">I have context of your browsing history, recent songs, and your mood.</p>
+                  </div>
+                }
+              >
+                <For each={currentMessages()} /* Removed fallback from For, it's handled by Show */>
+                  {(message, index) => (
+                    <ChatMessageItem
+                      message={message}
+                      isLastInGroup={index() === currentMessages().length - 1 || currentMessages()[index() + 1]?.sender !== message.sender}
+                      isCurrentSpokenMessage={activeSpokenMessageId() === message.id}
+                      wordMap={activeSpokenMessageId() === message.id ? ttsWordMap() : (message.ttsWordMap || [])}
+                      currentHighlightIndex={activeSpokenMessageId() === message.id ? currentTTSHighlightIndex() : null}
+                      onPlayTTS={handlePlayTTS}
+                      isStreaming={message.isStreaming}
+                      isGlobalTTSSpeaking={isTTSSpeaking()}
+                      onChangeSpeed={handleChangePlaybackSpeed}
+                    />
+                  )}
+                </For>
+              </Show>
+              <Show when={ttsError()}>
+                <div class="text-red-500 text-sm p-2 bg-red-100 rounded-md">TTS Error: {ttsError()}</div>
+              </Show>
+            </div>
 
-          <Show when={isSpeechModeActive()}>
-            {/* Show MicVisualizer after manual start */}
-            {hasVADStarted() && (
-              <div class="px-4">
-                <MicVisualizer active={isRecording()} barCount={60} maxHeight={48} interval={80} />
+            <Show when={!isSpeechModeActive()}>
+              <div class="p-2 bg-bg-primary">
+                <div class="flex items-center space-x-2">
+                  <TextField class="flex-1">
+                    <TextFieldInput 
+                      type="text" 
+                      placeholder="Type your message..." 
+                      value={inputText()} 
+                      onInput={(e) => setInputText(e.currentTarget.value)} 
+                      onKeyPress={(e) => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSendText())}
+                    />
+                  </TextField>
+                  <Button onClick={handleSendText} disabled={!inputText().trim()}>Send</Button>
+                </div>
               </div>
-            )}
-            {/* Manual start button */}
-            {!hasVADStarted() && (
-              <div class="p-4 border-t border-border-secondary bg-bg-primary flex justify-center items-center">
-                <Button
-                  onClick={handleManualStart}
-                  variant="default"
-                  class="w-16 h-16 rounded-full text-2xl flex items-center justify-center"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/></svg>
-                </Button>
-              </div>
-            )}
+            </Show>
+
+            <Show when={isSpeechModeActive()}>
+              {/* Show MicVisualizer after manual start */}
+              {hasVADStarted() && (
+                <div class="px-4">
+                  <MicVisualizer active={isRecording()} barCount={60} maxHeight={48} interval={80} />
+                </div>
+              )}
+              {/* Manual start button */}
+              {!hasVADStarted() && (
+                <div class="p-4 border-t border-border-secondary bg-bg-primary flex justify-center items-center">
+                  <Button
+                    onClick={handleManualStart}
+                    variant="default"
+                    class="w-16 h-16 rounded-full text-2xl flex items-center justify-center"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/></svg>
+                  </Button>
+                </div>
+              )}
+            </Show>
           </Show>
         </main>
       </div>
