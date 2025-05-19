@@ -111,7 +111,8 @@ async function fetchAndFormatUserContext(): Promise<string> {
     console.log('[llmChatService DEBUG] Combined and deduplicated visited pages:', JSON.stringify(combinedPages, null, 2));
 
     if (combinedPages.length > 0) {
-      const pageLines = combinedPages.map(p => `- Visited: "${p.title || 'Untitled Page'}" (URL: ${p.url})`); // Added URL for clarity during debug/prompt inspection
+      // Only include page titles to save tokens, omit URLs
+      const pageLines = combinedPages.map(p => `- Visited: "${p.title || 'Untitled Page'}"`);
       contextParts.push("Visited Pages (Recent & Top):\n" + pageLines.join('\n'));
     }
   } catch (e) {

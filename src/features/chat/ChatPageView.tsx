@@ -1,10 +1,15 @@
-import { Component, For, createSignal, createEffect } from 'solid-js';
+import { Component, For, createSignal, createEffect, onCleanup } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { TextField, TextFieldInput } from '../../components/ui/text-field'; 
 import { Sheet, SheetContent, SheetTrigger } from '../../components/ui/sheet';
 import type { ChatMessage, Thread } from './types';
 import { ChatMessageItem } from './ChatMessageItem';
 import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../components/ui/switch';
+import { MicVAD } from '@ricky0123/vad-web';
+import { browser } from 'wxt/browser';
+import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService';
+import { Spinner } from '../../components/ui/spinner';
+import { Pause, Microphone } from 'phosphor-solid';
 
 interface ChatPageViewProps {
   threads: Thread[];
@@ -19,6 +24,70 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
   const [inputText, setInputText] = createSignal('');
   let scrollHostRef: HTMLDivElement | undefined;
 
+  // --- Speech Mode & VAD State ---
+  const [isSpeechMode, setIsSpeechMode] = createSignal(false);
+  const [isRecording, setIsRecording] = createSignal(false);
+  const [vadInstance, setVadInstance] = createSignal<MicVAD | null>(null);
+  let vadInitPromise: Promise<MicVAD | null> | null = null;
+  const initVad = async (): Promise<MicVAD | null> => {
+    if (vadInstance()) return vadInstance();
+    if (vadInitPromise) return await vadInitPromise;
+    let resolveInit: (v: MicVAD | null) => void = () => {};
+    vadInitPromise = new Promise(r => resolveInit = r);
+    try {
+      const v = await MicVAD.new({
+        baseAssetPath: browser.runtime.getURL('/vad-assets/' as any),
+        onnxWASMBasePath: browser.runtime.getURL('/vad-assets/ort-wasm-simd.wasm' as any),
+        onSpeechStart: () => console.log('[VAD] start'),
+        onSpeechEnd: async (_audio) => {
+          console.log('[VAD] end');
+          setIsRecording(false);
+          // Perform STT when speech ends
+          try {
+            const result = await transcribeElevenLabsAudio('', new Blob());
+            const text = result?.text?.trim();
+            if (text) props.onSendMessage(text);
+          } catch (e) {
+            console.error('[VAD] STT error', e);
+          }
+        }
+      });
+      setVadInstance(v);
+      resolveInit(v);
+    } catch (e) {
+      console.error('[VAD] init error', e);
+      setVadInstance(null);
+      resolveInit(null);
+    } finally {
+      vadInitPromise = null;
+    }
+    return vadInstance();
+  };
+  const destroyVadInstance = () => {
+    vadInstance()?.destroy();
+    setVadInstance(null);
+    setIsRecording(false);
+    vadInitPromise = null;
+  };
+  const handleStartRecording = async () => {
+    if (!isSpeechMode()) return;
+    const v = await initVad();
+    if (v && !isRecording()) {
+      try { await v.start(); setIsRecording(true); } catch (e) { console.error('[VAD] start error', e); }
+    }
+  };
+  const handleStopRecording = () => {
+    if (vadInstance() && isRecording()) {
+      vadInstance()!.pause();
+      setIsRecording(false);
+    }
+  };
+  createEffect(() => {
+    if (isSpeechMode()) initVad(); else destroyVadInstance();
+  });
+  onCleanup(destroyVadInstance);
+  // --- End VAD Setup ---
+
   const handleSend = () => {
     if (inputText().trim()) {
       props.onSendMessage(inputText().trim());
@@ -32,6 +101,9 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
       scrollHostRef.scrollTop = scrollHostRef.scrollHeight;
     }
   });
+
+  // Helper to get last AI message
+  const lastAIMessage = () => props.currentChatMessages.filter(m => m.sender === 'ai').pop() || null;
 
   return (
     <div class="flex flex-col h-screen bg-background text-foreground">
@@ -69,7 +141,7 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
         </Button>
         <div class="flex-1"></div>
         <div class="flex items-center mr-4">
-          <Switch id="speech-mode-toggle" class="flex items-center">
+          <Switch checked={isSpeechMode()} onChange={setIsSpeechMode} class="flex items-center">
             <SwitchLabel class="mr-2">Speech Mode</SwitchLabel>
             <SwitchControl>
               <SwitchThumb />
@@ -104,41 +176,68 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
         </aside>
 
         <div ref={scrollHostRef} class="flex-1 flex flex-col overflow-y-auto">
-          <main class="w-full max-w-4xl mx-auto flex flex-col flex-grow">
-            <div 
-              class="flex-grow p-4 space-y-6 bg-background"
-              id="message-list-container"
-            >
-              <For each={props.currentChatMessages}>
-                {(message) => (
-                  <ChatMessageItem message={message} />
-                )}
-              </For>
-            </div>
+          {
+            !isSpeechMode() ? (
+              <main class="w-full max-w-4xl mx-auto flex flex-col flex-grow">
+                <div class="flex-grow p-4 space-y-6 bg-background" id="message-list-container">
+                  <For each={props.currentChatMessages}>
+                    {(message) => (
+                      <ChatMessageItem message={message} />
+                    )}
+                  </For>
+                </div>
 
-            <div class="p-2 md:p-4 border-t border-border/40 bg-background sticky bottom-0">
-              <div class="flex items-center space-x-2">
-                <TextField class="w-full">
-                  <TextFieldInput
-                    type="text"
-                    placeholder="Type your message..."
-                    value={inputText()}
-                    onInput={(e) => setInputText(e.currentTarget.value)}
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
+                <div class="p-2 md:p-4 border-t border-border/40 bg-background sticky bottom-0">
+                  <div class="flex items-center space-x-2">
+                    <TextField class="w-full">
+                      <TextFieldInput
+                        type="text"
+                        placeholder="Type your message..."
+                        value={inputText()}
+                        onInput={(e) => setInputText(e.currentTarget.value)}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSend();
+                          }
+                        }}
+                        class="text-md md:text-base h-10"
+                      />
+                    </TextField>
+                    <Button onClick={handleSend} class="h-10 px-4 w-24">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                    </Button>
+                  </div>
+                </div>
+              </main>
+            ) : (
+              <main class="flex-1 flex flex-col bg-background overflow-hidden">
+                <div class="flex-1 overflow-y-auto p-4 flex items-center justify-center">
+                  <Show when={lastAIMessage()} fallback={<Spinner class="h-12 w-12" />}>
+                    {(msg) => {
+                      const message = msg();
+                      return (
+                        <div class="max-w-[75%] md:max-w-[70%] text-xl whitespace-pre-wrap">
+                          <ChatMessageItem
+                            message={message}
+                            isCurrentSpokenMessage={false}
+                            wordMap={[]}
+                            currentHighlightIndex={null}
+                            // onPlayTTS to be implemented
+                          />
+                        </div>
+                      );
                     }}
-                    class="text-md md:text-base h-10"
-                  />
-                </TextField>
-                <Button onClick={handleSend} class="h-10 px-4 w-24">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                </Button>
-              </div>
-            </div>
-          </main>
+                  </Show>
+                </div>
+                <div class="p-4 border-t flex justify-center items-center">
+                  <Button onClick={() => isRecording() ? handleStopRecording() : handleStartRecording()} variant="default" class="w-16 h-16 rounded-full text-2xl">
+                    {isRecording() ? <Pause /> : <Microphone />}
+                  </Button>
+                </div>
+              </main>
+            )
+          }
         </div>
       </div>
     </div>

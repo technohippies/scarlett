@@ -16,7 +16,6 @@ import { Spinner, Sparkle } from 'phosphor-solid';
 import { generateRoleplayScenariosLLM, type RoleplayScenario } from '../../services/llm/llmChatService';
 import type { UserConfiguration } from '../../services/storage/types';
 import type { ChatMessage } from './types';
-import { Presence, Motion } from 'solid-motionone';
 
 const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
 
@@ -506,25 +505,17 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
             >
               <For each={currentMessages()} /* Removed fallback from For, it's handled by Show */>
                 {(message, index) => (
-                  <Presence>
-                    <Motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.3, easing: 'ease-out' }}
-                    >
-                      <ChatMessageItem
-                        message={message}
-                        isLastInGroup={index() === currentMessages().length - 1 || currentMessages()[index() + 1]?.sender !== message.sender}
-                        isCurrentSpokenMessage={activeSpokenMessageId() === message.id}
-                        wordMap={activeSpokenMessageId() === message.id ? ttsWordMap() : (message.ttsWordMap || [])}
-                        currentHighlightIndex={activeSpokenMessageId() === message.id ? currentTTSHighlightIndex() : null}
-                        onPlayTTS={handlePlayTTS}
-                        isStreaming={message.isStreaming}
-                        isGlobalTTSSpeaking={isTTSSpeaking()}
-                        onChangeSpeed={handleChangePlaybackSpeed}
-                      />
-                    </Motion.div>
-                  </Presence>
+                  <ChatMessageItem
+                    message={message}
+                    isLastInGroup={index() === currentMessages().length - 1 || currentMessages()[index() + 1]?.sender !== message.sender}
+                    isCurrentSpokenMessage={activeSpokenMessageId() === message.id}
+                    wordMap={activeSpokenMessageId() === message.id ? ttsWordMap() : (message.ttsWordMap || [])}
+                    currentHighlightIndex={activeSpokenMessageId() === message.id ? currentTTSHighlightIndex() : null}
+                    onPlayTTS={handlePlayTTS}
+                    isStreaming={message.isStreaming}
+                    isGlobalTTSSpeaking={isTTSSpeaking()}
+                    onChangeSpeed={handleChangePlaybackSpeed}
+                  />
                 )}
               </For>
             </Show>
