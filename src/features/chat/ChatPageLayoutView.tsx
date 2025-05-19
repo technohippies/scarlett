@@ -1,0 +1,76 @@
+import { Component } from 'solid-js';
+import { CaretLeft } from 'phosphor-solid';
+import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../components/ui/switch';
+import { ChatSidebar } from './ChatSidebar';
+import { ChatMessageArea } from './ChatMessageArea';
+import { TextInputControls } from './TextInputControls';
+import { SpeechInputControls } from './SpeechInputControls';
+import type { Thread, ChatMessage } from './types';
+
+export interface ChatPageLayoutViewProps {
+  threads: Thread[];
+  currentThreadId: string | null;
+  onNavigateBack: () => void;
+  onSelectThread: (threadId: string) => void;
+  isSpeechModeActive: boolean;
+  onToggleMode: () => void;
+  messages: ChatMessage[];
+  userInput: string;
+  onInputChange: (text: string) => void;
+  onSendText: () => void;
+  isIdle: boolean;
+  onStartSpeech: () => void;
+  onCancelSpeech: () => void;
+  isRecording: boolean;
+}
+
+export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
+  return (
+    <div class="flex flex-col h-screen bg-background text-foreground">
+      <header class="flex items-center p-2 md:p-4 border-b border-border/40 bg-background z-10">
+        <button onClick={props.onNavigateBack} class="mr-2 p-2">
+          <CaretLeft class="size-6" />
+        </button>
+        <Switch
+          checked={!props.isSpeechModeActive}
+          onChange={props.onToggleMode}
+          class="ml-auto flex items-center space-x-2"
+        >
+          <SwitchControl class="relative"><SwitchThumb /></SwitchControl>
+          <SwitchLabel>Text Mode</SwitchLabel>
+        </Switch>
+      </header>
+
+      <div class="flex flex-1 overflow-hidden">
+        <ChatSidebar
+          threads={props.threads}
+          currentThreadId={props.currentThreadId}
+          onSelectThread={props.onSelectThread}
+        />
+        <div class="flex flex-col flex-1 overflow-hidden">
+          <main class="flex-1 overflow-y-auto">
+            <ChatMessageArea messages={props.messages} />
+          </main>
+          <div class="p-2 md:p-4 border-t border-border/40 bg-background">
+            {props.isSpeechModeActive ? (
+              <SpeechInputControls
+                state={{ context: { isVADListening: props.isRecording }, matches: () => true } as any}
+                send={(e: any) => {
+                  if (e.type === 'ACTIVATE_SPEECH_MODE') props.onStartSpeech();
+                  if (e.type === 'CANCEL_SPEECH_INPUT') props.onCancelSpeech();
+                }}
+              />
+            ) : (
+              <TextInputControls
+                userInput={props.userInput}
+                onInputChange={props.onInputChange}
+                onSendMessage={props.onSendText}
+                isDisabled={!props.isIdle}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}; 

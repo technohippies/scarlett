@@ -16,6 +16,7 @@ import { pcmToWavBlob } from '../../lib/utils';
 import { useActor } from '@xstate/solid';
 import { speechMachine } from './speechMachine';
 import { ELEVENLABS_API_BASE_URL, DEFAULT_ELEVENLABS_VOICE_ID, DEFAULT_ELEVENLABS_MODEL_ID } from '../../shared/constants';
+import { SpeechVisualizer } from '../../components/ui/SpeechVisualizer';
 
 interface ChatPageViewProps {
   threads: Thread[];
@@ -403,14 +404,8 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
             ) : (
               <main class="flex-1 flex flex-col bg-background overflow-hidden">
                 <audio ref={el => audioRef = el} />
-                <div class="flex-1 overflow-y-auto p-4">
-                  {messageForSpeechDisplay() ? (
-                    <p class="text-md whitespace-pre-wrap">
-                      {messageForSpeechDisplay()!.text_content}
-                    </p>
-                  ) : (
-                    <div>Speak or type...</div>
-                  )}
+                <div class="flex-1 flex items-center justify-center">
+                  <SpeechVisualizer />
                 </div>
                 <div class="px-4">
                   <MicVisualizer active={isInSpeech()} barCount={60} maxHeight={48} interval={80} />

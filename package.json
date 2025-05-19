@@ -41,6 +41,7 @@
     "solid-js": "^1.9.6",
     "solid-motionone": "^1.0.4",
     "tailwind-merge": "^3.2.0",
+    "three": "^0.176.0",
     "ts-fsrs": "^4.7.1",
     "turndown": "^7.2.0",
     "xstate": "^5.19.3"
