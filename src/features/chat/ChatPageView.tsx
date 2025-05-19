@@ -38,7 +38,7 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
   let scrollHostRef: HTMLDivElement | undefined;
 
   // --- Speech Mode & VAD State ---
-  const [isSpeechMode, setIsSpeechMode] = createSignal(false);
+  const [isSpeechMode, setIsSpeechMode] = createSignal(true);
   const [isRecording, setIsRecording] = createSignal(false);
   const [isInSpeech, setIsInSpeech] = createSignal(false);
   const [vadInstance, setVadInstance] = createSignal<MicVAD | null>(null);
@@ -403,10 +403,14 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
             ) : (
               <main class="flex-1 flex flex-col bg-background overflow-hidden">
                 <audio ref={el => audioRef = el} />
-                <div class="flex-1 overflow-y-auto p-4 flex items-center justify-center">
-                  <Show when={props.isUnifiedTTSSpeaking || props.isUnifiedLLMGenerating} fallback={<div>Speak or type...</div>}>
-                    <Spinner class="h-12 w-12" />
-                  </Show>
+                <div class="flex-1 overflow-y-auto p-4">
+                  {messageForSpeechDisplay() ? (
+                    <p class="text-md whitespace-pre-wrap">
+                      {messageForSpeechDisplay()!.text_content}
+                    </p>
+                  ) : (
+                    <div>Speak or type...</div>
+                  )}
                 </div>
                 <div class="px-4">
                   <MicVisualizer active={isInSpeech()} barCount={60} maxHeight={48} interval={80} />
