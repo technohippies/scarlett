@@ -16,6 +16,7 @@ import { Spinner, Sparkle } from 'phosphor-solid';
 import { generateRoleplayScenariosLLM, type RoleplayScenario } from '../../services/llm/llmChatService';
 import type { UserConfiguration } from '../../services/storage/types';
 import type { ChatMessage } from './types';
+import { MicVisualizer } from '../../components/ui/MicVisualizer';
 
 const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
 
@@ -165,8 +166,29 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
     if (vadInstance() && isRecording()) { vadInstance()!.pause(); setIsRecording(false); }
   };
 
-  createEffect(() => { isSpeechModeActive() ? initVad() : destroyVadInstance(); });
+  // Destroy VAD when speech mode off, but don't auto-init on toggle
+  createEffect(() => {
+    if (!isSpeechModeActive()) {
+      destroyVadInstance();
+    }
+  });
   onCleanup(destroyVadInstance);
+
+  // Track manual VAD start per thread/session
+  const [hasVADStarted, setHasVADStarted] = createSignal(false);
+  const handleManualStart = async () => {
+    if (!isSpeechModeActive()) return;
+    setHasVADStarted(true);
+    await initVad();
+    await handleStartRecording();
+  };
+
+  // Continuous listening: restart after speech end
+  createEffect(() => {
+    if (hasVADStarted() && !isRecording() && isSpeechModeActive()) {
+      handleStartRecording();
+    }
+  });
 
   // --- TTS Logic (Ported from RoleplayPage) ---
   const [isTTSSpeaking, setIsTTSSpeaking] = createSignal(false);
@@ -600,18 +622,24 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
           </Show>
 
           <Show when={isSpeechModeActive()}>
-            <div class="p-4 border-t border-border-secondary bg-bg-primary flex justify-center items-center">
-              <Button 
-                onClick={isRecording() ? handleStopRecording : handleStartRecording}
-                variant={isRecording() ? "destructive" : 'default'}
-                class="w-16 h-16 rounded-full text-2xl flex items-center justify-center"
-              >
-                {isRecording() ? 
-                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h12v12H6z"/></svg> : 
+            {/* Show MicVisualizer after manual start */}
+            {hasVADStarted() && (
+              <div class="px-4">
+                <MicVisualizer active={isRecording()} barCount={60} maxHeight={48} interval={80} />
+              </div>
+            )}
+            {/* Manual start button */}
+            {!hasVADStarted() && (
+              <div class="p-4 border-t border-border-secondary bg-bg-primary flex justify-center items-center">
+                <Button
+                  onClick={handleManualStart}
+                  variant="default"
+                  class="w-16 h-16 rounded-full text-2xl flex items-center justify-center"
+                >
                   <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.49 6-3.31 6-6.72h-1.7z"/></svg>
-                }
-              </Button>
-            </div>
+                </Button>
+              </div>
+            )}
           </Show>
         </main>
       </div>

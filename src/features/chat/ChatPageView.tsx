@@ -28,8 +28,10 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
   // --- Speech Mode & VAD State ---
   const [isSpeechMode, setIsSpeechMode] = createSignal(false);
   const [isRecording, setIsRecording] = createSignal(false);
+  const [isInSpeech, setIsInSpeech] = createSignal(false);
   const [isLLMGenerating, setIsLLMGenerating] = createSignal(false);
   const [isTTSSpeaking, setIsTTSSpeaking] = createSignal(false);
+  const [hasVADStarted, setHasVADStarted] = createSignal(false);
   const [vadInstance, setVadInstance] = createSignal<MicVAD | null>(null);
   let vadInitPromise: Promise<MicVAD | null> | null = null;
   const initVad = async (): Promise<MicVAD | null> => {
@@ -52,9 +54,13 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
           // @ts-ignore
           ort.env.wasm.workerPath = browser.runtime.getURL('/vad-assets/ort-wasm.js' as any);
         },
-        onSpeechStart: () => console.log('[ChatPage] VAD onSpeechStart'),
+        onSpeechStart: () => {
+          console.log('[ChatPage] VAD onSpeechStart');
+          setIsInSpeech(true);
+        },
         onSpeechEnd: async (_audio) => {
           console.log('[ChatPage] VAD onSpeechEnd');
+          setIsInSpeech(false);
           setIsRecording(false);
           // Perform STT when speech ends
           try {
@@ -82,6 +88,7 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
     vadInstance()?.destroy();
     setVadInstance(null);
     setIsRecording(false);
+    setIsInSpeech(false);
     vadInitPromise = null;
   };
   const handleStartRecording = async () => {
@@ -93,15 +100,39 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
   };
   const handleStopRecording = () => {
     if (vadInstance() && isRecording()) {
+      setIsInSpeech(false);
       vadInstance()!.pause();
       setIsRecording(false);
     }
   };
+  const handleManualStart = async () => {
+    if (!isSpeechMode() || isLLMGenerating() || isTTSSpeaking()) return;
+    setHasVADStarted(true);
+    await handleStartRecording();
+  };
   createEffect(() => {
     if (isSpeechMode()) initVad(); else destroyVadInstance();
   });
+  createEffect(() => {
+    if (!isSpeechMode()) setHasVADStarted(false);
+  });
+  createEffect(() => {
+    props.currentThreadId;
+    if (isSpeechMode()) setHasVADStarted(false);
+  });
   onCleanup(destroyVadInstance);
-  // --- End VAD Setup ---
+
+  // Continuous listen: auto-restart VAD on speech end, only after manual start
+  createEffect(() => {
+    if (hasVADStarted() && isSpeechMode() && !isRecording() && !isLLMGenerating() && !isTTSSpeaking()) {
+      handleStartRecording();
+    }
+  });
+  createEffect(() => {
+    if (isRecording() && (isLLMGenerating() || isTTSSpeaking() || !isSpeechMode())) {
+      handleStopRecording();
+    }
+  });
 
   const handleSend = () => {
     if (inputText().trim()) {
@@ -247,22 +278,24 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
                 </div>
                 <div class="px-4">
                   <MicVisualizer
-                    active={isRecording()}
+                    active={isInSpeech()}
                     barCount={60}
                     maxHeight={48}
                     interval={80}
                   />
                 </div>
-                <div class="p-4 border-t flex justify-center items-center">
-                  <Button
-                    onClick={() => isRecording() ? handleStopRecording() : handleStartRecording()}
-                    variant="default"
-                    class="w-16 h-16 rounded-full text-2xl"
-                    disabled={isLLMGenerating() || isTTSSpeaking()}
-                  >
-                    {isRecording() ? <Pause /> : <Microphone />}
-                  </Button>
-                </div>
+                {!hasVADStarted() && (
+                  <div class="p-4 border-t flex justify-center items-center">
+                    <Button
+                      onClick={handleManualStart}
+                      variant="default"
+                      class="w-16 h-16 rounded-full text-2xl"
+                      disabled={isLLMGenerating() || isTTSSpeaking()}
+                    >
+                      <Microphone />
+                    </Button>
+                  </div>
+                )}
               </main>
             )
           }

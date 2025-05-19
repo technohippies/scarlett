@@ -1,4 +1,4 @@
-import { Component, createSignal, createEffect, onCleanup } from 'solid-js';
+import { Component, onCleanup, onMount } from 'solid-js';
 
 export interface MicVisualizerProps {
   /** When true, start animating the waveform */
@@ -12,58 +12,132 @@ export interface MicVisualizerProps {
 }
 
 export const MicVisualizer: Component<MicVisualizerProps> = (props) => {
-  const pointCount = props.barCount ?? 50;
-  const svgHeight = props.maxHeight ?? 30;
-  const intervalMs = props.interval ?? 100;
+  let canvasRef: HTMLCanvasElement | undefined;
+  let animationId: number | undefined;
+  let audioContext: AudioContext | undefined;
+  let analyser: AnalyserNode | undefined;
+  let dataArray: Uint8Array | undefined;
+  let source: MediaStreamAudioSourceNode | undefined;
+  let streamRef: MediaStream | undefined; // To keep track of the stream for cleanup
 
-  // waveform values: each between -1 and 1
-  const [values, setValues] = createSignal<number[]>(Array(pointCount).fill(0));
-  let timer: number | undefined;
+  const width = 120; // Canvas internal resolution, will be scaled by style
+  const height = props.maxHeight ?? 32;
 
-  const updateWaveform = () => {
-    setValues(
-      Array(pointCount)
-        .fill(0)
-        .map(() => Math.random() * 2 - 1) // random between -1 and 1
-    );
-  };
+  async function setupAudio() {
+    if (audioContext) return; // Already setup
+    try {
+      audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256; // Lowered for simplicity, can be tuned
+      analyser.smoothingTimeConstant = 0.3; // Smoother transitions
+      dataArray = new Uint8Array(analyser.frequencyBinCount); // Use frequencyBinCount for waveform data
 
-  createEffect(() => {
-    if (props.active) {
-      updateWaveform();
-      timer = window.setInterval(updateWaveform, intervalMs);
-    } else {
-      if (timer) window.clearInterval(timer);
-      setValues(Array(pointCount).fill(0));
+      streamRef = await navigator.mediaDevices.getUserMedia({ audio: true });
+      source = audioContext.createMediaStreamSource(streamRef);
+      source.connect(analyser);
+      console.log('[MicVisualizer] Audio context and analyser setup complete.');
+    } catch (err) {
+      console.error('[MicVisualizer] Error setting up audio:', err);
+      audioContext = undefined; // Reset on error
     }
+  }
+
+  function drawWaveform() {
+    if (!canvasRef || !analyser || !dataArray) return;
+    const ctx = canvasRef.getContext('2d');
+    if (!ctx) return;
+
+    analyser.getByteTimeDomainData(dataArray); // Get waveform data
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'white';
+    ctx.beginPath();
+
+    const sliceWidth = width * 1.0 / analyser.frequencyBinCount;
+    let x = 0;
+
+    for (let i = 0; i < analyser.frequencyBinCount; i++) {
+      const v = dataArray[i] / 128.0; // dataArray values are 0-255
+      const y = v * height / 2;
+
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+      x += sliceWidth;
+    }
+    ctx.lineTo(width, height / 2); // Ensure line extends to full width
+    ctx.stroke();
+  }
+  
+  function drawFlatLine() {
+    if (!canvasRef) return;
+    const ctx = canvasRef.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, width, height);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'white';
+    ctx.beginPath();
+    ctx.moveTo(0, height / 2);
+    ctx.lineTo(width, height / 2);
+    ctx.stroke();
+  }
+
+  async function animate() {
+    if (props.active) {
+      if (!audioContext) {
+        await setupAudio();
+      }
+      if (audioContext && analyser && dataArray) {
+        drawWaveform();
+      }
+    } else {
+      if (audioContext) { // If transitioning from active to inactive
+        cleanupAudio(); 
+      }
+      drawFlatLine();
+    }
+    animationId = requestAnimationFrame(animate);
+  }
+  
+  function cleanupAudio() {
+    console.log('[MicVisualizer] Cleaning up audio resources.');
+    if (source) {
+      source.disconnect();
+      source = undefined;
+    }
+    if (streamRef) {
+      streamRef.getTracks().forEach(track => track.stop());
+      streamRef = undefined;
+    }
+    if (analyser) {
+      analyser.disconnect();
+      analyser = undefined;
+    }
+    if (audioContext && audioContext.state !== 'closed') {
+      audioContext.close().catch(e => console.error('[MicVisualizer] Error closing AudioContext:', e));
+    }
+    audioContext = undefined;
+    dataArray = undefined;
+  }
+
+  onMount(() => {
+    animate();
   });
 
   onCleanup(() => {
-    if (timer) window.clearInterval(timer);
+    if (animationId) cancelAnimationFrame(animationId);
+    cleanupAudio();
   });
 
-  // Render SVG waveform
-  const pointsAttr = () =>
-    values()
-      .map((v, i) => {
-        const x = i;
-        const y = svgHeight / 2 - v * (svgHeight / 2);
-        return `${x},${y}`;
-      })
-      .join(' ');
   return (
-    <svg
-      class="w-full"
-      style={{ height: `${svgHeight}px` }}
-      viewBox={`0 0 ${pointCount - 1} ${svgHeight}`}
-      preserveAspectRatio="none"
-    >
-      <polyline
-        fill="none"
-        stroke="white"
-        stroke-width="1"
-        points={pointsAttr()}
-      />
-    </svg>
+    <canvas
+      ref={canvasRef}
+      width={width}
+      height={height}
+      style={{ width: '100%', height: `${height}px`, display: 'block' }}
+    />
   );
 }; 
