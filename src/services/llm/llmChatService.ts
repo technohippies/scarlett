@@ -15,6 +15,7 @@ import { getRecentBookmarks } from '../db/bookmarks'; // Assuming BookmarkForCon
 import { getRecentlyStudiedFlashcardsForContext } from '../db/learning'; // Import new function and type
 import { getTodaysMoodForContext } from '../db/mood'; // Import for mood
 import { getDbInstance } from '../db/init'; // Import getDbInstance
+import { getTopPlayedSongs, getRecentPlayedSongs } from '../db/music';
 
 import { userConfigurationStorage } from '../storage/storage'; // Import userConfigurationStorage
 import { LANGUAGE_NAME_MAP } from '../../shared/constants'; // Import an centrally managed language map
@@ -139,6 +140,24 @@ async function fetchAndFormatUserContext(): Promise<string> {
   } catch (e) {
     console.warn("[llmChatService] Error fetching recent flashcards for context:", e);
   }
+
+  // --- START: Add Songs Listening Context ---
+  try {
+    const topSongs = await getTopPlayedSongs(3, 3);
+    if (topSongs.length > 0) {
+      const songLines = topSongs.map(s => `- ${s.track_name} by ${s.artist_name} (${s.play_count} plays today)`);
+      contextParts.push("Active Songs:\n" + songLines.join('\n'));
+    } else {
+      const recentSongs = await getRecentPlayedSongs(3);
+      if (recentSongs.length > 0) {
+        const songLines = recentSongs.map(s => `- ${s.track_name} by ${s.artist_name}`);
+        contextParts.push("Recent Songs:\n" + songLines.join('\n'));
+      }
+    }
+  } catch (e) {
+    console.warn("[llmChatService] Error fetching played songs for context:", e);
+  }
+  // --- END: Add Songs Listening Context ---
 
   // Future: Add more context sources here (learning activity, etc.)
 

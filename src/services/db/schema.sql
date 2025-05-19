@@ -371,3 +371,15 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_thread_id_timestamp ON chat_message
 CREATE INDEX IF NOT EXISTS idx_chat_messages_needs_embedding ON chat_messages (processed_for_embedding_at) WHERE processed_for_embedding_at IS NULL;
 
 -- --- END Chat / Conversation Tables ---
+
+-- Table for tracking song listening events (listening history)
+CREATE TABLE IF NOT EXISTS listening_history (
+    listen_id SERIAL PRIMARY KEY,
+    track_name TEXT NOT NULL,
+    artist_name TEXT NOT NULL,
+    album_name TEXT NULL,
+    listened_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for querying listens by track and date
+CREATE INDEX IF NOT EXISTS idx_listening_history_track_date ON listening_history (track_name, listened_at);

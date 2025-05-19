@@ -56,6 +56,7 @@ import {
 } from '../../services/db/streaks';
 import { registerLlmDistractorHandlers } from './llm-distractor-handlers';
 import type { EmbeddingResult } from '../../services/llm/embedding';
+import { recordSongPlay } from '../../services/db/music';
 import { Client as LrcLibClient } from 'lrclib-api';
 import { saveLyrics, type SongLyricsRecord } from '../../services/db/lyrics';
 import type { SongDetectedMessagePayload } from '../../shared/messaging-types';
@@ -174,12 +175,6 @@ async function getEmbeddingForText(text: string, config: FunctionConfig): Promis
 }
 // --- END HELPER FUNCTION MOVED EARLIER ---
 
-// --- LRCLIB and Lyrics DB Imports ---
-import { Client as LrcLibClient } from 'lrclib-api';
-import { saveLyrics, type SongLyricsRecord } from '../../services/db/lyrics';
-import type { SongDetectedMessagePayload } from '../../shared/messaging-types';
-// --- End LRCLIB Imports ---
-
 /**
  * Registers message listeners for background script operations (SRS, etc.).
  * @param messaging The messaging instance from the main background script.
@@ -255,6 +250,13 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
             }
         } catch (error) {
             console.error(`[Message Handlers songDetected] Error fetching or processing lyrics for "${trackName}":`, error);
+        }
+        // Record song play in listening history
+        try {
+          await recordSongPlay({ track_name: trackName, artist_name: artistName, album_name: albumName });
+          console.log(`[Message Handlers songDetected] Recorded play for "${trackName}" by "${artistName}"`);
+        } catch (e) {
+          console.warn(`[Message Handlers songDetected] Failed to record play for "${trackName}":`, e);
         }
         // No explicit return value needed for this handler as per BackgroundProtocolMap Promise<void>
     });

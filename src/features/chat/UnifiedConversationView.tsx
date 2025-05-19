@@ -16,6 +16,7 @@ import { Spinner, Sparkle } from 'phosphor-solid';
 import { generateRoleplayScenariosLLM, type RoleplayScenario } from '../../services/llm/llmChatService';
 import type { UserConfiguration } from '../../services/storage/types';
 import type { ChatMessage } from './types';
+import { Presence, Motion } from 'solid-motionone';
 
 const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
 
@@ -112,7 +113,7 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
         baseAssetPath: browser.runtime.getURL('/vad-assets/' as any),
         onnxWASMBasePath: browser.runtime.getURL('/vad-assets/ort-wasm-simd.wasm' as any),
         onSpeechStart: () => console.log('[VAD] onSpeechStart'),
-        onSpeechEnd: async (audio) => {
+        onSpeechEnd: async (/*audio*/) => {
           console.log('[VAD] onSpeechEnd');
           setIsRecording(false);
           let transcribedText: string | null = "Simulated STT: " + new Date().toLocaleTimeString();
@@ -169,7 +170,7 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
   const [ttsAnimationFrameId, setTtsAnimationFrameId] = createSignal<number | null>(null);
   const [currentPlaybackRate, setCurrentPlaybackRate] = createSignal(1.0);
 
-  const processTTSAlignment = (text: string, alignmentData: any, lang: string): WordInfo[] => {
+  const processTTSAlignment = (text: string, alignmentData: any, /*lang: string*/): WordInfo[] => {
     const words: WordInfo[] = [];
     if (alignmentData && alignmentData.characters && alignmentData.character_start_times_seconds && alignmentData.character_end_times_seconds &&
         alignmentData.characters.length === alignmentData.character_start_times_seconds.length &&
@@ -300,7 +301,7 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
         }
       }
 
-      const wordMapData = processTTSAlignment(text, alignmentToUse, effectiveLang);
+      const wordMapData = processTTSAlignment(text, alignmentToUse /*, effectiveLang */);
       setTtsWordMap(wordMapData);
 
       const audio = new Audio(audioSrc);
@@ -505,17 +506,25 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
             >
               <For each={currentMessages()} /* Removed fallback from For, it's handled by Show */>
                 {(message, index) => (
-                  <ChatMessageItem
-                    message={message}
-                    isLastInGroup={index() === currentMessages().length - 1 || currentMessages()[index() + 1]?.sender !== message.sender}
-                    isCurrentSpokenMessage={activeSpokenMessageId() === message.id}
-                    wordMap={activeSpokenMessageId() === message.id ? ttsWordMap() : (message.ttsWordMap || [])}
-                    currentHighlightIndex={activeSpokenMessageId() === message.id ? currentTTSHighlightIndex() : null}
-                    onPlayTTS={handlePlayTTS}
-                    isStreaming={message.isStreaming}
-                    isGlobalTTSSpeaking={isTTSSpeaking()} // Kept as is from user's file
-                    onChangeSpeed={handleChangePlaybackSpeed}
-                  />
+                  <Presence>
+                    <Motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, easing: 'ease-out' }}
+                    >
+                      <ChatMessageItem
+                        message={message}
+                        isLastInGroup={index() === currentMessages().length - 1 || currentMessages()[index() + 1]?.sender !== message.sender}
+                        isCurrentSpokenMessage={activeSpokenMessageId() === message.id}
+                        wordMap={activeSpokenMessageId() === message.id ? ttsWordMap() : (message.ttsWordMap || [])}
+                        currentHighlightIndex={activeSpokenMessageId() === message.id ? currentTTSHighlightIndex() : null}
+                        onPlayTTS={handlePlayTTS}
+                        isStreaming={message.isStreaming}
+                        isGlobalTTSSpeaking={isTTSSpeaking()}
+                        onChangeSpeed={handleChangePlaybackSpeed}
+                      />
+                    </Motion.div>
+                  </Presence>
                 )}
               </For>
             </Show>

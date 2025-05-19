@@ -37,15 +37,27 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
 
   createEffect(() => {
     const todayStr = getCurrentDateYYYYMMDD();
-    const lastMoodDate = settings.config.lastMoodEntryDate;
-    const settingsAreLoaded = !settings.loadStatus().startsWith('pending');
-    console.log(`[NewTabPage MoodEffect] Today: ${todayStr}, LastMoodEntry: ${lastMoodDate}, SettingsLoaded: ${settingsAreLoaded}, Onboarding: ${settings.config.onboardingComplete}`);
-    if (settings.config.onboardingComplete && lastMoodDate !== todayStr && settingsAreLoaded) {
+    const settingsConf = settings.config; // Get a reference to avoid re-accessing multiple times
+    const currentLoadStatus = settings.loadStatus(); // Get a reference
+
+    const settingsAreLoaded = !currentLoadStatus.startsWith('pending');
+    const lastMoodDate = settingsConf.lastMoodEntryDate;
+    const onboardingComplete = settingsConf.onboardingComplete;
+
+    // More detailed logging
+    console.log(
+      `[NewTabPage MoodEffect Eval] Today: ${todayStr}, LastMoodEntry: "${lastMoodDate}" (type: ${typeof lastMoodDate}), SettingsLoaded: ${settingsAreLoaded}, OnboardingComplete: ${onboardingComplete}, RawLoadStatus: ${currentLoadStatus}`
+    );
+
+    if (onboardingComplete && settingsAreLoaded && lastMoodDate !== todayStr) {
       setShowMoodSelector(true);
-      console.log('[NewTabPage MoodEffect] setShowMoodSelector(true)');
+      console.log('[NewTabPage MoodEffect] Result: SHOW selector');
     } else {
       setShowMoodSelector(false);
-      console.log(`[NewTabPage MoodEffect] setShowMoodSelector(false) - Reason: onboarding: ${settings.config.onboardingComplete}, lastMoodDate matches: ${lastMoodDate === todayStr}, settings not loaded: ${!settingsAreLoaded}`);
+      // Log the specific reasons for hiding
+      console.log(
+        `[NewTabPage MoodEffect] Result: HIDE selector. Reasons Check: Onboarding=${onboardingComplete}, SettingsLoaded=${settingsAreLoaded}, LastMoodDateIsToday=${lastMoodDate === todayStr} (LastMood: "${lastMoodDate}", Today: "${todayStr}")`
+      );
     }
   });
 
