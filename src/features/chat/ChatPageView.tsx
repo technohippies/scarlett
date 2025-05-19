@@ -13,6 +13,9 @@ import { Pause, Microphone } from 'phosphor-solid';
 import { MicVisualizer } from '../../components/ui/MicVisualizer';
 import type { UserConfiguration } from '../../services/storage/types';
 import { pcmToWavBlob } from '../../lib/utils';
+import { useActor } from '@xstate/solid';
+import { speechMachine } from './speechMachine';
+import { ELEVENLABS_API_BASE_URL, DEFAULT_ELEVENLABS_VOICE_ID, DEFAULT_ELEVENLABS_MODEL_ID } from '../../shared/constants';
 
 interface ChatPageViewProps {
   threads: Thread[];
@@ -42,6 +45,11 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
   let vadInitPromise: Promise<MicVAD | null> | null = null;
   const [hasVADStarted, setHasVADStarted] = createSignal(false);
 
+  const [speechState, speechSend] = useActor(speechMachine);
+  // Buffer to hold recorded audio for STT
+  let latestAudioData: Float32Array | null = null;
+  let audioRef: HTMLAudioElement | undefined;
+
   const initVad = async (): Promise<MicVAD | null> => {
     if (vadInstance()) return vadInstance();
     if (vadInitPromise) return await vadInitPromise;
@@ -69,27 +77,12 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
         onSpeechEnd: async (audioData) => {
           console.log('[ChatPageView] VAD onSpeechEnd');
           setIsInSpeech(false);
-
-          const wavBlob = pcmToWavBlob(audioData, 16000);
-          const apiKey = props.userConfig?.ttsConfig?.apiKey ?? props.userConfig.elevenLabsApiKey;
-          let transcribedText: string | null = null;
-
-          if (apiKey) {
-            try {
-              const result = await transcribeElevenLabsAudio(apiKey, wavBlob);
-              transcribedText = result.text?.trim() || null;
-            } catch (e) {
-              console.error('[ChatPageView] VAD STT error', e);
-            }
-          }
-          if (transcribedText && props.currentThreadId) {
-            props.onSendMessage(transcribedText, props.currentThreadId, true);
-          } else if (!transcribedText) {
-            console.log('[ChatPageView] VAD STT: No text transcribed or API key missing.');
-            if (hasVADStarted() && isSpeechMode() && !props.isUnifiedLLMGenerating && !props.isUnifiedTTSSpeaking) {
-                handleStartRecording();
-            }
-          }
+          // Stop recording
+          vadInstance()?.pause();
+          setIsRecording(false);
+          // Store audio data and advance state
+          latestAudioData = audioData;
+          speechSend({ type: 'SPEECH_END' });
         }
       });
       setVadInstance(v);
@@ -180,7 +173,7 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
 
   const handleSendInputText = () => {
     if (inputText().trim() && props.currentThreadId) {
-      props.onSendMessage(inputText().trim(), props.currentThreadId, true);
+      props.onSendMessage(inputText().trim(), props.currentThreadId!, true);
       setInputText('');
     }
   };
@@ -207,6 +200,99 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
   createEffect(() => {
     const msg = messageForSpeechDisplay();
     console.log(`[ChatPageView SpeechDisplay] Message ID: ${msg?.id}, Text: "${msg?.text_content.substring(0,30)}", Streaming: ${msg?.isStreaming}, ActiveSpokenID: ${props.activeSpokenMessageId}`);
+  });
+
+  // When machine enters 'listening', start recording
+  createEffect(() => {
+    if (speechState.matches('listening')) {
+      handleStartRecording();
+    }
+  });
+
+  // When machine enters 'recognizing', run STT
+  createEffect(() => {
+    if (!speechState.matches('recognizing') || !latestAudioData) return;
+    (async () => {
+      try {
+        const apiKey = props.userConfig?.ttsConfig?.apiKey ?? props.userConfig.elevenLabsApiKey ?? '';
+        const wavBlob = pcmToWavBlob(latestAudioData, 16000);
+        let transcript = '';
+        if (apiKey) {
+          const result = await transcribeElevenLabsAudio(apiKey, wavBlob);
+          transcript = result.text?.trim() || '';
+        }
+        speechSend({ type: 'TRANSCRIBE_SUCCESS', transcript });
+      } catch (e) {
+        console.error('[ChatPageView] STT error', e);
+        speechSend({ type: 'TRANSCRIBE_ERROR' });
+      }
+    })();
+  });
+
+  // When machine enters 'waitingLLM', call onSendMessage
+  createEffect(() => {
+    const transcript = speechState.context.transcript;
+    if (!speechState.matches('waitingLLM') || !transcript || !props.currentThreadId) return;
+    const threadId = props.currentThreadId!;
+    (async () => {
+      try {
+        await props.onSendMessage(
+          transcript!,
+          threadId,
+          true
+        );
+      } catch (e) {
+        console.error('[ChatPageView] LLM error', e);
+      } finally {
+        speechSend({ type: 'LLM_DONE' });
+      }
+    })();
+  });
+
+  // When machine enters 'speaking', start streaming TTS audio
+  createEffect(() => {
+    if (!speechState.matches('speaking') || !audioRef) return;
+    (async () => {
+      try {
+        const apiKey = props.userConfig?.ttsConfig?.apiKey ?? props.userConfig.elevenLabsApiKey ?? '';
+        const modelId = props.userConfig.ttsConfig?.modelId || DEFAULT_ELEVENLABS_MODEL_ID;
+        const voiceId = props.userConfig.elevenLabsVoiceId || DEFAULT_ELEVENLABS_VOICE_ID;
+        const text = speechState.context.transcript;
+        if (!text) {
+          speechSend({ type: 'TTS_END' });
+          return;
+        }
+        const res = await fetch(
+          `${ELEVENLABS_API_BASE_URL}/text-to-speech/${voiceId}/stream`,
+          {
+            method: 'POST',
+            headers: {
+              'Accept': 'audio/mpeg',
+              'Content-Type': 'application/json',
+              'xi-api-key': apiKey,
+            },
+            body: JSON.stringify({ text, model_id: modelId }),
+          }
+        );
+        const mediaSource = new MediaSource();
+        audioRef.src = URL.createObjectURL(mediaSource);
+        mediaSource.addEventListener('sourceopen', () => {
+          const sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+          const reader = res.body!.getReader();
+          (async function pump() {
+            const { value, done } = await reader.read();
+            if (value) sourceBuffer.appendBuffer(value);
+            if (!done) return pump();
+            mediaSource.endOfStream();
+          })();
+        });
+        audioRef.onended = () => speechSend({ type: 'TTS_END' });
+        await audioRef.play();
+      } catch (e) {
+        console.error('[ChatPageView] TTS stream error', e);
+        speechSend({ type: 'TTS_END' });
+      }
+    })();
   });
 
   return (
@@ -316,29 +402,10 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
               </main>
             ) : (
               <main class="flex-1 flex flex-col bg-background overflow-hidden">
+                <audio ref={el => audioRef = el} />
                 <div class="flex-1 overflow-y-auto p-4 flex items-center justify-center">
-                  <Show 
-                    when={messageForSpeechDisplay()} 
-                    fallback={
-                      <Show when={props.isUnifiedTTSSpeaking || props.isUnifiedLLMGenerating} fallback={<div>Speak or type...</div>}>
-                        <Spinner class="h-12 w-12" />
-                      </Show>
-                    }
-                  >
-                    {(msgSignal) => {
-                      const message = msgSignal();
-                      const isActuallySpoken = message.id === props.activeSpokenMessageId;
-                      return (
-                        <div class="max-w-[75%] md:max-w-[70%] text-xl whitespace-pre-wrap">
-                          <ChatMessageItem
-                            message={message}
-                            isCurrentSpokenMessage={isActuallySpoken}
-                            wordMap={isActuallySpoken ? props.ttsWordMap : (message.ttsWordMap || [])}
-                            currentHighlightIndex={isActuallySpoken ? props.currentTTSHighlightIndex : null}
-                          />
-                        </div>
-                      );
-                    }}
+                  <Show when={props.isUnifiedTTSSpeaking || props.isUnifiedLLMGenerating} fallback={<div>Speak or type...</div>}>
+                    <Spinner class="h-12 w-12" />
                   </Show>
                 </div>
                 <div class="px-4">
@@ -347,10 +414,10 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
                 {!hasVADStarted() && (
                   <div class="p-4 border-t flex justify-center items-center">
                     <Button
-                      onClick={handleManualStart}
+                      onClick={() => speechSend({ type: 'START' })}
                       variant="default"
                       class="w-16 h-16 rounded-full text-2xl flex items-center justify-center"
-                      disabled={props.isUnifiedLLMGenerating || props.isUnifiedTTSSpeaking}
+                      disabled={!speechState.matches('idle') || props.isUnifiedLLMGenerating || props.isUnifiedTTSSpeaking}
                     >
                       <Microphone />
                     </Button>
