@@ -10,8 +10,8 @@ import { userConfigurationStorage } from '../../services/storage/storage';
 import { browser } from 'wxt/browser';
 import { generateElevenLabsSpeechWithTimestamps } from '../../services/tts/elevenLabsService';
 import { DEFAULT_ELEVENLABS_VOICE_ID, LANGUAGE_NAME_MAP } from '../../shared/constants';
-// Placeholder for STT service - will be properly imported later
-// import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService'; 
+import { pcmToWavBlob } from '../../lib/utils';
+import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService';
 import { Spinner, Sparkle } from 'phosphor-solid';
 import { generateRoleplayScenariosLLM, type RoleplayScenario } from '../../services/llm/llmChatService';
 import type { UserConfiguration } from '../../services/storage/types';
@@ -64,24 +64,13 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
   const [currentThread, setCurrentThread] = createSignal<Thread | null>(null);
 
   createEffect(() => {
-    const id = isSpeechModeActive() ? JUST_CHAT_THREAD_ID : props.currentSelectedThreadId;
+    const id = props.currentSelectedThreadId;
     if (!id) {
       setCurrentThread(null);
       return;
     }
-    let thread = props.threads.find(t => t.id === id);
-    if (isSpeechModeActive() && id === JUST_CHAT_THREAD_ID && !thread) {
-        console.warn("[UnifiedConversationView] JUST_CHAT_THREAD_ID not found in props.threads. Creating temporary.");
-        setCurrentThread({
-            id: JUST_CHAT_THREAD_ID,
-            title: "Just Chat (Speech)",
-            systemPrompt: "You are a friendly AI assistant for voice chat.", 
-            messages: [],
-            lastActivity: new Date().toISOString(),
-        });
-    } else {
-        setCurrentThread(thread ?? null);
-    }
+    const thread = props.threads.find(t => t.id === id) ?? null;
+    setCurrentThread(thread);
   });
 
   const currentMessages = () => currentThread()?.messages ?? [];
@@ -123,20 +112,29 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
           ort.env.wasm.workerPath = browser.runtime.getURL('/vad-assets/ort-wasm.js' as any);
         },
         onSpeechStart: () => console.log('[UnifiedConversationView] VAD onSpeechStart'),
-        onSpeechEnd: async (/*audio*/) => {
+        onSpeechEnd: async (audioData: Float32Array) => {
           console.log('[UnifiedConversationView] VAD onSpeechEnd');
           setIsRecording(false);
-          let transcribedText: string | null = "Simulated STT: " + new Date().toLocaleTimeString();
-          // Actual STT logic placeholder
-          // const userCfg = await userConfigurationStorage.getValue();
-          // const sttApiKey = userCfg.sttConfig?.apiKey; // Assuming sttConfig exists
-          // if (sttApiKey) { try { const result = await transcribeElevenLabsAudio(sttApiKey, wavBlob); transcribedText = result.text; } catch(e){ console.error(e); transcribedText = "Error in STT"; }} else { transcribedText = "STT API Key not configured"; }
-          
+          const sampleRate = 16000;
+          const wavBlob = pcmToWavBlob(audioData, sampleRate);
+          const userCfg = await userConfigurationStorage.getValue();
+          const apiKey = userCfg?.ttsConfig?.apiKey ?? userCfg.elevenLabsApiKey;
+          let transcribedText: string | null = null;
+          if (apiKey) {
+            try {
+              const result = await transcribeElevenLabsAudio(apiKey, wavBlob);
+              transcribedText = result.text;
+            } catch (e) {
+              console.error('[UnifiedConversationView] STT error', e);
+            }
+          } else {
+            console.warn('[UnifiedConversationView] STT API key not configured');
+          }
           const activeThread = currentThread();
           if (transcribedText && transcribedText.trim() && activeThread) {
-            props.onSendMessage(transcribedText, activeThread.id, true, 'en');
+            props.onSendMessage(transcribedText, activeThread.id, true);
           } else {
-            console.log('[VAD] STT empty or no active thread.');
+            console.log('[UnifiedConversationView] No STT text or no active thread.');
           }
         },
       });
@@ -177,6 +175,7 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
   const [currentTTSHighlightIndex, setCurrentTTSHighlightIndex] = createSignal<number | null>(null);
   const [ttsError, setTtsError] = createSignal<string | null>(null);
   const [activeSpokenMessageId, setActiveSpokenMessageId] = createSignal<string | null>(null);
+  const [lastAutoPlayedId, setLastAutoPlayedId] = createSignal<string | null>(null);
   const [ttsAnimationFrameId, setTtsAnimationFrameId] = createSignal<number | null>(null);
   const [currentPlaybackRate, setCurrentPlaybackRate] = createSignal(1.0);
 
@@ -370,19 +369,6 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
   
   onCleanup(stopAndClearTTS);
   
-  createEffect(() => {
-    const messages = currentMessages();
-    const thread = currentThread();
-    if (isSpeechModeActive() && thread && thread.id === JUST_CHAT_THREAD_ID && messages.length > 0) {
-        const lastMessage = messages[messages.length - 1];
-        if (lastMessage.sender === 'ai' && activeSpokenMessageId() !== lastMessage.id && !isTTSSpeaking()) {
-            // In speech mode, always play at normal speed.
-            setCurrentPlaybackRate(1.0); 
-            handlePlayTTS(lastMessage.id, lastMessage.text_content, lastMessage.ttsLang || 'en', lastMessage.alignmentData);
-        }
-    }
-  });
-  
   const handleCreateNewGeneralChat = async () => {
     // Pass empty string for systemPrompt
     await props.onCreateNewThread("New Chat", "", []);
@@ -434,6 +420,67 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
       setIsGeneratingRoleplays(false);
     }
   };
+
+  // Log key state changes for debugging
+  createEffect(() => {
+    console.log('[UnifiedConversationView state]', {
+      isSpeechMode: isSpeechModeActive(),
+      currentThread: currentThread()?.id,
+      isRecording: isRecording(),
+      isTTSSpeaking: isTTSSpeaking(),
+      lastAutoPlayed: lastAutoPlayedId(),
+    });
+  });
+
+  // Unified auto-play effect that handles thread changes and speech-mode toggles
+  let prevThreadIdForAutoPlay: string | null = null;
+  let prevSpeechModeActiveForAutoPlay = false;
+  createEffect(() => {
+    const currentSpeechModeActive = isSpeechModeActive();
+    const threadId = currentThread()?.id ?? null;
+    // Skip auto-play on thread change
+    if (threadId !== prevThreadIdForAutoPlay) {
+      prevThreadIdForAutoPlay = threadId;
+      if (currentSpeechModeActive) {
+        const msgs = currentMessages();
+        const lastAI = msgs.slice().reverse().find(m => m.sender === 'ai');
+        console.log(`[UnifiedConversationView AutoPlay] Thread changed. Marking ${lastAI?.id ?? 'null'} as played.`);
+        setLastAutoPlayedId(lastAI?.id ?? null);
+      }
+      prevSpeechModeActiveForAutoPlay = currentSpeechModeActive;
+      return;
+    }
+    const justActivatedSpeechMode = currentSpeechModeActive && !prevSpeechModeActiveForAutoPlay;
+    // Skip backlog when speech mode turns on
+    if (justActivatedSpeechMode) {
+      const msgs = currentMessages();
+      const lastAI = msgs.slice().reverse().find(m => m.sender === 'ai');
+      console.log(`[UnifiedConversationView AutoPlay] Speech mode activated. Marking ${lastAI?.id ?? 'null'} as played.`);
+      setLastAutoPlayedId(lastAI?.id ?? null);
+      prevSpeechModeActiveForAutoPlay = currentSpeechModeActive;
+      return;
+    }
+    // Reset when speech mode turns off
+    if (!currentSpeechModeActive) {
+      if (lastAutoPlayedId() !== null) setLastAutoPlayedId(null);
+      prevSpeechModeActiveForAutoPlay = currentSpeechModeActive;
+      return;
+    }
+    // Standard auto-play for new messages
+    const msgs = currentMessages();
+    if (msgs.length === 0) {
+      prevSpeechModeActiveForAutoPlay = currentSpeechModeActive;
+      return;
+    }
+    const last = msgs[msgs.length - 1];
+    console.log(`[UnifiedConversationView AutoPlay Check] ${last.id}, new? ${lastAutoPlayedId() !== last.id}`);
+    if (last.sender === 'ai' && !last.isStreaming && lastAutoPlayedId() !== last.id) {
+      setLastAutoPlayedId(last.id);
+      setCurrentPlaybackRate(1.0);
+      handlePlayTTS(last.id, last.text_content, last.ttsLang || 'en', last.alignmentData);
+    }
+    prevSpeechModeActiveForAutoPlay = currentSpeechModeActive;
+  });
 
   return (
     <div class="flex flex-col h-screen bg-bg-primary text-fg-primary relative">
@@ -535,7 +582,7 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
             </Show>
           </div>
 
-          <Show when={!isSpeechModeActive() && currentThread()?.id !== JUST_CHAT_THREAD_ID}>
+          <Show when={!isSpeechModeActive()}>
             <div class="p-2 bg-bg-primary">
               <div class="flex items-center space-x-2">
                 <TextField class="flex-1">
@@ -552,7 +599,7 @@ export const UnifiedConversationView: Component<UnifiedConversationViewProps> = 
             </div>
           </Show>
 
-          <Show when={isSpeechModeActive() && currentThread()?.id === JUST_CHAT_THREAD_ID}>
+          <Show when={isSpeechModeActive()}>
             <div class="p-4 border-t border-border-secondary bg-bg-primary flex justify-center items-center">
               <Button 
                 onClick={isRecording() ? handleStopRecording : handleStartRecording}
