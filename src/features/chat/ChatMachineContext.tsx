@@ -1,9 +1,32 @@
 import { createContext, useContext, ParentComponent, createEffect } from 'solid-js';
 import { useMachine } from '@xstate/solid';
 import { chatOrchestratorMachine, ChatOrchestratorEvent, ChatOrchestratorContext } from './chatOrchestratorMachine'; // Assuming ChatOrchestratorContext is exported
-import type { Thread, ChatMessage } from './types';
 import type { UserConfiguration } from '../../services/storage/types';
 import type { StateFrom, ActorRefFrom } from 'xstate';
+import { defineExtensionMessaging } from '@webext-core/messaging';
+import type { BackgroundProtocolMap, NewChatThreadDataForRpc } from '../../shared/messaging-types';
+import type { Thread } from './types';
+
+// Messaging client for RPC
+const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
+const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
+
+// Default threads to seed
+const defaultIntroThread: NewChatThreadDataForRpc = {
+  id: 'thread-welcome-introductions',
+  title: 'Introductions',
+  systemPrompt: "I'm Scarlett, your friendly AI language companion. I'd love to get to know you a bit! Tell me about yourself - what are your interests, what languages are you learning, or anything else you'd like to share?"
+};
+const defaultSharingThread: NewChatThreadDataForRpc = {
+  id: 'thread-welcome-sharing',
+  title: 'Sharing Thoughts',
+  systemPrompt: "It's great to connect on a deeper level. As an AI, I have a unique perspective. I can share some 'AI thoughts' or how I learn if you're curious, and I'm always here to listen to yours. What's on your mind, or what would you like to ask me?"
+};
+const defaultJustChatThread: NewChatThreadDataForRpc = {
+  id: JUST_CHAT_THREAD_ID,
+  title: 'Just Chat (Speech)',
+  systemPrompt: 'You are a friendly AI assistant for voice chat. Keep responses concise for speech.'
+};
 
 interface ChatMachineContextValue {
   state: StateFrom<typeof chatOrchestratorMachine>;
@@ -12,11 +35,7 @@ interface ChatMachineContextValue {
 }
 
 export interface ChatMachineProviderProps {
-  initialThreads: Thread[];
-  initialCurrentThreadId: string | null;
-  initialMessages: ChatMessage[];
   initialUserConfig: UserConfiguration;
-  // Add any other initial data the machine might need from App.tsx
 }
 
 const ChatMachineContext = createContext<ChatMachineContextValue>();
@@ -26,33 +45,37 @@ export const ChatMachineProvider: ParentComponent<ChatMachineProviderProps> = (p
   // We'll send events to update it based on props in createEffect.
   const [state, send, actorRef] = useMachine(chatOrchestratorMachine);
 
-  // Effect to update machine context when initial props change
+  // Sync user configuration into machine
   createEffect(() => {
-    console.log('[ChatMachineContext] Props changed, sending SYNC_INITIAL_DATA');
-    send({
-      type: 'SYNC_INITIAL_DATA',
-      threads: props.initialThreads,
-      currentThreadId: props.initialCurrentThreadId,
-      messages: props.initialMessages,
-      userConfig: props.initialUserConfig,
-    });
+    send({ type: 'SET_USER_CONFIG', userConfig: props.initialUserConfig });
   });
 
-  // Potentially, more specific effects if only certain props trigger certain events
+  // On mount: load or seed threads, then fetch first thread's messages
   createEffect(() => {
-    if (props.initialCurrentThreadId && props.initialCurrentThreadId !== state.context.currentThreadId) {
-      console.log('[ChatMachineContext] initialCurrentThreadId prop changed, sending SET_CURRENT_THREAD_ID');
-      send({ type: 'SET_CURRENT_THREAD_ID', threadId: props.initialCurrentThreadId });
-    }
+    (async () => {
+      try {
+        let threads = await messaging.sendMessage('getAllChatThreads', undefined);
+        if (threads.length === 0) {
+          const intro = await messaging.sendMessage('addChatThread', defaultIntroThread);
+          const sharing = await messaging.sendMessage('addChatThread', defaultSharingThread);
+          const justChat = await messaging.sendMessage('addChatThread', defaultJustChatThread);
+          threads = [intro, sharing, justChat].filter(Boolean) as Thread[];
+        } else if (!threads.some(t => t.id === JUST_CHAT_THREAD_ID)) {
+          const justChat = await messaging.sendMessage('addChatThread', defaultJustChatThread);
+          threads.push(justChat);
+        }
+        send({ type: 'SET_THREADS', threads });
+        const primary = threads.find(t => t.id !== JUST_CHAT_THREAD_ID) || threads[0];
+        if (primary) {
+          send({ type: 'SET_CURRENT_THREAD_ID', threadId: primary.id });
+          const msgs = await messaging.sendMessage('getChatMessages', { threadId: primary.id });
+          send({ type: 'SET_MESSAGES', messages: msgs });
+        }
+      } catch (e) {
+        console.error('[ChatMachineContext] Error initializing threads:', e);
+      }
+    })();
   });
-
-  createEffect(() => {
-    // This might be too aggressive if messages update frequently from other sources within the machine.
-    // Consider if this is only for initial hydration or if App.tsx truly is the single source of truth for messages displayed.
-    // console.log('[ChatMachineContext] initialMessages prop changed, sending SET_MESSAGES');
-    // send({ type: 'SET_MESSAGES', messages: props.initialMessages });
-  });
-
 
   const contextValue: ChatMachineContextValue = {
     state,

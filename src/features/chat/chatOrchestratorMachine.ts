@@ -18,6 +18,7 @@ export interface ChatOrchestratorContext {
   ttsError: string | null;
   vadError: string | null;
   lastError: string | null;
+  threads: Thread[];
 }
 
 export type ChatOrchestratorEvent =
@@ -227,6 +228,7 @@ export const chatOrchestratorMachine = setup({
           userConfig: specificEvent.userConfig,
           currentChatMessages: specificEvent.messages,
           currentThreadId: specificEvent.currentThreadId,
+          threads: specificEvent.threads,
         };
       }
       return {};
@@ -258,6 +260,18 @@ export const chatOrchestratorMachine = setup({
       if (event.type === 'SET_USER_CONFIG') {
         const specificEvent = event as Extract<ChatOrchestratorEvent, { type: 'SET_USER_CONFIG'}>;
         return { userConfig: specificEvent.userConfig };
+      }
+      return {};
+    }),
+
+    assignThreads: assign(({
+      event
+    }: {
+      event: AnyEventObject
+    }) => {
+      if ((event as any).type === 'SET_THREADS') {
+        const threadsEvent = event as Extract<ChatOrchestratorEvent, { type: 'SET_THREADS'}>;
+        return { threads: threadsEvent.threads };
       }
       return {};
     }),
@@ -351,6 +365,7 @@ export const chatOrchestratorMachine = setup({
     ttsError: null,
     vadError: null,
     lastError: null,
+    threads: (input as any)?.threads || [],
   }),
   initial: 'initializing',
   on: {
@@ -358,6 +373,7 @@ export const chatOrchestratorMachine = setup({
     SET_CURRENT_THREAD_ID: { actions: 'assignCurrentThreadId' },
     SET_MESSAGES: { actions: 'assignMessages' },
     SET_USER_CONFIG: { actions: 'assignUserConfig' },
+    SET_THREADS: { actions: 'assignThreads' },
     CLEAR_ERROR: { actions: assign({ lastError: null }) }, 
     RETRY: [
       { guard: ({ context }) => context.sttError !== null, target: '#chatOrchestrator.processingSpeech.transcribing' },

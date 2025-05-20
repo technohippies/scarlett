@@ -5,9 +5,6 @@ import type { Thread } from './types';
 import type { ChatOrchestratorEvent, ChatOrchestratorState } from './chatOrchestratorMachine';
 
 interface ChatPageLayoutProps {
-  initialThreads: Thread[];
-  onSendMessage: (text: string, threadId: string, isUserMessage: boolean) => Promise<void>;
-  onSelectThread: (threadId: string) => void;
   onNavigateBack: () => void;
 }
 
@@ -20,25 +17,27 @@ export const ChatPageLayout: Component<ChatPageLayoutProps> = (props) => {
     console.log('[ChatPageLayout] Machine context (from context):', currentState.context);
   });
   
-  onCleanup(() => {
-    actorRef?.stop?.();
-  });
+  onCleanup(() => actorRef?.stop?.());
 
   const machineState = state as ChatOrchestratorState;
 
+  // Derive props from machine context
+  const threads = machineState.context.threads;
+  const currentThreadId = machineState.context.currentThreadId;
+  const messages = machineState.context.currentChatMessages;
+
   return (
     <ChatPageLayoutView
-      threads={props.initialThreads}
+      threads={threads}
       currentThreadId={machineState.context.currentThreadId}
       onNavigateBack={props.onNavigateBack}
       onSelectThread={(threadId) => {
         send({ type: 'SET_CURRENT_THREAD_ID', threadId } as ChatOrchestratorEvent);
         send({ type: 'CLEAR_ERROR' } as ChatOrchestratorEvent);
-        props.onSelectThread(threadId);
       }}
       isSpeechModeActive={machineState.context.isSpeechModeActive}
       onToggleMode={() => send({ type: 'TOGGLE_INPUT_MODE' } as ChatOrchestratorEvent)}
-      messages={machineState.context.currentChatMessages}
+      messages={messages}
       userInput={machineState.context.userInput}
       onInputChange={(text) => send({ type: 'TEXT_INPUT_CHANGE', text } as ChatOrchestratorEvent)}
       onSendText={() => send({ type: 'SEND_TEXT_MESSAGE' } as ChatOrchestratorEvent)}

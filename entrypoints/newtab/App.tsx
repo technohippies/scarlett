@@ -4,7 +4,6 @@ import BookmarksPage from '../../src/pages/bookmarks/BookmarksPage';
 import StudyPage from '../../src/pages/study/StudyPage';
 import SettingsPage from '../../src/pages/settings/SettingsPage';
 import { ChatPageLayout } from '../../src/features/chat/ChatPageLayout';
-import type { Thread, ChatMessage as UIChatMessage } from '../../src/features/chat/types';
 import { SettingsProvider } from '../../src/context/SettingsContext';
 import { ChatMachineProvider } from '../../src/features/chat/ChatMachineContext';
 import type { Messages } from '../../src/types/i18n';
@@ -15,6 +14,7 @@ import { defineExtensionMessaging } from '@webext-core/messaging';
 import type { BackgroundProtocolMap, NewChatThreadDataForRpc, NewChatMessageDataForRpc } from '../../src/shared/messaging-types';
 import { getAiChatResponseStream, generateThreadTitleLLM } from '../../src/services/llm/llmChatService';
 import type { ChatMessage as LLMChatMessage, LLMConfig, LLMProviderId } from '../../src/services/llm/types';
+import type { Thread, ChatMessage as UIChatMessage } from '../../src/features/chat/types';
 
 const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
 
@@ -299,49 +299,6 @@ const App: Component = (): JSX.Element => {
     }
   };
 
-  const handleCreateNewThread = async (
-    title: string, 
-    systemPromptForRpc: string,
-    initialMessages?: UIChatMessage[],
-  ): Promise<string> => {
-    const uniqueTitle = title || `New Chat ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
-    console.log(`[App.tsx] Creating new thread via RPC: "${uniqueTitle}" with system prompt: "${systemPromptForRpc}"`);
-    
-    const newThreadRpcData: NewChatThreadDataForRpc = {
-      id: `thread-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      title: uniqueTitle, 
-      systemPrompt: systemPromptForRpc, 
-    };
-    try {
-      const createdThread = await messaging.sendMessage('addChatThread', newThreadRpcData);
-      let messagesForNewThread: UIChatMessage[] = [];
-
-      if (initialMessages && initialMessages.length > 0) {
-        for (const msg of initialMessages) {
-          const messageToSaveRpc: NewChatMessageDataForRpc = {
-            id: msg.id || `msg-initial-${Date.now()}-${Math.random().toString(36).substring(2,7)}`,
-            thread_id: createdThread.id,
-            sender: msg.sender,
-            text_content: msg.text_content,
-            tts_lang: msg.tts_lang,
-            tts_alignment_data: msg.alignmentData
-          };
-          const savedMsg = await messaging.sendMessage('addChatMessage', messageToSaveRpc);
-          messagesForNewThread.push(savedMsg as UIChatMessage);
-        }
-      }
-      
-      const threadWithMessages = { ...createdThread, messages: messagesForNewThread }; 
-      setThreads(prev => [threadWithMessages, ...prev]);
-      setCurrentThreadId(createdThread.id);
-      
-      return createdThread.id;
-    } catch (error) {
-      console.error('[App.tsx] Error creating new thread via RPC or saving initial messages:', error);
-      return '';
-    }
-  };
-
   const handleSendMessageToUnifiedView = async (
     text: string,
     threadId: string,
@@ -379,8 +336,8 @@ const App: Component = (): JSX.Element => {
 
     const historyForLLMSnapshot = threads().find(t => t.id === threadId)?.messages || [];
     const conversationHistoryForLLM: LLMChatMessage[] = historyForLLMSnapshot
-        .filter(msg => typeof msg.text_content === 'string' && (msg.sender === 'user' || msg.sender === 'ai'))
-        .map(msg => ({
+        .filter((msg: UIChatMessage) => typeof msg.text_content === 'string' && (msg.sender === 'user' || msg.sender === 'ai'))
+        .map((msg: UIChatMessage) => ({
             role: msg.sender === 'user' ? 'user' : 'assistant',
             content: msg.text_content!
         }));
@@ -490,7 +447,6 @@ const App: Component = (): JSX.Element => {
     
     let accumulatedResponse = '';
     let finalTimestamp = initialAiMessageForUI.timestamp;
-    let streamErrorOccurred = false;
 
     try {
       for await (const part of getAiChatResponseStream(
@@ -521,7 +477,6 @@ const App: Component = (): JSX.Element => {
           console.error('[App.tsx Stream] Streaming error part from LLM:', part.error);
           accumulatedResponse += `\n[Stream Error: ${part.error}]`;
           finalTimestamp = new Date().toISOString();
-          streamErrorOccurred = true;
           setThreads(prevThreads =>
             prevThreads.map(t => {
               if (t.id === threadId) {
@@ -563,9 +518,7 @@ const App: Component = (): JSX.Element => {
 
     } catch (error) {
       console.error('[App.tsx] Outer error during AI stream processing or DB save via RPC:', error);
-      const streamErrorText = `Sorry, an error occurred while streaming the response: ${String(error)}.`;
       const finalErrorTimestamp = new Date().toISOString();
-      streamErrorOccurred = true;
 
       const errorForDbRpc: NewChatMessageDataForRpc = {
         id: aiStreamingMessageId, 
@@ -648,19 +601,9 @@ const App: Component = (): JSX.Element => {
           <SettingsPage onNavigateBack={() => navigateTo('newtab')} /> 
         </Match>
         <Match when={activeView() === 'unifiedChat'}>
-          <Show when={!isLoadingThreads() && userConfig()} fallback={<div>Loading chats and configuration...</div>}>
-            <ChatMachineProvider
-              initialThreads={threads()}
-              initialCurrentThreadId={currentThreadId()}
-              initialMessages={getCurrentThreadMessages()}
-              initialUserConfig={userConfig()!}
-            >
-              <ChatPageLayout
-                initialThreads={threads()}
-                onSelectThread={handleSelectThread}
-                onSendMessage={handleSendMessageToUnifiedView}
-                onNavigateBack={() => navigateTo('newtab')}
-              />
+          <Show when={userConfig()} fallback={<div>Loading chats and configuration...</div>}>
+            <ChatMachineProvider initialUserConfig={userConfig()!}>
+              <ChatPageLayout onNavigateBack={() => navigateTo('newtab')} />
             </ChatMachineProvider>
           </Show>
         </Match>
