@@ -50,21 +50,50 @@ export const ChatMachineProvider: ParentComponent<ChatMachineProviderProps> = (p
     send({ type: 'SET_USER_CONFIG', userConfig: props.initialUserConfig });
   });
 
-  // On mount: load or seed threads, then fetch first thread's messages
+  // On mount: load or seed threads, then seed any empty thread and fetch first messages
   createEffect(() => {
     (async () => {
       try {
+        // Load existing threads
         let threads = await messaging.sendMessage('getAllChatThreads', undefined);
         if (threads.length === 0) {
-          const intro = await messaging.sendMessage('addChatThread', defaultIntroThread);
-          const sharing = await messaging.sendMessage('addChatThread', defaultSharingThread);
-          const justChat = await messaging.sendMessage('addChatThread', defaultJustChatThread);
-          threads = [intro, sharing, justChat].filter(Boolean) as Thread[];
-        } else if (!threads.some(t => t.id === JUST_CHAT_THREAD_ID)) {
+          // Create default threads in batch
+          const created = await Promise.all(
+            [defaultIntroThread, defaultSharingThread, defaultJustChatThread]
+              .map(d => messaging.sendMessage('addChatThread', d))
+          );
+          threads = created.filter(Boolean) as Thread[];
+          // Seed each default thread with its systemPrompt
+          for (const thread of threads) {
+            if (thread.systemPrompt) {
+              await messaging.sendMessage('addChatMessage', {
+                id: `msg-ai-seed-${thread.id}-${Date.now()}`,
+                thread_id: thread.id,
+                sender: 'ai',
+                text_content: thread.systemPrompt!
+              });
+            }
+          }
+        }
+        if (!threads.some(t => t.id === JUST_CHAT_THREAD_ID)) {
           const justChat = await messaging.sendMessage('addChatThread', defaultJustChatThread);
           threads.push(justChat);
         }
+        // Update threads in machine
         send({ type: 'SET_THREADS', threads });
+        // Seed messages for any thread that has none
+        for (const thread of threads) {
+          const existing = await messaging.sendMessage('getChatMessages', { threadId: thread.id });
+          if (existing.length === 0 && thread.systemPrompt) {
+            await messaging.sendMessage('addChatMessage', {
+              id: `msg-ai-seed-${thread.id}-${Date.now()}`,
+              thread_id: thread.id,
+              sender: 'ai',
+              text_content: thread.systemPrompt!
+            });
+          }
+        }
+        // Pick primary thread
         const primary = threads.find(t => t.id !== JUST_CHAT_THREAD_ID) || threads[0];
         if (primary) {
           send({ type: 'SET_CURRENT_THREAD_ID', threadId: primary.id });
@@ -73,6 +102,20 @@ export const ChatMachineProvider: ParentComponent<ChatMachineProviderProps> = (p
         }
       } catch (e) {
         console.error('[ChatMachineContext] Error initializing threads:', e);
+      }
+    })();
+  });
+
+  // Fetch messages whenever the current thread changes
+  createEffect(() => {
+    const threadId = state.context.currentThreadId;
+    if (threadId == null) return;
+    (async () => {
+      try {
+        const msgs = await messaging.sendMessage('getChatMessages', { threadId });
+        send({ type: 'SET_MESSAGES', messages: msgs });
+      } catch (e) {
+        console.error('[ChatMachineContext] Failed to load messages for thread', threadId, e);
       }
     })();
   });
