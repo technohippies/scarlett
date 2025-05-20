@@ -1,99 +1,8 @@
-import { createMachine, assign, ActorRefFrom, StateFrom } from 'xstate';
-import type { ChatMessage, Thread, WordInfo } from './types';
+import { setup, assign, ActorRefFrom, StateFrom, AnyEventObject, DoneActorEvent, ErrorActorEvent, fromPromise } from 'xstate';
+import type { ChatMessage, Thread } from './types';
 import type { UserConfiguration } from '../../services/storage/types';
 
-// Define services with explicit context and event types
-const services = {
-  transcribeAudio: async (context: ChatOrchestratorContext, event: Extract<ChatOrchestratorEvent, { type: 'VAD_SPEECH_ENDED' }>) => {
-    console.log('Service: transcribeAudio - placeholder, audio data:', event.audioData);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    if (Math.random() > 0.1) {
-      return { transcript: 'Hello, this is a test transcript.' };
-    } else {
-      throw new Error('Transcription failed');
-    }
-  },
-  invokeLLM: async (context: ChatOrchestratorContext, event: Extract<ChatOrchestratorEvent, { type: 'STT_SUCCESS' } | { type: 'SEND_TEXT_MESSAGE' }>) => {
-    console.log('Service: invokeLLM with input:', context.userInput);
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    if (Math.random() > 0.1) {
-      return { aiResponse: "AI response to: " + context.userInput };
-    } else {
-      throw new Error('LLM failed');
-    }
-  },
-  playTTS: async (context: ChatOrchestratorContext, event: Extract<ChatOrchestratorEvent, { type: 'LLM_SUCCESS' }>) => {
-    console.log('Service: playTTS for text:', context.aiResponse);
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    if (Math.random() > 0.1) {
-      return true;
-    } else {
-      throw new Error('TTS failed');
-    }
-  },
-  initializeVAD: async (context: ChatOrchestratorContext, event: ChatOrchestratorEvent) => {
-    console.log('Service: initializeVAD - placeholder');
-    await new Promise(resolve => setTimeout(resolve, 500));
-    // In a real scenario, this would return a proper VAD instance
-    return { vadInstance: { id: 'mockVAD' } }; 
-  },
-  startVADRecording: async (context: ChatOrchestratorContext, event: ChatOrchestratorEvent) => {
-    console.log('Service: startVADRecording - placeholder');
-    await new Promise(resolve => setTimeout(resolve, 200));
-  },
-  stopVADRecording: async (context: ChatOrchestratorContext, event: ChatOrchestratorEvent) => {
-    console.log('Service: stopVADRecording - placeholder for context:', context.isVADListening );
-    await new Promise(resolve => setTimeout(resolve, 200));
-  }
-};
-
-// Define actions with explicit context and event types
-const actionsDefinition = {
-  assignTranscriptToContext: assign<ChatOrchestratorContext, Extract<ChatOrchestratorEvent, { type: 'STT_SUCCESS' }>>({
-    userInput: (_, event) => event.data.transcript,
-    sttError: null,
-  }),
-  assignLLMResponseToContext: assign<ChatOrchestratorContext, Extract<ChatOrchestratorEvent, { type: 'LLM_SUCCESS' }>>({
-    aiResponse: (_, event) => event.data.aiResponse,
-    llmError: null,
-  }),
-  assignAudioData: assign<ChatOrchestratorContext, Extract<ChatOrchestratorEvent, { type: 'VAD_SPEECH_ENDED' }>>(
-    (context, event) => {
-      console.log("Assigning audio data (placeholder):", event.audioData);
-      return { ...context /*, latestAudioData: event.audioData */ };
-    }
-  ),
-  assignUserInputText: assign<ChatOrchestratorContext, Extract<ChatOrchestratorEvent, { type: 'TEXT_INPUT_CHANGE' }>>({
-    userInput: (_, event) => event.text,
-  }),
-  clearUserInput: assign<ChatOrchestratorContext, ChatOrchestratorEvent>({
-    userInput: '',
-  }),
-  clearAIResponse: assign<ChatOrchestratorContext, ChatOrchestratorEvent>({
-    aiResponse: '',
-  }),
-  assignError: assign<ChatOrchestratorContext, ChatOrchestratorEvent>(
-    (context, event: any) => { // Keep `any` for generic error data for now
-      return {
-        ...context,
-        lastError: event.data?.message || event.data?.toString() || 'An unknown error occurred',
-      };
-    }
-  ),
-  assignVadInstance: assign<ChatOrchestratorContext, Extract<ChatOrchestratorEvent, { type: 'VAD_INITIALIZED' }>>({
-    vadInstance: (_, event) => event.data.vadInstance,
-    vadError: null,
-  }),
-  notifySpeechDetected: (context: ChatOrchestratorContext, event: ChatOrchestratorEvent) => console.log('Action: Speech Detected'),
-  notifyVadReady: (context: ChatOrchestratorContext, event: ChatOrchestratorEvent) => console.log('Action: VAD Ready'),
-  logEvent: (context: ChatOrchestratorContext, event: ChatOrchestratorEvent) => console.log('[chatOrchestratorMachine]', event.type),
-  stopVADRecordingAction: assign<ChatOrchestratorContext, ChatOrchestratorEvent>((context) => {
-    console.log('Action: stopVADRecordingAction');
-    // This would typically be an invoked service or direct call if synchronous
-    // For now, just logging. The actual stop is better as a service.
-    return { ...context, isVADListening: false }; // Ensure state reflects VAD is stopped
-  })
-};
+// External actionsDefinition and services objects are removed as they are now defined within setup.
 
 export interface ChatOrchestratorContext {
   userConfig: UserConfiguration | null;
@@ -116,210 +25,493 @@ export type ChatOrchestratorEvent =
   | { type: 'TEXT_INPUT_CHANGE'; text: string }
   | { type: 'SEND_TEXT_MESSAGE' }
   | { type: 'ACTIVATE_SPEECH_MODE' }
-  | { type: 'VAD_INITIALIZED'; vadInstance: any; data: { vadInstance: any } } // Added data for onDone
-  | { type: 'VAD_INIT_ERROR'; error: string ; data: any}
+  | DoneActorEvent<{ vadInstance: any }, 'initializeVAD'>
+  | ErrorActorEvent<any, 'initializeVAD'>
+  | DoneActorEvent<void, 'startVADRecording'>
+  | ErrorActorEvent<any, 'startVADRecording'>
+  | DoneActorEvent<void, 'stopVADRecording'>
+  | ErrorActorEvent<any, 'stopVADRecording'>
+  | { type: 'VAD_INITIALIZED'; data: { vadInstance: any } }
+  | { type: 'VAD_INIT_ERROR'; data: any }
   | { type: 'VAD_SPEECH_DETECTED' }
   | { type: 'VAD_SPEECH_ENDED'; audioData: any }
-  | { type: 'VAD_ERROR'; error: string ; data: any}
+  | { type: 'VAD_ERROR'; data: any }
   | { type: 'CANCEL_SPEECH_INPUT' }
-  | { type: 'STT_SUCCESS'; transcript: string; data: { transcript: string } }
-  | { type: 'STT_ERROR'; error: string ; data: any}
-  | { type: 'LLM_SUCCESS'; aiResponse: string; data: { aiResponse: string } }
-  | { type: 'LLM_ERROR'; error: string ; data: any}
-  | { type: 'TTS_PLAYBACK_COMPLETE' ; data: any}
-  | { type: 'TTS_PLAYBACK_ERROR'; error: string ; data: any}
+  | DoneActorEvent<{ transcript: string }, 'transcribeAudio'>
+  | ErrorActorEvent<any, 'transcribeAudio'>
+  | DoneActorEvent<{ aiResponse: string }, 'invokeLLM'>
+  | ErrorActorEvent<any, 'invokeLLM'>
+  | DoneActorEvent<boolean, 'playTTS'>
+  | ErrorActorEvent<any, 'playTTS'>
   | { type: 'RETRY' }
-  | { type: 'CLEAR_ERROR' };
+  | { type: 'CLEAR_ERROR' }
+  | { type: 'SYNC_INITIAL_DATA'; threads: Thread[]; currentThreadId: string | null; messages: ChatMessage[]; userConfig: UserConfiguration; }
+  | { type: 'SET_THREADS'; threads: Thread[] }
+  | { type: 'SET_CURRENT_THREAD_ID'; threadId: string | null }
+  | { type: 'SET_MESSAGES'; messages: ChatMessage[] }
+  | { type: 'SET_USER_CONFIG'; userConfig: UserConfiguration };
 
+export const chatOrchestratorMachine = setup({
+  types: {
+    context: {} as ChatOrchestratorContext,
+    events: {} as ChatOrchestratorEvent,
+  },
+  actors: {
+    transcribeAudio: fromPromise(async ({ input }: { input: { audioData: any } }) => {
+      console.log('Service: transcribeAudio - placeholder, audio data:', input.audioData);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (Math.random() > 0.1) {
+        return { transcript: 'Hello, this is a test transcript.' };
+      } else {
+        throw new Error('Transcription failed');
+      }
+    }),
+    invokeLLM: fromPromise(async ({ input }: { input: { userInput: string } }) => {
+      console.log('Service: invokeLLM with input:', input.userInput);
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      if (Math.random() > 0.1) {
+        return { aiResponse: "AI response to: " + input.userInput };
+      } else {
+        throw new Error('LLM failed');
+      }
+    }),
+    playTTS: fromPromise(async ({ input }: { input: { aiResponse: string } }) => {
+      console.log('Service: playTTS for text:', input.aiResponse);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (Math.random() > 0.1) {
+        return true; 
+      } else {
+        throw new Error('TTS failed');
+      }
+    }),
+    initializeVAD: fromPromise(async () => {
+      console.log('Service: initializeVAD - placeholder');
+      await new Promise(resolve => setTimeout(resolve, 500));
+      if (Math.random() > 0.1) {
+        return { vadInstance: { id: 'mockVAD' } };
+      } else {
+        throw new Error('VAD Initialization Failed');
+      }
+    }),
+    startVADRecording: fromPromise(async () => {
+      console.log('Service: startVADRecording - placeholder');
+      await new Promise(resolve => setTimeout(resolve, 200));
+      if (Math.random() < 0.1) throw new Error('Failed to start VAD recording');
+    }),
+    stopVADRecording: fromPromise(async () => {
+      console.log('Service: stopVADRecording - placeholder');
+      await new Promise(resolve => setTimeout(resolve, 200));
+      if (Math.random() < 0.1) throw new Error('Failed to stop VAD recording');
+    })
+  },
+  actions: {
+    notifySpeechDetected: () => { console.log('Action: Speech Detected'); },
+    notifyVadReady: () => { console.log('Action: VAD Ready'); },
+    logEvent: ({ event }: { event: AnyEventObject }) => { console.log('[chatOrchestratorMachine]', event.type, event); },
+    
+    assignTranscriptToContext: assign(({
+      event,
+    }: { event: AnyEventObject }) => {
+      if (event.type === 'xstate.actor.done.transcribeAudio') {
+        const specificEvent = event as DoneActorEvent<{ transcript: string }, 'transcribeAudio'>;
+        return {
+          userInput: specificEvent.output.transcript,
+          sttError: null,
+        };
+      }
+      return {};
+    }),
 
-export const chatOrchestratorMachine = createMachine<ChatOrchestratorContext, ChatOrchestratorEvent>(
-  {
-    id: 'chatOrchestrator',
-    initial: 'initializing',
-    context: {
-      userConfig: null,
-      currentThreadId: null,
-      currentChatMessages: [],
-      isSpeechModeActive: true,
-      userInput: '',
-      aiResponse: '',
-      vadInstance: null,
-      isVADListening: false,
-      sttError: null,
-      llmError: null,
-      ttsError: null,
-      vadError: null,
-      lastError: null,
-    } as ChatOrchestratorContext,
-    states: {
-      initializing: {
-        invoke: {
-          id: 'initVadService',
-          src: 'initializeVAD',
-          onDone: {
-            target: 'idle',
-            actions: ['assignVadInstance', 'notifyVadReady'],
+    assignLLMResponseToContext: assign(({
+      event,
+    }: { event: AnyEventObject }) => {
+      if (event.type === 'xstate.actor.done.invokeLLM') {
+        const specificEvent = event as DoneActorEvent<{ aiResponse: string }, 'invokeLLM'>;
+        return {
+          aiResponse: specificEvent.output.aiResponse,
+          llmError: null,
+        };
+      }
+      return {};
+    }),
+
+    assignAudioData: () => assign(({
+      event
+    }: { event: Extract<ChatOrchestratorEvent, { type: 'VAD_SPEECH_ENDED'}> }) => {
+      console.log("VAD_SPEECH_ENDED, audio data available. Context not changed by this action.", event.audioData);
+      return {}; 
+    }),
+
+    assignUserInputText: () => assign(({ event }: { 
+      event: Extract<ChatOrchestratorEvent, { type: 'TEXT_INPUT_CHANGE'}> 
+    }) => {
+      return { userInput: event.text };
+    }),
+
+    clearUserInput: assign({ userInput: '' }),
+    clearAIResponse: assign({ aiResponse: '' }),
+
+    assignError: assign(({ context, event } : { context: ChatOrchestratorContext, event: AnyEventObject }) => {
+      let errorMessage = 'An unknown error occurred';
+      
+      if (event.type.startsWith('xstate.actor.error.')) {
+        const actorErrorEvent = event as ErrorActorEvent<any>; 
+        if (actorErrorEvent.error) {
+            const errorSource = actorErrorEvent.error;
+            if (typeof errorSource === 'string') {
+                errorMessage = errorSource;
+            } else if (errorSource instanceof Error) {
+                errorMessage = errorSource.message;
+            } else if (typeof errorSource === 'object' && errorSource !== null && 'message' in errorSource && typeof (errorSource as any).message === 'string') {
+                errorMessage = (errorSource as any).message;
+            } else if (errorSource?.toString) {
+                errorMessage = errorSource.toString();
+            }
+        }
+      } else if (event.type === 'VAD_INIT_ERROR') {
+        const specificEvent = event as Extract<ChatOrchestratorEvent, { type: 'VAD_INIT_ERROR', data: any }>;
+        const errorSource = specificEvent.data;
+        if (errorSource) {
+            if (typeof errorSource.message === 'string') {
+              errorMessage = errorSource.message;
+            } else if (typeof errorSource.toString === 'function') {
+              errorMessage = errorSource.toString();
+            } else if (typeof errorSource === 'string') {
+              errorMessage = errorSource;
+            }
+        }
+      } else if (event.type === 'VAD_ERROR') {
+        const specificEvent = event as Extract<ChatOrchestratorEvent, { type: 'VAD_ERROR', data: any }>;
+        const errorSource = specificEvent.data;
+         if (errorSource) {
+            if (typeof errorSource.message === 'string') {
+              errorMessage = errorSource.message;
+            } else if (typeof errorSource.toString === 'function') {
+              errorMessage = errorSource.toString();
+            } else if (typeof errorSource === 'string') {
+              errorMessage = errorSource;
+            }
+        }
+      }
+      return { ...context, lastError: errorMessage };
+    }),
+
+    assignVadInstance: assign(({
+      event,
+    }: { event: AnyEventObject }) => {
+      if (event.type === 'xstate.actor.done.initializeVAD') {
+        const specificEvent = event as DoneActorEvent<{ vadInstance: any }, 'initializeVAD'>;
+        return {
+          vadInstance: specificEvent.output.vadInstance,
+          vadError: null,
+        };
+      }
+      return {};
+    }),
+
+    stopVADRecordingAction: assign({ isVADListening: false }),
+
+    assignInitialData: () => assign(({ context, event }: { 
+      context: ChatOrchestratorContext, 
+      event: Extract<ChatOrchestratorEvent, {type: 'SYNC_INITIAL_DATA'}> 
+    }) => ({
+      ...context, 
+      userConfig: event.userConfig,
+      currentChatMessages: event.messages,
+      currentThreadId: event.currentThreadId,
+    })),
+
+    assignCurrentThreadId: () => assign(({ event }: { 
+      event: Extract<ChatOrchestratorEvent, { type: 'SET_CURRENT_THREAD_ID'}> 
+    }) => {
+      return { currentThreadId: event.threadId };
+    }),
+
+    assignMessages: () => assign(({ event }: { 
+      event: Extract<ChatOrchestratorEvent, { type: 'SET_MESSAGES'}> 
+    }) => {
+      return { currentChatMessages: event.messages };
+    }),
+
+    assignUserConfig: () => assign(({ event }: { 
+      event: Extract<ChatOrchestratorEvent, { type: 'SET_USER_CONFIG'}> 
+    }) => {
+      return { userConfig: event.userConfig };
+    }),
+
+    assignVadError: assign(( { context, event }: { context: ChatOrchestratorContext, event: AnyEventObject } ) => {
+      let errorMessage = 'VAD Operation Failed';
+      if (event.type === 'xstate.actor.error.initializeVAD' || event.type === 'xstate.actor.error.startVADRecording' || event.type === 'xstate.actor.error.stopVADRecording') {
+        const errorSource = (event as ErrorActorEvent<any>).error;
+        if (errorSource) {
+            if (typeof errorSource === 'string') errorMessage = errorSource;
+            else if (errorSource instanceof Error) errorMessage = errorSource.message;
+            else if (typeof errorSource === 'object' && errorSource !== null && 'message' in errorSource && typeof (errorSource as any).message === 'string') errorMessage = (errorSource as any).message;
+            else if (errorSource?.toString) errorMessage = errorSource.toString();
+        }
+      } else if (event.type === 'VAD_INIT_ERROR') {
+        const customErrorEvent = event as Extract<ChatOrchestratorEvent, { type: 'VAD_INIT_ERROR', data: any }>;
+        const errorSource = customErrorEvent.data;
+        if (errorSource) {
+            if (typeof errorSource.message === 'string') errorMessage = errorSource.message;
+            else if (typeof errorSource.toString === 'function') errorMessage = errorSource.toString();
+            else if (typeof errorSource === 'string') errorMessage = errorSource;
+        }
+      } else if (event.type === 'VAD_ERROR') {
+        const customErrorEvent = event as Extract<ChatOrchestratorEvent, { type: 'VAD_ERROR', data: any }>;
+        const errorSource = customErrorEvent.data;
+        if (errorSource) {
+            if (typeof errorSource.message === 'string') errorMessage = errorSource.message;
+            else if (typeof errorSource.toString === 'function') errorMessage = errorSource.toString();
+            else if (typeof errorSource === 'string') errorMessage = errorSource;
+        }
+      }
+      return { ...context, vadError: errorMessage, lastError: errorMessage };
+    }),
+
+    assignSttError: assign(( { context, event }: { context: ChatOrchestratorContext, event: AnyEventObject } ) => {
+      let errorMessage = 'STT Operation Failed';
+      if (event.type === 'xstate.actor.error.transcribeAudio') {
+        const errorSource = (event as ErrorActorEvent<any, 'transcribeAudio'>).error;
+        if (errorSource) {
+            if (typeof errorSource === 'string') errorMessage = errorSource;
+            else if (errorSource instanceof Error) errorMessage = errorSource.message;
+            else if (typeof errorSource === 'object' && errorSource !== null && 'message' in errorSource && typeof (errorSource as any).message === 'string') errorMessage = (errorSource as any).message;
+            else if (errorSource?.toString) errorMessage = errorSource.toString();
+        }
+      }
+      return { ...context, sttError: errorMessage, lastError: errorMessage };
+    }),
+
+    assignLlmError: assign(( { context, event }: { context: ChatOrchestratorContext, event: AnyEventObject }) => {
+      let errorMessage = 'LLM Operation Failed';
+      if (event.type === 'xstate.actor.error.invokeLLM') {
+        const errorSource = (event as ErrorActorEvent<any, 'invokeLLM'>).error;
+        if (errorSource) {
+            if (typeof errorSource === 'string') errorMessage = errorSource;
+            else if (errorSource instanceof Error) errorMessage = errorSource.message;
+            else if (typeof errorSource === 'object' && errorSource !== null && 'message' in errorSource && typeof (errorSource as any).message === 'string') errorMessage = (errorSource as any).message;
+            else if (errorSource?.toString) errorMessage = errorSource.toString();
+        }
+      }
+      return { ...context, llmError: errorMessage, lastError: errorMessage };
+    }),
+
+    assignTtsError: assign(( { context, event }: { context: ChatOrchestratorContext, event: AnyEventObject }) => {
+      let errorMessage = 'TTS Operation Failed';
+      if (event.type === 'xstate.actor.error.playTTS') {
+        const errorSource = (event as ErrorActorEvent<any, 'playTTS'>).error;
+        if (errorSource) {
+            if (typeof errorSource === 'string') errorMessage = errorSource;
+            else if (errorSource instanceof Error) errorMessage = errorSource.message;
+            else if (typeof errorSource === 'object' && errorSource !== null && 'message' in errorSource && typeof (errorSource as any).message === 'string') errorMessage = (errorSource as any).message;
+            else if (errorSource?.toString) errorMessage = errorSource.toString();
+        }
+      }
+      return { ...context, ttsError: errorMessage, lastError: errorMessage };
+    }),
+    clearAllErrors: assign({ lastError: null, sttError: null, llmError: null, ttsError: null, vadError: null })
+  }
+}).createMachine({
+  id: 'chatOrchestrator',
+  context: ({ input }) => ({
+    userConfig: (input as any)?.userConfig || null, 
+    currentThreadId: (input as any)?.currentThreadId || null,
+    currentChatMessages: (input as any)?.messages || [],
+    isSpeechModeActive: false,
+    userInput: '',
+    aiResponse: '',
+    vadInstance: null,
+    isVADListening: false,
+    sttError: null,
+    llmError: null,
+    ttsError: null,
+    vadError: null,
+    lastError: null,
+  }),
+  initial: 'initializing',
+  on: {
+    SYNC_INITIAL_DATA: { actions: 'assignInitialData' },
+    SET_CURRENT_THREAD_ID: { actions: 'assignCurrentThreadId' },
+    SET_MESSAGES: { actions: 'assignMessages' },
+    SET_USER_CONFIG: { actions: 'assignUserConfig' },
+    CLEAR_ERROR: { actions: assign({ lastError: null }) }, 
+    RETRY: [
+      { guard: ({ context }) => context.sttError !== null, target: 'processingSpeech.transcribing' },
+      { guard: ({ context }) => context.llmError !== null, target: 'processingSpeech.generatingResponse' }, 
+      { guard: ({ context }) => context.ttsError !== null, target: 'processingSpeech.speakingResponse' },
+      { guard: ({ context }) => context.vadError !== null, target: 'speechInput.initializingVAD' }, 
+    ]
+  },
+  states: {
+    initializing: {
+      always: [{ target: 'idle', actions: 'logEvent' }], 
+    },
+    idle: {
+      entry: 'clearAllErrors', 
+      on: {
+        TOGGLE_INPUT_MODE: [
+          { guard: ({ context }) => context.isSpeechModeActive, actions: assign({ isSpeechModeActive: false }) },
+          { actions: assign({ isSpeechModeActive: true }), target: 'speechInput' }
+        ],
+        TEXT_INPUT_CHANGE: { actions: 'assignUserInputText' },
+        SEND_TEXT_MESSAGE: {
+          guard: ({ context }) => context.userInput.trim().length > 0,
+          target: 'processingText',
+          actions: 'logEvent'
+        },
+        ACTIVATE_SPEECH_MODE: { target: 'speechInput', actions: assign({ isSpeechModeActive: true }) }
+      }
+    },
+    speechInput: {
+      initial: 'initializingVAD',
+      states: {
+        initializingVAD: {
+          entry: 'logEvent',
+          invoke: {
+            id: 'initializeVAD',
+            src: 'initializeVAD',
+            input: {},
+            onDone: {
+              target: 'readyToListen',
+              actions: ['assignVadInstance', 'notifyVadReady', 'logEvent']
+            },
+            onError: {
+              target: 'vadErrorState',
+              actions: ['assignVadError', 'logEvent']
+            }
+          }
+        },
+        readyToListen: {
+          entry: [assign({ isVADListening: true }), 'logEvent'], 
+          invoke: {
+            id: 'startVADRecording',
+            src: 'startVADRecording',
+            input: {},
+            onDone: {
+              actions: 'logEvent' 
+            },
+            onError: {
+              target: 'vadErrorState',
+              actions: ['assignVadError', 'logEvent']
+            }
           },
-          onError: {
-            target: 'error',
-            actions: assign<ChatOrchestratorContext, any>( // Use any for generic error event data
-              { vadError: (_, ev) => ev.data?.message || ev.data?.toString() || 'VAD Init Failed' }
-            ),
+          on: {
+            VAD_SPEECH_DETECTED: { target: 'listening', actions: ['notifySpeechDetected', 'logEvent'] },
+            CANCEL_SPEECH_INPUT: { target: '#chatOrchestrator.idle', actions: ['stopVADRecordingAction', 'logEvent'] },
+            VAD_ERROR: { target: 'vadErrorState', actions: 'assignVadError' } 
+          },
+          exit: ['stopVADRecordingAction'] 
+        },
+        listening: {
+          entry: 'logEvent',
+          on: {
+            VAD_SPEECH_ENDED: {
+              target: '#chatOrchestrator.processingSpeech.transcribing',
+              actions: ['assignAudioData', 'stopVADRecordingAction', 'logEvent']
+            },
+            CANCEL_SPEECH_INPUT: { target: '#chatOrchestrator.idle', actions: ['stopVADRecordingAction', 'logEvent'] },
+            VAD_ERROR: { target: 'vadErrorState', actions: 'assignVadError' }
+          }
+        },
+        vadErrorState: {
+          entry: 'logEvent',
+          on: {
+            RETRY: 'initializingVAD', 
+            CANCEL_SPEECH_INPUT: { target: '#chatOrchestrator.idle', actions: ['stopVADRecordingAction', 'logEvent'] }
           }
         }
       },
-      idle: {
-        entry: ['clearUserInput', 'clearAIResponse', 'logEvent'],
-        on: {
-          TOGGLE_INPUT_MODE: {
-            actions: assign({ isSpeechModeActive: (ctx) => !ctx.isSpeechModeActive }),
-            target: 'idle',
-            internal: false,
-          },
-          ACTIVATE_SPEECH_MODE: [
-            {
-              guard: (ctx) => !!ctx.vadInstance && ctx.isSpeechModeActive,
-              target: 'speechInput.listening',
-            },
-            {
-              actions: (ctx) => console.warn('VAD not ready or not in speech mode', ctx.vadInstance, ctx.isSpeechModeActive),
-            }
-          ],
-          TEXT_INPUT_CHANGE: {
-            guard: (ctx) => !ctx.isSpeechModeActive,
-            actions: 'assignUserInputText',
-          },
-          SEND_TEXT_MESSAGE: {
-            guard: (ctx) => !ctx.isSpeechModeActive && !!ctx.userInput.trim(),
-            target: 'processingUserRequest.callingLLM',
-          },
-        },
-      },
-      speechInput: {
-        initial: 'ready',
-        states: {
-          ready: {
-            on: {
-              ACTIVATE_SPEECH_MODE: 'listening',
-            },
-          },
-          listening: {
-            entry: [
-              assign<ChatOrchestratorContext, ChatOrchestratorEvent>({ isVADListening: true, sttError: null }),
-              'logEvent',
-            ],
-            invoke: {
-              id: 'startVadRecordingService',
-              src: 'startVADRecording',
-              onError: {
-                target: '#chatOrchestrator.error',
-                actions: assign<ChatOrchestratorContext, any>(
-                  { vadError: (_, ev) => ev.data?.message || ev.data?.toString() || 'VAD Start Failed' }
-                )
-              }
-            },
-            on: {
-              VAD_SPEECH_DETECTED: { actions: ['notifySpeechDetected', 'logEvent'] },
-              VAD_SPEECH_ENDED: {
-                target: 'transcribing',
-                actions: ['assignAudioData', 'logEvent'],
-              },
-              VAD_ERROR: {
-                target: '#chatOrchestrator.error',
-                actions: assign<ChatOrchestratorContext, Extract<ChatOrchestratorEvent, { type: 'VAD_ERROR' }>>(
-                  { vadError: (_, ev) => ev.error, isVADListening: false }
-                ),
-              },
-              CANCEL_SPEECH_INPUT: {
-                target: '#chatOrchestrator.idle',
-                actions: [assign<ChatOrchestratorContext, ChatOrchestratorEvent>({ isVADListening: false }), 'logEvent'],
-              },
-            },
-            exit: [
-              assign<ChatOrchestratorContext, ChatOrchestratorEvent>({ isVADListening: false }),
-              'stopVADRecordingAction' // Action to ensure VAD is stopped, mapped from services.stopVADRecording
-            ],
-          },
-          transcribing: {
-            entry: 'logEvent',
-            invoke: {
-              id: 'sttService',
-              src: 'transcribeAudio',
-              onDone: {
-                target: '#chatOrchestrator.processingUserRequest.callingLLM',
-                actions: ['assignTranscriptToContext', 'logEvent'],
-              },
-              onError: {
-                target: '#chatOrchestrator.error',
-                actions: assign<ChatOrchestratorContext, any>(
-                  { sttError: (_, ev) => ev.data?.message || ev.data?.toString() || 'STT Failed' }
-                ),
-              },
-            },
-          },
-        },
-      },
-      processingUserRequest: {
-        initial: 'callingLLM',
-        states: {
-          callingLLM: {
-            entry: ['logEvent', assign<ChatOrchestratorContext, ChatOrchestratorEvent>({ llmError: null })],
-            invoke: {
-              id: 'llmService',
-              src: 'invokeLLM',
-              onDone: {
-                target: '#chatOrchestrator.respondingToUser.playingTTS',
-                actions: ['assignLLMResponseToContext', 'logEvent'],
-              },
-              onError: {
-                target: '#chatOrchestrator.error',
-                actions: assign<ChatOrchestratorContext, any>(
-                  { llmError: (_, ev) => ev.data?.message || ev.data?.toString() || 'LLM Call Failed' }
-                ),
-              },
-            },
-          },
-        },
-      },
-      respondingToUser: {
-        initial: 'playingTTS',
-        states: {
-          playingTTS: {
-            entry: ['logEvent', assign<ChatOrchestratorContext, ChatOrchestratorEvent>({ ttsError: null })],
-            invoke: {
-              id: 'ttsService',
-              src: 'playTTS',
-              onDone: { target: '#chatOrchestrator.idle', actions: 'logEvent' },
-              onError: {
-                target: '#chatOrchestrator.error',
-                actions: assign<ChatOrchestratorContext, any>(
-                  { ttsError: (_, ev) => ev.data?.message || ev.data?.toString() || 'TTS Playback Failed' }
-                ),
-              },
-            },
-          },
-        },
-      },
-      error: {
-        entry: ['assignError', 'logEvent'],
-        on: {
-          RETRY: 'idle',
-          CLEAR_ERROR: { target: 'idle', actions: assign({lastError: null}) },
-          TOGGLE_INPUT_MODE: {
-            actions: assign({ isSpeechModeActive: (ctx) => !ctx.isSpeechModeActive, lastError: null }),
-            target: 'idle',
-            internal: false,
-          },
-        },
-      },
+      on: {
+        TOGGLE_INPUT_MODE: { target: 'idle', actions: assign({ isSpeechModeActive: false }) } 
+      }
     },
-  },
-  {
-    services,
-    actions: actionsDefinition,
+    processingText: {
+      entry: 'logEvent',
+      invoke: {
+        id: 'invokeLLMFromText',
+        src: 'invokeLLM',
+        input: ({ context }) => ({ userInput: context.userInput }),
+        onDone: {
+          target: 'idle',
+          actions: ['assignLLMResponseToContext', 'clearUserInput', 'logEvent']
+        },
+        onError: {
+          target: 'errorState.llmError',
+          actions: ['assignLlmError', 'logEvent']
+        }
+      }
+    },
+    processingSpeech: {
+      initial: 'transcribing',
+      states: {
+        transcribing: {
+          entry: 'logEvent',
+          invoke: {
+            id: 'transcribeAudio',
+            src: 'transcribeAudio',
+            input: ({ context }) => ({ audioData: context.userInput }), 
+            onDone: {
+              target: 'generatingResponse',
+              actions: ['assignTranscriptToContext', 'logEvent']
+            },
+            onError: {
+              target: '#chatOrchestrator.errorState.sttError',
+              actions: ['assignSttError', 'logEvent']
+            }
+          }
+        },
+        generatingResponse: {
+          entry: 'logEvent',
+          invoke: {
+            id: 'invokeLLMFromSpeech',
+            src: 'invokeLLM',
+            input: ({ context }) => ({ userInput: context.userInput }),
+            onDone: {
+              target: 'speakingResponse',
+              actions: ['assignLLMResponseToContext', 'logEvent']
+            },
+            onError: {
+              target: '#chatOrchestrator.errorState.llmError',
+              actions: ['assignLlmError', 'logEvent']
+            }
+          }
+        },
+        speakingResponse: {
+          entry: 'logEvent',
+          invoke: {
+            id: 'playTTS',
+            src: 'playTTS',
+            input: ({ context }) => ({ aiResponse: context.aiResponse }),
+            onDone: {
+              target: '#chatOrchestrator.idle',
+              actions: ['clearAIResponse', 'logEvent'] 
+            },
+            onError: {
+              target: '#chatOrchestrator.errorState.ttsError',
+              actions: ['assignTtsError', 'logEvent']
+            }
+          }
+        }
+      }
+    },
+    errorState: {
+      entry: 'logEvent',
+      initial: 'unknown', 
+      states: {
+        unknown: {},
+        sttError: { entry: 'logEvent' },
+        llmError: { entry: 'logEvent' },
+        ttsError: { entry: 'logEvent' },
+        vadInitError: { entry: 'logEvent' }, 
+      },
+      on: {
+        RETRY: undefined, 
+        CLEAR_ERROR: { target: 'idle', actions: 'clearAllErrors' },
+      }
+    }
   }
-);
+});
 
-// Types for useActor hook if needed elsewhere
 export type ChatOrchestratorActorRef = ActorRefFrom<typeof chatOrchestratorMachine>;
 export type ChatOrchestratorState = StateFrom<typeof chatOrchestratorMachine>; 
