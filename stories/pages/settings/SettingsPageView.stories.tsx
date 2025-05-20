@@ -149,6 +149,21 @@ export default {
      ttsTestAudioData: { control: 'object', name: 'TTS Test Audio Data (Blob)' },
      onTtsPlayAudio: { action: 'onTtsPlayAudio' },
      ttsTestError: { control: 'object', name: 'TTS Test Error' },
+     availableVadOptions: { table: { disable: true }, name: 'Available VAD Options' },
+     selectedVadId: { control: 'text', name: 'Selected VAD ID' },
+     onSelectVad: { action: 'onSelectVad' },
+     isVadTesting: { control: 'boolean', name: 'VAD Testing' },
+     onTestVad: { action: 'onTestVad' },
+     onStopVadTest: { action: 'onStopVadTest' },
+     vadStatusMessage: { control: 'text', name: 'VAD Status Message' },
+     vadTestError: { control: 'object', name: 'VAD Test Error' },
+     isVadLoading: { control: 'boolean', name: 'VAD Loading' },
+     lastRecordedAudioUrl: { control: 'text', name: 'Last Recorded Audio URL' },
+     onPlayLastRecording: { action: 'onPlayLastRecording' },
+     onTranscribe: { action: 'onTranscribe' },
+     transcribedText: { control: 'text', name: 'Transcribed Text' },
+     isTranscribing: { control: 'boolean', name: 'Transcribing' },
+     sttError: { control: 'object', name: 'STT Error' },
   },
   args: {
     initialActiveSection: 'llm',
@@ -156,7 +171,6 @@ export default {
     config: mockInitialConfig,
     llmTransientState: createMockTransientState([], []),
     embeddingTransientState: createMockTransientState([], []),
-    ttsTransientState: createMockTransientState([], []),
     isFocusModeActive: false,
     isFocusModeLoading: false,
     focusModeBlockedDomains: mockInitialBlockedDomains,
@@ -166,6 +180,16 @@ export default {
     isElevenLabsTesting: false,
     ttsTestAudioData: null,
     ttsTestError: null,
+    availableVadOptions: [],
+    selectedVadId: undefined,
+    isVadTesting: false,
+    vadStatusMessage: null,
+    vadTestError: null,
+    isVadLoading: false,
+    lastRecordedAudioUrl: null,
+    transcribedText: null,
+    isTranscribing: false,
+    sttError: null,
   }
 };
 
@@ -201,6 +225,33 @@ const BaseRender = (args: any) => {
     
     const [ttsTestErrorSignal, setTtsTestErrorSignal] = createSignal<Error | null>(args.ttsTestError);
     createEffect(() => setTtsTestErrorSignal(args.ttsTestError));
+
+    const [selectedVadIdSignal, setSelectedVadIdSignal] = createSignal<string | undefined>(args.selectedVadId);
+    createEffect(() => setSelectedVadIdSignal(args.selectedVadId));
+
+    const [isVadTestingSignal, setIsVadTestingSignal] = createSignal<boolean>(args.isVadTesting);
+    createEffect(() => setIsVadTestingSignal(args.isVadTesting));
+
+    const [vadStatusMessageSignal, setVadStatusMessageSignal] = createSignal<string | null>(args.vadStatusMessage);
+    createEffect(() => setVadStatusMessageSignal(args.vadStatusMessage));
+
+    const [vadTestErrorSignal, setVadTestErrorSignal] = createSignal<Error | null>(args.vadTestError);
+    createEffect(() => setVadTestErrorSignal(args.vadTestError));
+
+    const [isVadLoadingSignal, setIsVadLoadingSignal] = createSignal<boolean>(args.isVadLoading);
+    createEffect(() => setIsVadLoadingSignal(args.isVadLoading));
+
+    const [lastRecordedAudioUrlSignal, setLastRecordedAudioUrlSignal] = createSignal<string | null>(args.lastRecordedAudioUrl);
+    createEffect(() => setLastRecordedAudioUrlSignal(args.lastRecordedAudioUrl));
+
+    const [transcribedTextSignal, setTranscribedTextSignal] = createSignal<string | null>(args.transcribedText);
+    createEffect(() => setTranscribedTextSignal(args.transcribedText));
+
+    const [isTranscribingSignal, setIsTranscribingSignal] = createSignal<boolean>(args.isTranscribing);
+    createEffect(() => setIsTranscribingSignal(args.isTranscribing));
+
+    const [sttErrorSignal, setSttErrorSignal] = createSignal<Error | null>(args.sttError);
+    createEffect(() => setSttErrorSignal(args.sttError));
 
     // Construct the full props object expected by SettingsPageView
     // Ensure all required props are provided, using args for overrides
@@ -247,13 +298,7 @@ const BaseRender = (args: any) => {
         onTestElevenLabs: () => {
             action('onTestElevenLabs')();
             setIsElevenLabsTestingSignal(true);
-            // Simulate API call
-            setTimeout(() => {
-                setIsElevenLabsTestingSignal(false);
-                // setTtsTestAudioDataSignal(new Blob(['mock audio data'], { type: 'audio/mpeg' })); 
-                // Or set an error: 
-                // setTtsTestErrorSignal(new Error("ElevenLabs API Key invalid"));
-            }, 1500);
+            setTimeout(() => setIsElevenLabsTestingSignal(false), 1500);
         },
         ttsTestAudioData: ttsTestAudioDataSignal,
         onTtsPlayAudio: action('onTtsPlayAudio'),
@@ -274,6 +319,34 @@ const BaseRender = (args: any) => {
             action('onFocusModeRemoveDomain')(domainName);
             setFocusModeBlockedDomainsSignal(prev => prev.filter(d => d.name !== domainName));
         },
+        // VAD & STT Props
+        availableVadOptions: args.availableVadOptions,
+        selectedVadId: selectedVadIdSignal,
+        onSelectVad: (vadId: string | undefined) => {
+            action('onSelectVad')(vadId);
+            setSelectedVadIdSignal(vadId);
+        },
+        isVadTesting: isVadTestingSignal,
+        onTestVad: () => {
+            action('onTestVad')();
+            setIsVadTestingSignal(true);
+            setTimeout(() => setIsVadTestingSignal(false), 1500);
+        },
+        onStopVadTest: action('onStopVadTest'),
+        vadStatusMessage: vadStatusMessageSignal,
+        vadTestError: vadTestErrorSignal,
+        isVadLoading: isVadLoadingSignal,
+        lastRecordedAudioUrl: lastRecordedAudioUrlSignal,
+        onPlayLastRecording: action('onPlayLastRecording'),
+        onTranscribe: async () => {
+            action('onTranscribe')();
+            setIsTranscribingSignal(true);
+            setTranscribedTextSignal('Simulated transcription result...');
+            setTimeout(() => setIsTranscribingSignal(false), 1500);
+        },
+        transcribedText: transcribedTextSignal,
+        isTranscribing: isTranscribingSignal,
+        sttError: sttErrorSignal,
     };
 
     // Validate required props are present (basic check)

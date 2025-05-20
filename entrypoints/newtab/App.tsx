@@ -61,7 +61,7 @@ type ActiveView = 'newtab' | 'bookmarks' | 'study' | 'settings' | 'unifiedChat';
 
 const App: Component = (): JSX.Element => {
   const [activeView, setActiveView] = createSignal<ActiveView>('newtab');
-  const [effectiveLangCode, setEffectiveLangCode] = createSignal<string>(getBestInitialLangCode());
+  const [effectiveLangCode] = createSignal<string>(getBestInitialLangCode());
   const [userConfig, setUserConfig] = createSignal<UserConfiguration | null>(null);
 
   createEffect(() => {

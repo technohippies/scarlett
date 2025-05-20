@@ -7,6 +7,8 @@ import { Header } from '../../components/layout/Header';
 import type { AlignmentData, ChatMessage, RoleplayConversationViewProps } from './types'; // Import types from a separate file
 import type { ScenarioOption } from './RoleplaySelectionView'; // Import ScenarioOption
 
+export type { ChatMessage, AlignmentData }; // Added re-export
+
 export interface RoleplayConversationViewProps {
     aiWelcomeMessage?: string;
     onSendMessage: (spokenText: string, chatHistory: ChatMessage[]) => Promise<{ aiResponse: string; alignment?: AlignmentData | null; error?: string } | null>;
@@ -23,6 +25,7 @@ export interface RoleplayConversationViewProps {
     scenario: ScenarioOption;
     onNavigateBack: () => void;
     activeSpokenMessageId?: Accessor<string | null>;
+    messages: ChatMessage[];
 }
 
 // Similar to TranslatorWidget's highlight CSS
@@ -297,23 +300,22 @@ export const RoleplayConversationView: Component<RoleplayConversationViewProps> 
                 </Show>
 
                 <Show when={!errorMessage() && !isWaitingForLLM() && currentAiMessageToDisplay()?.text} keyed>
-                    {(msg) => (
-                        <div class="text-2xl p-4">
-                            <Show 
-                                when={props.activeSpokenMessageId && props.activeSpokenMessageId() === currentAiMessageToDisplay()?.id && props.ttsWordMap && props.ttsWordMap.length > 0}
-                                fallback={currentAiMessageToDisplay()!.text}
-                            >
-                                <For each={props.ttsWordMap}>{(word, _index) => (
-                                    <span
-                                        class="scarlett-roleplay-word-span"
-                                        classList={{ 'scarlett-roleplay-word-highlight': props.currentHighlightIndex && props.currentHighlightIndex() === word.index }}
-                                    >
-                                        {word.text.replace(/ /g, '\u00A0')}
-                                    </span>
-                                )}</For>
-                            </Show>
-                        </div>
-                    )}
+                    {/* Function wrapper removed, direct JSX now */} 
+                    <div class="text-2xl p-4">
+                        <Show 
+                            when={props.activeSpokenMessageId && props.activeSpokenMessageId() === currentAiMessageToDisplay()?.id && props.ttsWordMap && props.ttsWordMap.length > 0}
+                            fallback={currentAiMessageToDisplay()!.text}
+                        >
+                            <For each={props.ttsWordMap}>{(word, _index) => (
+                                <span
+                                    class="scarlett-roleplay-word-span"
+                                    classList={{ 'scarlett-roleplay-word-highlight': props.currentHighlightIndex && props.currentHighlightIndex() === word.index }}
+                                >
+                                    {word.text.replace(/ /g, '\u00A0')}
+                                </span>
+                            )}</For>
+                        </Show>
+                    </div>
                 </Show>
 
                 <Show when={!errorMessage() && !isWaitingForLLM() && (!currentAiMessageToDisplay() || !currentAiMessageToDisplay()?.text)} keyed>

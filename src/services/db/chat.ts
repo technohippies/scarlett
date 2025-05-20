@@ -27,12 +27,13 @@ const mapDbRowToChatMessage = (row: any): ChatMessage => {
     sender: row.sender as 'user' | 'ai',
     text_content: row.text_content,
     timestamp: row.timestamp,
-    ttsLang: row.tts_lang,
+    tts_lang: row.tts_lang,
     alignmentData: row.tts_alignment_data ? JSON.parse(row.tts_alignment_data) : null,
     embedding_512: row.embedding_512 ? JSON.parse(row.embedding_512) : null,
     embedding_768: row.embedding_768 ? JSON.parse(row.embedding_768) : null,
     embedding_1024: row.embedding_1024 ? JSON.parse(row.embedding_1024) : null,
     active_embedding_dimension: row.active_embedding_dimension,
+    isStreaming: row.is_streaming === 1,
   };
 };
 
@@ -198,7 +199,7 @@ export const addChatMessage = async (messageData: NewChatMessageData): Promise<C
       sender: messageData.sender,
       text_content: messageData.text_content,
       timestamp: now,
-      ttsLang: messageData.tts_lang,
+      tts_lang: messageData.tts_lang,
       alignmentData: messageData.tts_alignment_data,
       embedding_512: messageData.embedding_512,
       embedding_768: messageData.embedding_768,

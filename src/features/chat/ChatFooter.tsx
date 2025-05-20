@@ -1,6 +1,5 @@
 import { Component, Show } from 'solid-js';
-import type { StateFrom } from 'xstate';
-import type { chatOrchestratorMachine, ChatOrchestratorEvent, ChatOrchestratorState } from './chatOrchestratorMachine';
+import type { ChatOrchestratorEvent, ChatOrchestratorState } from './chatOrchestratorMachine';
 import { TextInputControls } from './TextInputControls';
 import { SpeechInputControls } from './SpeechInputControls';
 
@@ -24,7 +23,8 @@ export const ChatFooter: Component<ChatFooterProps> = (props) => {
         }
       >
         <SpeechInputControls
-          state={props.state}
+          stateValue={props.state.value}
+          context={props.state.context}
           send={props.send}
         />
       </Show>

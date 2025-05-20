@@ -1,5 +1,5 @@
 import { Component, Show, createSignal, For } from 'solid-js';
-import type { ChatMessage } from './types';
+import type { ChatMessage, AlignmentData as ChatAlignmentData } from './types';
 import { Button } from '../../components/ui/button';
 import { Spinner } from '../../components/ui/spinner';
 import { Popover } from '@kobalte/core/popover';
@@ -24,11 +24,14 @@ export interface ChatMessageItemProps {
   isStreaming?: boolean; // Controls TTS button visibility
   isGlobalTTSSpeaking?: boolean; // Added to reflect global TTS state
   onChangeSpeed?: (messageId: string, speed: number) => void; // Modified for speed control
+  onTextToSpeech?: (params: { text: string; lang: string; messageId: string }) => void;
 }
 
 const POPOVER_CONTENT_CLASS = "absolute right-0 bottom-full mb-2 z-10 w-56 rounded-md bg-popover p-1 text-popover-foreground shadow-md outline-none";
 const POPOVER_ITEM_CLASS_BASE = "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50 cursor-pointer";
 const POPOVER_ITEM_CLASS = `${POPOVER_ITEM_CLASS_BASE} justify-start`;
+
+export type { ChatAlignmentData as AlignmentData };
 
 export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
   const { message } = props;
@@ -37,13 +40,6 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
   const canInteractWithTTS = () => !props.isStreaming && message.text_content && message.text_content.trim() !== '';
   const isThisMessagePlaying = () => props.isGlobalTTSSpeaking && props.isCurrentSpokenMessage;
   const isAnotherMessagePlaying = () => props.isGlobalTTSSpeaking && !props.isCurrentSpokenMessage;
-
-  const handlePrimaryTTSAction = () => {
-    if (props.onPlayTTS && canInteractWithTTS()) {
-      props.onPlayTTS(message.id, message.text_content, message.ttsLang || 'en', message.alignmentData)
-        .catch(error => console.error("[ChatMessageItem] Error calling onPlayTTS:", error));
-    }
-  };
   
   const handlePlaySpeed = (speed: number) => {
     setIsPopoverOpen(false);
@@ -59,7 +55,7 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
     setIsPopoverOpen(false);
     if (props.onPlayTTS && canInteractWithTTS()) {
       // Call onPlayTTS, UnifiedConversationView's handlePlayTTS will stop existing and regenerate
-      props.onPlayTTS(message.id, message.text_content, message.ttsLang || 'en', undefined) // Pass undefined for alignment to force refetch
+      props.onPlayTTS(message.id, message.text_content, message.tts_lang || 'en', undefined) // Pass undefined for alignment to force refetch
         .catch(error => console.error("[ChatMessageItem] Error calling onPlayTTS for regenerate:", error));
     }
   };
@@ -105,7 +101,16 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
             <div class="flex items-center"> 
               <Button
                 variant="outline"
-                onClick={handlePrimaryTTSAction}
+                onClick={() => {
+                  console.log('[ChatMessageItem] Speak button clicked. Message:', props.message.text_content, 'Language:', props.message.tts_lang);
+                  if (props.message.text_content && props.onTextToSpeech) {
+                    props.onTextToSpeech({
+                      text: props.message.text_content,
+                      lang: props.message.tts_lang ?? 'en',
+                      messageId: props.message.id,
+                    });
+                  }
+                }}
                 class="h-11 w-20 px-2 rounded-l-md rounded-r-none flex items-center justify-center"
                 disabled={isAnotherMessagePlaying()}
               >

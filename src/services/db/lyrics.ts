@@ -1,6 +1,8 @@
 import { getDbInstance } from './init';
-import type { LyricsInfo } from '../../shared/messaging-types'; // Assuming LyricsInfo is also used for DB representation
-import type { PGlite } from '@electric-sql/pglite'; // Import PGlite type for db instance
+// import type { LyricsInfo } from '../../shared/messaging-types'; // Removed unused import
+// import type { PGlite } from '@electric-sql/pglite'; // Removed unused import
+
+// const TABLE_NAME = 'lyrics_cache'; // Removed unused variable
 
 /**
  * Represents the structure of a song lyrics record in the database.

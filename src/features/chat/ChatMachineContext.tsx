@@ -1,7 +1,8 @@
 import { createContext, useContext, ParentComponent, createEffect } from 'solid-js';
 import { useMachine } from '@xstate/solid';
-import { chatOrchestratorMachine, ChatOrchestratorEvent, ChatOrchestratorContext } from './chatOrchestratorMachine'; // Assuming ChatOrchestratorContext is exported
+import { chatOrchestratorMachine, ChatOrchestratorEvent } from './chatOrchestratorMachine'; // ChatOrchestratorContext removed
 import type { UserConfiguration } from '../../services/storage/types';
+// import { serviços } from '../../services'; // Commented out problematic import
 import type { StateFrom, ActorRefFrom } from 'xstate';
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import type { BackgroundProtocolMap, NewChatThreadDataForRpc } from '../../shared/messaging-types';

@@ -1,4 +1,4 @@
-import { Component, For, createEffect, onCleanup, Show } from 'solid-js';
+import { Component, For, createEffect, Show } from 'solid-js';
 import type { ChatMessage, WordInfo } from './types';
 import { ChatMessageItem } from './ChatMessageItem'; // Assuming this component is reusable
 

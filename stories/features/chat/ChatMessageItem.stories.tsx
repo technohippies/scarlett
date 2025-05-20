@@ -1,4 +1,3 @@
-import type { Meta, StoryObj } from 'storybook-solidjs';
 import { ChatMessageItem, type ChatMessageItemProps, type AlignmentData } from '../../../src/features/chat/ChatMessageItem';
 import type { ChatMessage } from '../../../src/features/chat/types';
 import type { JSX } from 'solid-js';
@@ -8,17 +7,15 @@ import { createSignal } from 'solid-js'; // Needed for reactive highlighting in 
 interface PlayFunctionContext<TArgs = ChatMessageItemProps> {
   canvasElement: HTMLElement;
   args: TArgs;
-  // Storybook specific way to update args if needed for reactivity within play
   updateArgs: (newArgs: Partial<TArgs>) => void;
 }
 
-const meta: Meta<ChatMessageItemProps> = {
+export default {
   title: 'Features/Chat/ChatMessageItem',
   component: ChatMessageItem,
   tags: ['autodocs'],
   argTypes: {
     message: { control: 'object' },
-    alignment: { control: 'object' },
     currentHighlightIndex: { control: 'number' },
   },
   decorators: [
@@ -30,27 +27,27 @@ const meta: Meta<ChatMessageItemProps> = {
   ],
 };
 
-export default meta;
-type Story = StoryObj<ChatMessageItemProps>;
-
 const userMessage: ChatMessage = {
   id: 'm-user',
+  thread_id: 'thread-storybook',
   sender: 'user',
-  text: 'Hello, this is a test message from the user.',
+  text_content: 'Hello, this is a test message from the user.',
   timestamp: '10:00 AM',
 };
 
 const aiMessage: ChatMessage = {
   id: 'm-ai',
+  thread_id: 'thread-storybook',
   sender: 'ai',
-  text: 'Hi there! This is AI.',
+  text_content: 'Hi there! This is AI.',
   timestamp: '10:01 AM',
 };
 
 const aiMessageForHighlighting: ChatMessage = {
     id: 'm-ai-highlight',
+    thread_id: 'thread-storybook',
     sender: 'ai',
-    text: 'Hello world, this is a test for highlighting words.',
+    text_content: 'Hello world, this is a test for highlighting words.',
     timestamp: '10:05 AM',
 };
 
@@ -62,20 +59,20 @@ const sampleAlignment: AlignmentData = {
     character_end_times_seconds:   [0.5, 0.6, 1.1, 1.2, 1.3, 1.7, 1.8, 2.1, 2.2, 2.4, 2.5, 2.9, 3.0, 3.3, 3.4, 4.4, 4.5, 5.0, 5.1 ],
 };
 
-export const UserMessage: Story = {
+export const UserMessage = {
   args: {
     message: userMessage,
   },
 };
 
-export const AiMessageInitial: Story = {
+export const AiMessageInitial = {
   name: 'AI Message (Initial - Generate Audio)',
   args: {
     message: aiMessage,
   },
 };
 
-export const AiMessageGenerating: Story = {
+export const AiMessageGenerating = {
   name: 'AI Message (Simulated Generating State)',
   args: {
     message: aiMessage,
@@ -88,7 +85,7 @@ export const AiMessageGenerating: Story = {
   },
 };
 
-export const AiMessageAudioReady: Story = {
+export const AiMessageAudioReady = {
   name: 'AI Message (Simulated Audio Ready State)',
   args: {
     message: aiMessage,
@@ -102,7 +99,7 @@ export const AiMessageAudioReady: Story = {
   },
 };
 
-export const AiMessagePlaying: Story = {
+export const AiMessagePlaying = {
   name: 'AI Message (Simulated Playing State)',
   args: {
     message: aiMessage,
@@ -120,7 +117,7 @@ export const AiMessagePlaying: Story = {
   },
 };
 
-export const AiMessageWithHighlightingStatic: Story = {
+export const AiMessageWithHighlightingStatic = {
   name: 'AI Message (Static Highlight - word 2)',
   args: {
     message: aiMessageForHighlighting,
@@ -130,7 +127,7 @@ export const AiMessageWithHighlightingStatic: Story = {
 };
 
 // Story to demonstrate highlight animation
-export const AiMessageWithSimulatedHighlighting: Story = {
+export const AiMessageWithSimulatedHighlighting = {
     name: 'AI Message (Animated Highlighting)',
     args: {
         message: aiMessageForHighlighting,
@@ -166,4 +163,38 @@ export const AiMessageWithSimulatedHighlighting: Story = {
             updateArgs({ currentHighlightIndex: null } as Partial<ChatMessageItemProps>);
         }
     },
+};
+
+export const DefaultUserMessage = {
+  args: {
+    message: {
+      id: '1',
+      sender: 'user',
+      text_content: 'Hello, this is a test message from the user.',
+      timestamp: new Date().toISOString(),
+    },
+  },
+};
+
+export const DefaultAIMessage = {
+  args: {
+    message: {
+      id: '2',
+      sender: 'ai',
+      text_content: 'Hi there! This is AI.',
+      timestamp: new Date().toISOString(),
+    },
+  },
+};
+
+export const AIWithHighlighting = {
+  args: {
+    message: {
+      id: '3',
+      sender: 'ai',
+      text_content: 'Hello world, this is a test for highlighting words.',
+      timestamp: new Date().toISOString(),
+      tts_lang: 'en',
+    },
+  },
 }; 
