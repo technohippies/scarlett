@@ -135,17 +135,24 @@ export const chatOrchestratorMachine = setup({
       return {};
     }),
 
-    assignAudioData: () => assign(({
+    assignAudioData: assign(({
       event
-    }: { event: Extract<ChatOrchestratorEvent, { type: 'VAD_SPEECH_ENDED'}> }) => {
-      console.log("VAD_SPEECH_ENDED, audio data available. Context not changed by this action.", event.audioData);
+    }: { event: AnyEventObject }) => {
+      if (event.type === 'VAD_SPEECH_ENDED') {
+        const specificEvent = event as Extract<ChatOrchestratorEvent, { type: 'VAD_SPEECH_ENDED'}>;
+        console.log("VAD_SPEECH_ENDED, audio data available. Context not changed by this action.", specificEvent.audioData);
+      }
       return {}; 
     }),
 
-    assignUserInputText: () => assign(({ event }: { 
-      event: Extract<ChatOrchestratorEvent, { type: 'TEXT_INPUT_CHANGE'}> 
-    }) => {
-      return { userInput: event.text };
+    assignUserInputText: assign(({
+      event
+    }: { event: AnyEventObject }) => {
+      if (event.type === 'TEXT_INPUT_CHANGE') {
+        const specificEvent = event as Extract<ChatOrchestratorEvent, { type: 'TEXT_INPUT_CHANGE'}>;
+        return { userInput: specificEvent.text };
+      }
+      return {};
     }),
 
     clearUserInput: assign({ userInput: '' }),
@@ -211,32 +218,48 @@ export const chatOrchestratorMachine = setup({
 
     stopVADRecordingAction: assign({ isVADListening: false }),
 
-    assignInitialData: () => assign(({ context, event }: { 
-      context: ChatOrchestratorContext, 
-      event: Extract<ChatOrchestratorEvent, {type: 'SYNC_INITIAL_DATA'}> 
-    }) => ({
-      ...context, 
-      userConfig: event.userConfig,
-      currentChatMessages: event.messages,
-      currentThreadId: event.currentThreadId,
-    })),
-
-    assignCurrentThreadId: () => assign(({ event }: { 
-      event: Extract<ChatOrchestratorEvent, { type: 'SET_CURRENT_THREAD_ID'}> 
-    }) => {
-      return { currentThreadId: event.threadId };
+    assignInitialData: assign(({
+      event
+    }: { event: AnyEventObject }) => {
+      if (event.type === 'SYNC_INITIAL_DATA') {
+        const specificEvent = event as Extract<ChatOrchestratorEvent, {type: 'SYNC_INITIAL_DATA'}>;
+        return {
+          userConfig: specificEvent.userConfig,
+          currentChatMessages: specificEvent.messages,
+          currentThreadId: specificEvent.currentThreadId,
+        };
+      }
+      return {};
     }),
 
-    assignMessages: () => assign(({ event }: { 
-      event: Extract<ChatOrchestratorEvent, { type: 'SET_MESSAGES'}> 
-    }) => {
-      return { currentChatMessages: event.messages };
+    assignCurrentThreadId: assign(({
+      event
+    }: { event: AnyEventObject }) => {
+      if (event.type === 'SET_CURRENT_THREAD_ID') {
+        const specificEvent = event as Extract<ChatOrchestratorEvent, { type: 'SET_CURRENT_THREAD_ID'}>;
+        return { currentThreadId: specificEvent.threadId };
+      }
+      return {};
     }),
 
-    assignUserConfig: () => assign(({ event }: { 
-      event: Extract<ChatOrchestratorEvent, { type: 'SET_USER_CONFIG'}> 
-    }) => {
-      return { userConfig: event.userConfig };
+    assignMessages: assign(({
+      event
+    }: { event: AnyEventObject }) => {
+      if (event.type === 'SET_MESSAGES') {
+        const specificEvent = event as Extract<ChatOrchestratorEvent, { type: 'SET_MESSAGES'}>;
+        return { currentChatMessages: specificEvent.messages };
+      }
+      return {};
+    }),
+
+    assignUserConfig: assign(({
+      event
+    }: { event: AnyEventObject }) => {
+      if (event.type === 'SET_USER_CONFIG') {
+        const specificEvent = event as Extract<ChatOrchestratorEvent, { type: 'SET_USER_CONFIG'}>;
+        return { userConfig: specificEvent.userConfig };
+      }
+      return {};
     }),
 
     assignVadError: assign(( { context, event }: { context: ChatOrchestratorContext, event: AnyEventObject } ) => {
@@ -337,10 +360,10 @@ export const chatOrchestratorMachine = setup({
     SET_USER_CONFIG: { actions: 'assignUserConfig' },
     CLEAR_ERROR: { actions: assign({ lastError: null }) }, 
     RETRY: [
-      { guard: ({ context }) => context.sttError !== null, target: 'processingSpeech.transcribing' },
-      { guard: ({ context }) => context.llmError !== null, target: 'processingSpeech.generatingResponse' }, 
-      { guard: ({ context }) => context.ttsError !== null, target: 'processingSpeech.speakingResponse' },
-      { guard: ({ context }) => context.vadError !== null, target: 'speechInput.initializingVAD' }, 
+      { guard: ({ context }) => context.sttError !== null, target: '#chatOrchestrator.processingSpeech.transcribing' },
+      { guard: ({ context }) => context.llmError !== null, target: '#chatOrchestrator.processingSpeech.generatingResponse' }, 
+      { guard: ({ context }) => context.ttsError !== null, target: '#chatOrchestrator.processingSpeech.speakingResponse' },
+      { guard: ({ context }) => context.vadError !== null, target: '#chatOrchestrator.speechInput.initializingVAD' }, 
     ]
   },
   states: {

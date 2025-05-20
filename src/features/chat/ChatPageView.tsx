@@ -200,7 +200,7 @@ export const ChatPageView: Component<ChatPageViewProps> = (props) => {
   
   createEffect(() => {
     const msg = messageForSpeechDisplay();
-    console.log(`[ChatPageView SpeechDisplay] Message ID: ${msg?.id}, Text: "${msg?.text_content.substring(0,30)}", Streaming: ${msg?.isStreaming}, ActiveSpokenID: ${props.activeSpokenMessageId}`);
+    console.log(`[ChatPageView SpeechDisplay] Message ID: ${msg?.id}, Text: "${msg?.text_content ? msg.text_content.substring(0,30) : ''}", Streaming: ${msg?.isStreaming}, ActiveSpokenID: ${props.activeSpokenMessageId}`);
   });
 
   // When machine enters 'listening', start recording

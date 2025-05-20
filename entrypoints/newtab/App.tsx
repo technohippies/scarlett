@@ -3,9 +3,10 @@ import NewTabPage from '../../src/pages/newtab/NewTabPage';
 import BookmarksPage from '../../src/pages/bookmarks/BookmarksPage';
 import StudyPage from '../../src/pages/study/StudyPage';
 import SettingsPage from '../../src/pages/settings/SettingsPage';
-import { UnifiedConversationView } from '../../src/features/chat/UnifiedConversationView';
+import { ChatPageLayout } from '../../src/features/chat/ChatPageLayout';
 import type { Thread, ChatMessage as UIChatMessage } from '../../src/features/chat/types';
 import { SettingsProvider } from '../../src/context/SettingsContext';
+import { ChatMachineProvider } from '../../src/features/chat/ChatMachineContext';
 import type { Messages } from '../../src/types/i18n';
 import { userConfigurationStorage } from '../../src/services/storage/storage';
 import type { UserConfiguration } from '../../src/services/storage/types';
@@ -322,7 +323,7 @@ const App: Component = (): JSX.Element => {
             thread_id: createdThread.id,
             sender: msg.sender,
             text_content: msg.text_content,
-            tts_lang: msg.ttsLang,
+            tts_lang: msg.tts_lang,
             tts_alignment_data: msg.alignmentData
           };
           const savedMsg = await messaging.sendMessage('addChatMessage', messageToSaveRpc);
@@ -473,7 +474,7 @@ const App: Component = (): JSX.Element => {
       text_content: '', 
       ttsWordMap: undefined,
       alignmentData: undefined,
-      ttsLang: ttsLangForAiResponse || effectiveLangCode(),
+      tts_lang: ttsLangForAiResponse || effectiveLangCode(),
       isStreaming: true,
     };
 
@@ -617,6 +618,13 @@ const App: Component = (): JSX.Element => {
     }
   };
 
+  const getCurrentThreadMessages = (): UIChatMessage[] => {
+    const id = currentThreadId();
+    if (!id) return [];
+    const thread = threads().find(t => t.id === id);
+    return thread?.messages || [];
+  };
+
   return (
     <SettingsProvider>
       <Switch fallback={<div>{i18n().get('newTabPageUnknownView', 'Unknown View')}</div>}>
@@ -641,15 +649,19 @@ const App: Component = (): JSX.Element => {
         </Match>
         <Match when={activeView() === 'unifiedChat'}>
           <Show when={!isLoadingThreads() && userConfig()} fallback={<div>Loading chats and configuration...</div>}>
-            <UnifiedConversationView
-              threads={threads()} 
-              currentSelectedThreadId={currentThreadId()} 
-              onSelectThread={handleSelectThread}
-              onCreateNewThread={handleCreateNewThread}
-              onSendMessage={handleSendMessageToUnifiedView}
-              onNavigateBack={() => navigateTo('newtab')}
-              userConfig={userConfig()!} 
-            />
+            <ChatMachineProvider
+              initialThreads={threads()}
+              initialCurrentThreadId={currentThreadId()}
+              initialMessages={getCurrentThreadMessages()}
+              initialUserConfig={userConfig()!}
+            >
+              <ChatPageLayout
+                initialThreads={threads()}
+                onSelectThread={handleSelectThread}
+                onSendMessage={handleSendMessageToUnifiedView}
+                onNavigateBack={() => navigateTo('newtab')}
+              />
+            </ChatMachineProvider>
           </Show>
         </Match>
       </Switch>
