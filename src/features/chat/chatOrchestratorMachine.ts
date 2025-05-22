@@ -1,6 +1,9 @@
-import { setup, assign, ActorRefFrom, StateFrom, AnyEventObject, DoneActorEvent, ErrorActorEvent, fromPromise } from 'xstate';
+import { setup, assign, ActorRefFrom, StateFrom, AnyEventObject, DoneActorEvent, ErrorActorEvent, fromPromise, fromCallback } from 'xstate';
 import type { ChatMessage, Thread } from './types';
 import type { UserConfiguration } from '../../services/storage/types';
+import { getAiChatResponseStream } from '../../services/llm/llmChatService';
+import { generateElevenLabsSpeechStream, generateElevenLabsSpeechWithTimestamps } from '../../services/tts/elevenLabsService';
+import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService';
 
 // External actionsDefinition and services objects are removed as they are now defined within setup.
 
@@ -24,7 +27,7 @@ export interface ChatOrchestratorContext {
 export type ChatOrchestratorEvent =
   | { type: 'TOGGLE_INPUT_MODE' }
   | { type: 'TEXT_INPUT_CHANGE'; text: string }
-  | { type: 'SEND_TEXT_MESSAGE' }
+  | { type: 'SEND_TEXT_MESSAGE'; text: string }
   | { type: 'ACTIVATE_SPEECH_MODE' }
   | DoneActorEvent<{ vadInstance: any }, 'initializeVAD'>
   | ErrorActorEvent<any, 'initializeVAD'>
@@ -44,6 +47,8 @@ export type ChatOrchestratorEvent =
   | ErrorActorEvent<any, 'invokeLLM'>
   | DoneActorEvent<boolean, 'playTTS'>
   | ErrorActorEvent<any, 'playTTS'>
+  | { type: 'LLM_TOKEN'; token: string }
+  | { type: 'LLM_DONE' }
   | { type: 'RETRY' }
   | { type: 'CLEAR_ERROR' }
   | { type: 'SYNC_INITIAL_DATA'; threads: Thread[]; currentThreadId: string | null; messages: ChatMessage[]; userConfig: UserConfiguration; }
@@ -103,6 +108,32 @@ export const chatOrchestratorMachine = setup({
       console.log('Service: stopVADRecording - placeholder');
       await new Promise(resolve => setTimeout(resolve, 200));
       if (Math.random() < 0.1) throw new Error('Failed to stop VAD recording');
+    }),
+    streamLLM: fromCallback((helpers: any) => {
+      const { input, emit } = helpers;
+      console.log('[chatOrchestratorMachine] streamLLM invoked with input:', input);
+      const { history, latestUserInput, llmConfig, chatOptions } = input;
+      (async () => {
+        for await (const part of getAiChatResponseStream(
+          history as any,
+          latestUserInput,
+          llmConfig,
+          chatOptions
+        )) {
+          if (part.type === 'content') {
+            emit({ type: 'LLM_TOKEN', token: part.content });
+          }
+        }
+        emit({ type: 'LLM_DONE' });
+      })();
+    }),
+    streamTTS: fromCallback((helpers: any) => {
+      const { input, emit } = helpers;
+      const { text } = input;
+      // TODO: implement streaming fetch from ElevenLabs and emit AUDIO_CHUNK or TTS_DONE events using emit()
+    }),
+    elevenStt: fromPromise(async ({ input }: { input: { audioBlob: Blob } }) => {
+      return transcribeElevenLabsAudio(/* apiKey */ '', input.audioBlob);
     })
   },
   actions: {
@@ -158,6 +189,45 @@ export const chatOrchestratorMachine = setup({
 
     clearUserInput: assign({ userInput: '' }),
     clearAIResponse: assign({ aiResponse: '' }),
+    createUserMessage: assign(({ context, event }: { context: ChatOrchestratorContext; event: any }) => {
+      const userText = event.type === 'SEND_TEXT_MESSAGE' ? event.text : context.userInput;
+      const newMsg: ChatMessage = {
+        id: `${context.currentThreadId}-user-${Date.now()}`,
+        thread_id: context.currentThreadId!,
+        sender: 'user',
+        text_content: userText,
+        timestamp: new Date().toISOString(),
+        isStreaming: false
+      };
+      return { currentChatMessages: [...context.currentChatMessages, newMsg] };
+    }),
+    createAIMessagePlaceholder: assign(({ context }: { context: ChatOrchestratorContext }) => {
+      const newMsg: ChatMessage = {
+        id: `${context.currentThreadId}-ai-${Date.now()}`,
+        thread_id: context.currentThreadId!,
+        sender: 'ai',
+        text_content: '',
+        timestamp: new Date().toISOString(),
+        isStreaming: true
+      };
+      return { currentChatMessages: [...context.currentChatMessages, newMsg] };
+    }),
+    appendTokenToLastAIMessage: assign(({ context, event }: { context: ChatOrchestratorContext; event: any }) => {
+      const msgs = [...context.currentChatMessages];
+      const last = msgs[msgs.length - 1];
+      if (last && last.sender === 'ai') {
+        last.text_content += event.token;
+      }
+      return { currentChatMessages: msgs };
+    }),
+    finalizeAIMessage: assign(({ context }: { context: ChatOrchestratorContext }) => {
+      const msgs = [...context.currentChatMessages];
+      const last = msgs[msgs.length - 1];
+      if (last && last.sender === 'ai') {
+        last.isStreaming = false;
+      }
+      return { currentChatMessages: msgs };
+    }),
 
     assignError: assign(({ context, event } : { context: ChatOrchestratorContext, event: AnyEventObject }) => {
       let errorMessage = 'An unknown error occurred';
@@ -347,7 +417,11 @@ export const chatOrchestratorMachine = setup({
       }
       return { ...context, ttsError: errorMessage, lastError: errorMessage };
     }),
-    clearAllErrors: assign({ lastError: null, sttError: null, llmError: null, ttsError: null, vadError: null })
+    clearAllErrors: assign({ lastError: null, sttError: null, llmError: null, ttsError: null, vadError: null }),
+    appendAIResponse: assign({
+      aiResponse: ({ context, event }: { context: ChatOrchestratorContext; event: any }) =>
+        context.aiResponse + (event.token ?? '')
+    })
   }
 }).createMachine({
   id: 'chatOrchestrator',
@@ -376,10 +450,10 @@ export const chatOrchestratorMachine = setup({
     SET_THREADS: { actions: 'assignThreads' },
     CLEAR_ERROR: { actions: assign({ lastError: null }) }, 
     RETRY: [
-      { guard: ({ context }) => context.sttError !== null, target: '#chatOrchestrator.processingSpeech.transcribing' },
-      { guard: ({ context }) => context.llmError !== null, target: '#chatOrchestrator.processingSpeech.generatingResponse' }, 
-      { guard: ({ context }) => context.ttsError !== null, target: '#chatOrchestrator.processingSpeech.speakingResponse' },
-      { guard: ({ context }) => context.vadError !== null, target: '#chatOrchestrator.speechInput.initializingVAD' }, 
+      { guard: ({ context }: { context: ChatOrchestratorContext }) => context.sttError !== null, target: '#chatOrchestrator.processingSpeech.transcribing' },
+      { guard: ({ context }: { context: ChatOrchestratorContext }) => context.llmError !== null, target: '#chatOrchestrator.processingSpeech.streamingResponse' },
+      { guard: ({ context }: { context: ChatOrchestratorContext }) => context.ttsError !== null, target: '#chatOrchestrator.processingSpeech.streamingResponse' },
+      { guard: ({ context }: { context: ChatOrchestratorContext }) => context.vadError !== null, target: '#chatOrchestrator.speechInput.initializingVAD' }
     ]
   },
   states: {
@@ -390,14 +464,14 @@ export const chatOrchestratorMachine = setup({
       entry: 'clearAllErrors', 
       on: {
         TOGGLE_INPUT_MODE: [
-          { guard: ({ context }) => context.isSpeechModeActive, actions: assign({ isSpeechModeActive: false }) },
+          { guard: ({ context }: { context: ChatOrchestratorContext }) => context.isSpeechModeActive, actions: assign({ isSpeechModeActive: false }) },
           { actions: assign({ isSpeechModeActive: true }), target: 'speechInput' }
         ],
         TEXT_INPUT_CHANGE: { actions: 'assignUserInputText' },
         SEND_TEXT_MESSAGE: {
-          guard: ({ context }) => context.userInput.trim().length > 0,
+          guard: (_: any, event: any) => event.type === 'SEND_TEXT_MESSAGE' && event.text.trim().length > 0,
           target: 'processingText',
-          actions: 'logEvent'
+          actions: ['logEvent', 'createUserMessage', 'createAIMessagePlaceholder', 'clearUserInput']
         },
         ACTIVATE_SPEECH_MODE: { target: 'speechInput', actions: assign({ isSpeechModeActive: true }) }
       }
@@ -468,12 +542,17 @@ export const chatOrchestratorMachine = setup({
     processingText: {
       entry: 'logEvent',
       invoke: {
-        id: 'invokeLLMFromText',
-        src: 'invokeLLM',
-        input: ({ context }) => ({ userInput: context.userInput }),
-        onDone: {
-          target: 'idle',
-          actions: ['assignLLMResponseToContext', 'clearUserInput', 'logEvent']
+        id: 'invokeLLMStream',
+        src: 'streamLLM',
+        input: ({ context, event }: { context: ChatOrchestratorContext; event: any }) => ({
+          history: context.currentChatMessages,
+          latestUserInput: event.type === 'SEND_TEXT_MESSAGE' ? event.text : '',
+          llmConfig: context.userConfig?.llmConfig!,
+          chatOptions: {}
+        }),
+        onEvent: {
+          LLM_TOKEN: { actions: ['appendTokenToLastAIMessage'] },
+          LLM_DONE:  { target: 'idle', actions: ['finalizeAIMessage', 'logEvent'] }
         },
         onError: {
           target: 'errorState.llmError',
@@ -489,9 +568,9 @@ export const chatOrchestratorMachine = setup({
           invoke: {
             id: 'transcribeAudio',
             src: 'transcribeAudio',
-            input: ({ context }) => ({ audioData: context.userInput }), 
+            input: ({ context }: { context: ChatOrchestratorContext }) => ({ audioData: context.userInput }),
             onDone: {
-              target: 'generatingResponse',
+              target: 'streamingResponse',
               actions: ['assignTranscriptToContext', 'logEvent']
             },
             onError: {
@@ -500,37 +579,43 @@ export const chatOrchestratorMachine = setup({
             }
           }
         },
-        generatingResponse: {
-          entry: 'logEvent',
-          invoke: {
-            id: 'invokeLLMFromSpeech',
-            src: 'invokeLLM',
-            input: ({ context }) => ({ userInput: context.userInput }),
-            onDone: {
-              target: 'speakingResponse',
-              actions: ['assignLLMResponseToContext', 'logEvent']
+        streamingResponse: {
+          type: 'parallel',
+          states: {
+            llm: {
+              initial: 'streaming',
+              states: {
+                streaming: {
+                  invoke: {
+                    id: 'invokeLLMStreamSpeech',
+                    src: 'streamLLM',
+                    input: ({ context }: { context: ChatOrchestratorContext }) => ({ userInput: context.userInput }),
+                    onEvent: {
+                      LLM_TOKEN: { actions: 'appendAIResponse' },
+                      LLM_DONE: { target: 'done' }
+                    },
+                    onError: { target: '#chatOrchestrator.errorState.llmError', actions: ['assignLlmError', 'logEvent'] }
+                  }
+                },
+                done: { type: 'final' }
+              }
             },
-            onError: {
-              target: '#chatOrchestrator.errorState.llmError',
-              actions: ['assignLlmError', 'logEvent']
+            tts: {
+              initial: 'generating',
+              states: {
+                generating: {
+                  invoke: {
+                    id: 'invokeTTSStream',
+                    src: 'streamTTS',
+                    input: ({ context }: { context: ChatOrchestratorContext }) => ({ text: context.aiResponse }),
+                    onDone: { target: 'done' }
+                  }
+                },
+                done: { type: 'final' }
+              }
             }
-          }
-        },
-        speakingResponse: {
-          entry: 'logEvent',
-          invoke: {
-            id: 'playTTS',
-            src: 'playTTS',
-            input: ({ context }) => ({ aiResponse: context.aiResponse }),
-            onDone: {
-              target: '#chatOrchestrator.idle',
-              actions: ['clearAIResponse', 'logEvent'] 
-            },
-            onError: {
-              target: '#chatOrchestrator.errorState.ttsError',
-              actions: ['assignTtsError', 'logEvent']
-            }
-          }
+          },
+          onDone: '#chatOrchestrator.idle'
         }
       }
     },
@@ -551,6 +636,10 @@ export const chatOrchestratorMachine = setup({
     }
   }
 });
+
+// Create and start a singleton service outside of React/Component lifecycle
+import { createActor } from 'xstate';
+export const chatService = createActor(chatOrchestratorMachine).start();
 
 export type ChatOrchestratorActorRef = ActorRefFrom<typeof chatOrchestratorMachine>;
 export type ChatOrchestratorState = StateFrom<typeof chatOrchestratorMachine>; 

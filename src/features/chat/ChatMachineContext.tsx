@@ -1,6 +1,6 @@
-import { createContext, useContext, ParentComponent, createEffect } from 'solid-js';
-import { useMachine } from '@xstate/solid';
-import { chatOrchestratorMachine, ChatOrchestratorEvent } from './chatOrchestratorMachine'; // ChatOrchestratorContext removed
+import { createContext, useContext, ParentComponent, createEffect, Accessor } from 'solid-js';
+import { fromActorRef } from '@xstate/solid';
+import { chatService, chatOrchestratorMachine, ChatOrchestratorEvent, ChatOrchestratorState } from './chatOrchestratorMachine';
 import type { UserConfiguration } from '../../services/storage/types';
 // import { serviços } from '../../services'; // Commented out problematic import
 import type { StateFrom, ActorRefFrom } from 'xstate';
@@ -30,7 +30,7 @@ const defaultJustChatThread: NewChatThreadDataForRpc = {
 };
 
 interface ChatMachineContextValue {
-  state: StateFrom<typeof chatOrchestratorMachine>;
+  state: Accessor<ChatOrchestratorState>;
   send: (event: ChatOrchestratorEvent) => void;
   actorRef: ActorRefFrom<typeof chatOrchestratorMachine>;
 }
@@ -42,9 +42,12 @@ export interface ChatMachineProviderProps {
 const ChatMachineContext = createContext<ChatMachineContextValue>();
 
 export const ChatMachineProvider: ParentComponent<ChatMachineProviderProps> = (props) => {
-  // We instantiate the machine with its default context here.
-  // We'll send events to update it based on props in createEffect.
-  const [state, send, actorRef] = useMachine(chatOrchestratorMachine);
+  // Use singleton chatService so it persists beyond component mounts
+  const actorRef = chatService;
+  // Create a reactive state accessor from the actor
+  const state = fromActorRef(actorRef) as Accessor<ChatOrchestratorState>;
+  const send = actorRef.send;
+  console.log('[ChatMachineContext] Provider using singleton chatService');
 
   // Sync user configuration into machine
   createEffect(() => {
@@ -53,11 +56,13 @@ export const ChatMachineProvider: ParentComponent<ChatMachineProviderProps> = (p
 
   // On mount: load or seed threads, then seed any empty thread and fetch first messages
   createEffect(() => {
+    console.log('[ChatMachineContext] Starting thread seeding effect');
     (async () => {
       try {
-        // Load existing threads
+        console.log('[ChatMachineContext] Fetching existing threads');
         let threads = await messaging.sendMessage('getAllChatThreads', undefined);
         if (threads.length === 0) {
+          console.log('[ChatMachineContext] No existing threads, creating defaults');
           // Create default threads in batch
           const created = await Promise.all(
             [defaultIntroThread, defaultSharingThread, defaultJustChatThread]
@@ -67,6 +72,7 @@ export const ChatMachineProvider: ParentComponent<ChatMachineProviderProps> = (p
           // Seed each default thread with its systemPrompt
           for (const thread of threads) {
             if (thread.systemPrompt) {
+              console.log('[ChatMachineContext] Seeding systemPrompt for thread', thread.id);
               await messaging.sendMessage('addChatMessage', {
                 id: `msg-ai-seed-${thread.id}-${Date.now()}`,
                 thread_id: thread.id,
@@ -76,16 +82,19 @@ export const ChatMachineProvider: ParentComponent<ChatMachineProviderProps> = (p
             }
           }
         }
+        console.log('[ChatMachineContext] Ensuring just-chat thread exists');
         if (!threads.some(t => t.id === JUST_CHAT_THREAD_ID)) {
           const justChat = await messaging.sendMessage('addChatThread', defaultJustChatThread);
           threads.push(justChat);
         }
-        // Update threads in machine
+        console.log('[ChatMachineContext] Sending SET_THREADS', threads);
         send({ type: 'SET_THREADS', threads });
         // Seed messages for any thread that has none
         for (const thread of threads) {
+          console.log('[ChatMachineContext] Checking messages for thread', thread.id);
           const existing = await messaging.sendMessage('getChatMessages', { threadId: thread.id });
           if (existing.length === 0 && thread.systemPrompt) {
+            console.log('[ChatMachineContext] Seeding missing messages for thread', thread.id);
             await messaging.sendMessage('addChatMessage', {
               id: `msg-ai-seed-${thread.id}-${Date.now()}`,
               thread_id: thread.id,
@@ -94,13 +103,17 @@ export const ChatMachineProvider: ParentComponent<ChatMachineProviderProps> = (p
             });
           }
         }
-        // Pick primary thread
+        console.log('[ChatMachineContext] Selecting primary thread');
         const primary = threads.find(t => t.id !== JUST_CHAT_THREAD_ID) || threads[0];
         if (primary) {
+          console.log('[ChatMachineContext] Primary thread selected', primary.id);
           send({ type: 'SET_CURRENT_THREAD_ID', threadId: primary.id });
+          console.log('[ChatMachineContext] Fetching messages for primary thread', primary.id);
           const msgs = await messaging.sendMessage('getChatMessages', { threadId: primary.id });
+          console.log('[ChatMachineContext] Sending SET_MESSAGES', msgs);
           send({ type: 'SET_MESSAGES', messages: msgs });
         }
+        console.log('[ChatMachineContext] Thread seeding effect completed');
       } catch (e) {
         console.error('[ChatMachineContext] Error initializing threads:', e);
       }
@@ -110,10 +123,13 @@ export const ChatMachineProvider: ParentComponent<ChatMachineProviderProps> = (p
   // Fetch messages whenever the current thread changes
   createEffect(() => {
     const threadId = state.context.currentThreadId;
+    console.log('[ChatMachineContext] threadId changed to', threadId);
     if (threadId == null) return;
     (async () => {
       try {
+        console.log('[ChatMachineContext] Loading messages for thread', threadId);
         const msgs = await messaging.sendMessage('getChatMessages', { threadId });
+        console.log('[ChatMachineContext] Sending SET_MESSAGES for thread change', msgs);
         send({ type: 'SET_MESSAGES', messages: msgs });
       } catch (e) {
         console.error('[ChatMachineContext] Failed to load messages for thread', threadId, e);

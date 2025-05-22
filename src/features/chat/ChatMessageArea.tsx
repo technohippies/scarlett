@@ -28,6 +28,7 @@ export const ChatMessageArea: Component<ChatMessageAreaProps> = (props) => {
           {(message) => (
             <ChatMessageItem
               message={message}
+              isStreaming={message.isStreaming}
               // Pass relevant props if ChatMessageItem handles highlighting
               // e.g., isActiveSpoken={message.id === props.activeSpokenMessageId}
               // wordMap={props.activeSpokenMessageId === message.id ? props.ttsWordMap : undefined}

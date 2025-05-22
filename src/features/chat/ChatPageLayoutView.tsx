@@ -38,12 +38,12 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
           <CaretLeft class="size-6" />
         </button>
         <Switch
-          checked={!props.isSpeechModeActive} // This can also come from machineContext if preferred
+          checked={props.isSpeechModeActive} // This can also come from machineContext if preferred
           onChange={props.onToggleMode} // This sends TOGGLE_INPUT_MODE
           class="ml-auto flex items-center space-x-2"
         >
           <SwitchControl class="relative"><SwitchThumb /></SwitchControl>
-          <SwitchLabel>Text Mode</SwitchLabel>
+          <SwitchLabel>Speech Mode</SwitchLabel>
         </Switch>
       </header>
 
