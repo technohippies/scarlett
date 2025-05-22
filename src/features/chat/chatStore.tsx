@@ -280,6 +280,12 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         }
         setState({ isLoading: false, userInput: '' });
         console.log('[chatStore] sendText complete');
+        // If speech mode is active, play TTS for AI response
+        if (state.isSpeechMode) {
+          console.log('[chatStore] Speech mode active: auto-playing TTS');
+          // Use placeholderId and full for playTTS
+          actions.playTTS({ messageId: placeholderId, text: full, lang: props.initialUserConfig.targetLanguage || 'en' });
+        }
         // After first message in a new thread, auto-generate a title summary
         if (state.pendingThreadId === state.currentThreadId) {
           try {
@@ -320,7 +326,13 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     },
 
     toggleSpeech() {
-      setState('isSpeechMode', mode => !mode);
+      // Toggle speech mode; if turning off, immediately stop VAD
+      const newMode = !state.isSpeechMode;
+      if (!newMode) {
+        console.log('[chatStore] toggleSpeech: speech mode off, stopping VAD');
+        actions.stopVAD();
+      }
+      setState('isSpeechMode', newMode);
     },
 
     startVAD() {
@@ -455,6 +467,11 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           console.log('[chatStore] Audio onended');
           if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
           setState({ isGlobalTTSSpeaking: false, currentSpokenMessageId: null, currentHighlightIndex: null, animationFrameId: null });
+          // Auto-restart VAD if still in speech mode
+          if (state.isSpeechMode) {
+            console.log('[chatStore] TTS ended, restarting VAD');
+            actions.startVAD();
+          }
         };
 
         audio.play().catch(e => {

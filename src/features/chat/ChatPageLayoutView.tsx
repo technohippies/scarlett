@@ -1,4 +1,4 @@
-import { Component, Show } from 'solid-js';
+import { Component, Show, createEffect, onCleanup } from 'solid-js';
 import { CaretLeft } from 'phosphor-solid';
 import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../components/ui/switch';
 import { ChatSidebar } from './ChatSidebar';
@@ -27,6 +27,21 @@ export interface ChatPageLayoutViewProps {
 }
 
 export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
+  // Stop VAD when speech mode is disabled
+  createEffect(() => {
+    if (!props.isSpeechModeActive && props.isVADListening) {
+      console.log('[ChatPageLayoutView] speech mode disabled, stopping VAD');
+      props.onStopVAD();
+    }
+  });
+  // Ensure VAD stops when component unmounts
+  onCleanup(() => {
+    if (props.isVADListening) {
+      console.log('[ChatPageLayoutView] component unmount, stopping VAD');
+      props.onStopVAD();
+    }
+  });
+
   return (
     <div class="flex flex-col h-screen bg-background text-foreground">
       <header class="flex items-center p-2 md:p-4 border-b border-border/40 bg-background z-10">
@@ -66,16 +81,9 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
             <Show when={!props.isSpeechModeActive} fallback={
               <>
                 <div class="flex items-center space-x-2">
-                  <button
-                    class="btn btn-outline"
-                    onClick={props.onStartVAD}
-                    disabled={props.isVADListening}
-                  >Start Recording</button>
-                  <button
-                    class="btn btn-outline"
-                    onClick={props.onStopVAD}
-                    disabled={!props.isVADListening}
-                  >Stop Recording</button>
+                  <Show when={!props.isVADListening} fallback={<button class="btn btn-outline" onClick={props.onStopVAD}>Stop Recording</button>}>
+                    <button class="btn btn-outline" onClick={props.onStartVAD}>Start Recording</button>
+                  </Show>
                 </div>
                 <MicVisualizer active={props.isVADListening} />
               </>
