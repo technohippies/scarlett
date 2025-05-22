@@ -82,24 +82,6 @@ const TABLELAND_FLASHCARDS_TABLE_NAME = 'supercoach_flashcards_84532_111';
 const SUPERCOACH_DECKS_METADATA_TABLE_NAME = 'supercoach_deck_84532_110'; // e.g., 'yourprefix_decks_84532_yourdeckstableid'
 // --- End Tableland Constants ---
 
-// Utility function to get full language name from code
-/* COMMENTING OUT - Replaced by Tableland fetching
-function getFullLanguageName(code: string): string {
-    switch (code.toLowerCase()) {
-        case 'en': return 'English';
-        case 'vi': return 'Vietnamese';
-        // Add other common languages as needed:
-        // case 'es': return 'Spanish';
-        // case 'fr': return 'French';
-        // case 'de': return 'German';
-        // case 'ja': return 'Japanese';
-        case 'ko': return 'Korean';
-        case 'zh': return 'Chinese';
-        default: return code; // Fallback to the code itself if no mapping is present
-    }
-}
-*/
-
 // Dynamic Chat Helper (Simplified to only handle confirmed non-streaming)
 async function dynamicChat(messages: ChatMessage[], config: FunctionConfig): Promise<LLMChatResponse | null> {
     const { providerId, modelId, baseUrl, apiKey } = config;

@@ -9,7 +9,8 @@ import type { UserConfiguration } from '../../services/storage/types';
 import type { LLMProviderId } from '../../services/llm/types';
 import { generateElevenLabsSpeechWithTimestamps } from '../../services/tts/elevenLabsService';
 import type { WordInfo } from './types';
-import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID, LANGUAGE_NAME_MAP } from '../../shared/constants';
+import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
+import { lookup } from '../../shared/languages';
 import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService';
 
 // RPC client for background storage
@@ -237,7 +238,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         }));
         console.log('[chatStore] historyForLLM:', historyForLLM);
         // Dynamically instruct LLM to omit any romanization or pronunciation guides for the target language
-        const langLabel = LANGUAGE_NAME_MAP[targetCode] || targetCode || 'foreign language';
+        const langLabel = lookup(targetCode).fullName || targetCode || 'foreign language';
         const noRomanPrompt = `When including ${langLabel} text in your responses, do NOT include any romanization, phonetic transcriptions, or translations.`;
         const stream = getAiChatResponseStream(
           historyForLLM as any,

@@ -20,7 +20,7 @@ import { getOrInitDailyStudyStats } from '../db/study_session';
 import { getStudyStreakData } from '../db/streaks';
 
 import { userConfigurationStorage } from '../storage/storage'; // Import userConfigurationStorage
-import { LANGUAGE_NAME_MAP } from '../../shared/constants'; // Import an centrally managed language map
+import { lookup } from '../../shared/languages'; // Use centralized language lookup
 
 const baseSystemPrompt = personality.system;
 
@@ -43,8 +43,7 @@ async function fetchAndFormatUserContext(): Promise<string> {
     const userCfg = await userConfigurationStorage.getValue();
     if (userCfg && userCfg.targetLanguage) {
       const rawLang = userCfg.targetLanguage;
-      const code = rawLang.toLowerCase();
-      const targetLanguageName = LANGUAGE_NAME_MAP[code] ?? rawLang; // Fallback to rawLang
+      const targetLanguageName = lookup(rawLang).fullName;
       contextParts.push(`User's Target Learning Language: ${targetLanguageName}`);
       console.log(`[llmChatService DEBUG] Added target language to context: ${targetLanguageName}`);
     } else {
