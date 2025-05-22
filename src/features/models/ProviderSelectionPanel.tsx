@@ -18,7 +18,7 @@ export interface ProviderSelectionPanelProps {
 
 export const ProviderSelectionPanel: Component<ProviderSelectionPanelProps> = (props) => {
   return (
-    <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 w-full max-w-lg">
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 w-full max-w-lg mx-auto">
       {props.providerOptions.map((provider) => {
         const isSelected = () => props.selectedProviderId() === provider.id;
         return (

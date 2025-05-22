@@ -93,8 +93,10 @@ const availableLLMProviders: ProviderOption[] = availableProviders; // Reuse the
 const availableEmbeddingProviders: ProviderOption[] = [
     // Reuse or define specific providers
     { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
-    { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/llm-providers/jan.png' }, // Add Jan for embeddings
+    { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/llm-providers/jan.png' },
     { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
+    // In-Browser ONNX Embedding
+    { id: 'in-browser', name: 'In Browser', defaultBaseUrl: '', logoUrl: '/images/llm-providers/local.png' },
 ];
 
 // Define available TTS Providers for Onboarding (Kokoro removed)
@@ -1022,11 +1024,16 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       return (
         <div class="w-full max-w-lg flex flex-col items-center">
           <SubscriptionPlanPanel
-            selectedPlan={() => subscriptionPlan()}
+            selectedPlan={subscriptionPlan()}
             onSelectPlan={(plan) => {
               setSubscriptionPlan(plan);
               setCurrentStep('deckSelection'); // Was 'language', now 'deckSelection'
             }}
+            isConnected={false}
+            onConnect={() => {}}
+            onSubscribe={() => {}}
+            isSubscribing={false}
+            isSubscribed={false}
           />
         </div>
       );
@@ -1143,14 +1150,14 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         const transientState = settingsContext.getTransientState(funcType);
         const config = settingsContext.config.embeddingConfig;
         return (
-          <div class="w-full max-w-lg">
+          <div class="w-full max-w-screen-xl mx-auto px-4">
             <p class="text-xl md:text-2xl mb-2">
               {i18n().get('onboardingSetupEmbeddingTitle', 'Choose Embedding')}
             </p>
              <p class="text-lg text-muted-foreground mb-6">
                {i18n().get('onboardingSetupEmbeddingDescription', 'Bge-m3 or bge-large are best due to multi-language support.')}
              </p>
-            <div class="mb-6">
+            <div class="mb-6 flex justify-center">
               <ProviderSelectionPanel
                 providerOptions={availableEmbeddingProviders}
                 selectedProviderId={() => config?.providerId}

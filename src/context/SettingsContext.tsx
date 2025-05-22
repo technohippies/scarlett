@@ -5,6 +5,7 @@ import type { UserConfiguration, FunctionConfig, RedirectSettings, RedirectServi
 import type { ProviderOption } from '../features/models/ProviderSelectionPanel'; // Use types from panels where appropriate
 import type { ModelOption } from '../features/models/ModelSelectionPanel'; // Need ModelOption too
 import { getAllBlockedDomains } from '../services/db/domains'; // <-- IMPORT DB FUNCTION
+import { browser } from 'wxt/browser';
 
 // Import provider implementations (adjust as needed, consider a registry)
 // These imports need to be fixed based on the previous correction
@@ -522,6 +523,11 @@ export const SettingsProvider: ParentComponent = (props) => {
 
     // Helper function to fetch raw models (extracted logic)
     const fetchRawModelsForProvider = async (provider: ProviderOption, currentConfig: UserConfiguration): Promise<ModelOption[]> => {
+        // In-Browser ONNX embedding: return the single all-MiniLM-L6-v2 model
+        if (provider.id === 'in-browser') {
+            console.log(`[SettingsContext fetchRawModelsForProvider] Providing in-browser ONNX model for provider: ${provider.id}`);
+            return [{ id: 'all-minilm-l6-v2-onnx', name: 'all-MiniLM-L6-v2 ONNX (In Browser)' }];
+        }
         const providerImpl = providerImplementations[provider.id as keyof typeof providerImplementations];
         if (!providerImpl || !providerImpl.listModels) {
             console.warn(`[SettingsContext] listModels implementation not found for provider: ${provider.id}`);
@@ -642,6 +648,52 @@ export const SettingsProvider: ParentComponent = (props) => {
         
         const setters = getTransientSignalSetters(functionName);
 
+        // In-browser ONNX embedding: real inference test using transformers.js
+        if (currentFunctionConfig?.providerId === 'in-browser') {
+            console.log(`[SettingsContext] Testing in-browser ONNX embedding for ${functionName}`);
+            const ts = setters;
+            ts.setTestStatus('testing');
+            ts.setTestError(null);
+            try {
+                // Dynamically import transformers.js
+                const tf = await import('@huggingface/transformers');
+                const { pipeline, env } = tf;
+                // Configure to load local models from extension assets
+                const getUrl = (browser.runtime.getURL as any);
+                const base = getUrl('models/');
+                env.localModelPath = base;
+                env.allowRemoteModels = false;
+                env.allowLocalModels = true;
+                // Set WASM runtime paths on local onnx backend if present
+                const onnxBackend = (env.backends as any).onnx;
+                if (onnxBackend?.wasm) {
+                    // @ts-ignore: override readonly property to set local WASM paths
+                    onnxBackend.wasm.wasmPaths = getUrl('transformers-wasm/');
+                }
+                console.log('[SettingsContext] transformers.js env config:', {
+                    localModelPath: env.localModelPath,
+                    allowLocalModels: env.allowLocalModels,
+                    allowRemoteModels: env.allowRemoteModels,
+                    wasmPaths: (env.backends as any).onnx?.wasm?.wasmPaths
+                });
+                // Initialize feature-extraction pipeline for our ONNX model
+                const extractor = await pipeline('feature-extraction', 'all-MiniLM-L6-v2');
+                console.log('[SettingsContext] extractor initialized, running inference');
+                // Run on sample input
+                const output = await extractor('test input', { pooling: 'mean', normalize: true });
+                console.log('[SettingsContext] embedding output:', output);
+                // Validate embedding dimension
+                const dims = (output as any).dims;
+                if (!dims || dims[1] !== 384) throw new Error(`Unexpected embedding dimension: ${dims}`);
+                ts.setTestStatus('success');
+            } catch (err: any) {
+                console.error('[SettingsContext] In-browser embedding test failed:', err);
+                ts.setTestError(err instanceof Error ? err : new Error(String(err)));
+                ts.setTestStatus('error');
+            }
+            return;
+        }
+        
         if (!currentFunctionConfig || !currentFunctionConfig.providerId || !currentFunctionConfig.modelId) {
             console.warn(`[SettingsContext] Test connection called for ${functionName} but config is incomplete. Received:`, currentFunctionConfig);
             setters.setTestError(new Error('Configuration incomplete or invalid.'));
