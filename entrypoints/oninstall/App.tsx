@@ -91,12 +91,11 @@ const availableLLMProviders: ProviderOption[] = availableProviders; // Reuse the
 
 // Define available Embedding Providers
 const availableEmbeddingProviders: ProviderOption[] = [
-    // Reuse or define specific providers
+    // In-Browser ONNX Embedding comes first
+    { id: 'in-browser', name: 'In Browser', defaultBaseUrl: '', logoUrl: '/images/llm-providers/local.png'},
     { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
     { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/llm-providers/jan.png' },
     { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
-    // In-Browser ONNX Embedding
-    { id: 'in-browser', name: 'In Browser', defaultBaseUrl: '', logoUrl: '/images/llm-providers/local.png' },
 ];
 
 // Define available TTS Providers for Onboarding (Kokoro removed)
@@ -1150,14 +1149,14 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         const transientState = settingsContext.getTransientState(funcType);
         const config = settingsContext.config.embeddingConfig;
         return (
-          <div class="w-full max-w-screen-xl mx-auto px-4">
+          <div class="w-full max-w-lg"> {/* Changed from max-w-screen-xl mx-auto px-4 */}
             <p class="text-xl md:text-2xl mb-2">
               {i18n().get('onboardingSetupEmbeddingTitle', 'Choose Embedding')}
             </p>
              <p class="text-lg text-muted-foreground mb-6">
                {i18n().get('onboardingSetupEmbeddingDescription', 'Bge-m3 or bge-large are best due to multi-language support.')}
              </p>
-            <div class="mb-6 flex justify-center">
+            <div class="mb-6"> {/* Removed flex justify-center */}
               <ProviderSelectionPanel
                 providerOptions={availableEmbeddingProviders}
                 selectedProviderId={() => config?.providerId}
