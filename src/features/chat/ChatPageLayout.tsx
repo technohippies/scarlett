@@ -21,6 +21,9 @@ export const ChatPageLayout: Component<ChatPageLayoutProps> = (props) => {
       onInputChange={(text) => actions.setInput(text)}
       onSendText={() => actions.sendText()}
       isIdle={!state.isLoading}
+      isVADListening={state.isVADListening}
+      onStartVAD={() => actions.startVAD()}
+      onStopVAD={() => actions.stopVAD()}
     />
   );
 }; 

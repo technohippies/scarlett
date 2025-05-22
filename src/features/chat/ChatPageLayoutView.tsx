@@ -1,9 +1,10 @@
-import { Component } from 'solid-js';
+import { Component, Show } from 'solid-js';
 import { CaretLeft } from 'phosphor-solid';
 import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../components/ui/switch';
 import { ChatSidebar } from './ChatSidebar';
 import { ChatMessageArea } from './ChatMessageArea';
 import { TextInputControls } from './TextInputControls';
+import { MicVisualizer } from '../../components/ui/MicVisualizer';
 import type { Thread, ChatMessage } from './types';
 
 export interface ChatPageLayoutViewProps {
@@ -18,9 +19,9 @@ export interface ChatPageLayoutViewProps {
   onInputChange: (text: string) => void;
   onSendText: () => void;
   isIdle: boolean;
-  // onStartSpeech: () => void; // Will be handled by sendToMachine
-  // onCancelSpeech: () => void; // Will be handled by sendToMachine
-  // isRecording: boolean; // Will come from machineContext
+  isVADListening: boolean;
+  onStartVAD: () => void;
+  onStopVAD: () => void;
 }
 
 export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
@@ -51,13 +52,30 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
             <ChatMessageArea messages={props.messages} />
           </main>
           <div class="p-2 md:p-4 border-t border-border/40 bg-background">
-            {/* Text input controls */}
-            <TextInputControls
-              userInput={props.userInput}
-              onInputChange={props.onInputChange}
-              onSendMessage={props.onSendText}
-              isDisabled={!props.isIdle}
-            />
+            <Show when={!props.isSpeechModeActive} fallback={
+              <>
+                <div class="flex items-center space-x-2">
+                  <button
+                    class="btn btn-outline"
+                    onClick={props.onStartVAD}
+                    disabled={props.isVADListening}
+                  >Start Recording</button>
+                  <button
+                    class="btn btn-outline"
+                    onClick={props.onStopVAD}
+                    disabled={!props.isVADListening}
+                  >Stop Recording</button>
+                </div>
+                <MicVisualizer active={props.isVADListening} />
+              </>
+            }>
+              <TextInputControls
+                userInput={props.userInput}
+                onInputChange={props.onInputChange}
+                onSendMessage={props.onSendText}
+                isDisabled={!props.isIdle}
+              />
+            </Show>
           </div>
         </div>
       </div>

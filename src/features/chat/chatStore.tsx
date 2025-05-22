@@ -36,6 +36,7 @@ export interface ChatState {
   userInput: string;
   isSpeechMode: boolean;
   isLoading: boolean;
+  isVADListening: boolean;
   lastError: string | null;
 }
 
@@ -45,6 +46,8 @@ export interface ChatActions {
   sendText: () => Promise<void>;
   setInput: (text: string) => void;
   toggleSpeech: () => void;
+  startVAD: () => void;
+  stopVAD: () => void;
 }
 
 // Props for ChatProvider now include userConfig
@@ -58,6 +61,7 @@ const defaultState: ChatState = {
   userInput: '',
   isSpeechMode: false,
   isLoading: false,
+  isVADListening: false,
   lastError: null
 };
 const defaultActions: ChatActions = {
@@ -65,7 +69,9 @@ const defaultActions: ChatActions = {
   selectThread: async () => {},
   sendText: async () => {},
   setInput: () => {},
-  toggleSpeech: () => {}
+  toggleSpeech: () => {},
+  startVAD: () => {},
+  stopVAD: () => {}
 };
 // @ts-ignore: suppress createContext overload mismatch
 const ChatContext = createContext<[ChatState, ChatActions]>([defaultState, defaultActions]);
@@ -78,6 +84,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     userInput: '',
     isSpeechMode: false,
     isLoading: false,
+    isVADListening: false,
     lastError: null,
   });
 
@@ -240,6 +247,18 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
 
     toggleSpeech() {
       setState('isSpeechMode', mode => !mode);
+    },
+
+    startVAD() {
+      console.log('[chatStore] startVAD called');
+      setState('isVADListening', true);
+      // TODO: hook into STT/VAD pipeline
+    },
+
+    stopVAD() {
+      console.log('[chatStore] stopVAD called');
+      setState('isVADListening', false);
+      // TODO: finalize audio capture and send to STT
     }
   };
 
