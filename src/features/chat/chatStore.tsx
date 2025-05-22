@@ -111,8 +111,9 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     pendingThreadId: null,
   });
 
-  // VAD recorder and buffer
+  // VAD recorder, stream and buffer
   let mediaRecorder: MediaRecorder | null = null;
+  let mediaStream: MediaStream | null = null;
   let audioChunks: Blob[] = [];
 
   const actions: ChatActions = {
@@ -341,11 +342,13 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       // Begin capturing audio via MediaRecorder
       navigator.mediaDevices.getUserMedia({ audio: true })
         .then(stream => {
+          // retain stream for later cleanup
+          mediaStream = stream;
           mediaRecorder = new MediaRecorder(stream);
           audioChunks = [];
           mediaRecorder.ondataavailable = e => { audioChunks.push(e.data); };
           mediaRecorder.start();
-          // Auto-stop after fixed interval (e.g., 5 seconds) if user doesn't click stop
+          // Auto-stop after fixed interval (e.g., 5 seconds)
           setTimeout(() => {
             if (mediaRecorder && state.isVADListening) {
               console.log('[chatStore] Auto-stopping VAD after timeout');
@@ -365,6 +368,11 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       setState('isVADListening', false);
       if (mediaRecorder) {
         mediaRecorder.onstop = async () => {
+          // Only process transcription if speech mode is still active
+          if (!state.isSpeechMode) {
+            console.log('[chatStore] onstop: speech mode off, skipping transcription');
+            return;
+          }
           const blob = new Blob(audioChunks, { type: audioChunks[0]?.type || 'audio/webm' });
           // Transcribe blob to text
           const apiKey = props.initialUserConfig.ttsConfig?.apiKey || props.initialUserConfig.elevenLabsApiKey;
@@ -384,6 +392,14 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           }
         };
         mediaRecorder.stop();
+        // Fully release microphone stream
+        if (mediaStream) {
+          mediaStream.getTracks().forEach(track => track.stop());
+          mediaStream = null;
+        }
+        // Clear recorder and buffers
+        mediaRecorder = null;
+        audioChunks = [];
       } else {
         console.warn('[chatStore] stopVAD called but recorder not initialized');
       }
