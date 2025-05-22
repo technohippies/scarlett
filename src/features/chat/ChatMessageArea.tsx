@@ -1,4 +1,5 @@
 import { Component, For, createEffect, Show } from 'solid-js';
+import { useChat } from './chatStore';
 import type { ChatMessage, WordInfo } from './types';
 import { ChatMessageItem } from './ChatMessageItem'; // Assuming this component is reusable
 
@@ -13,6 +14,7 @@ interface ChatMessageAreaProps {
 
 export const ChatMessageArea: Component<ChatMessageAreaProps> = (props) => {
   let scrollHostRef: HTMLDivElement | undefined;
+  const [state, actions] = useChat();
 
   createEffect(() => {
     // Keep messages scrolled to the bottom
@@ -29,10 +31,8 @@ export const ChatMessageArea: Component<ChatMessageAreaProps> = (props) => {
             <ChatMessageItem
               message={message}
               isStreaming={message.isStreaming}
-              // Pass relevant props if ChatMessageItem handles highlighting
-              // e.g., isActiveSpoken={message.id === props.activeSpokenMessageId}
-              // wordMap={props.activeSpokenMessageId === message.id ? props.ttsWordMap : undefined}
-              // highlightIndex={props.activeSpokenMessageId === message.id ? props.currentTTSHighlightIndex : undefined}
+              // TTS speed controls
+              onChangeSpeed={(msgId, speed) => actions.playTTS({ messageId: msgId, text: message.text_content, lang: message.tts_lang || 'en', speed })}
             />
           )}
         </For>

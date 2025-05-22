@@ -56,7 +56,7 @@ export interface ChatActions {
   toggleSpeech: () => void;
   startVAD: () => void;
   stopVAD: () => void;
-  playTTS: (params: { messageId: string; text: string; lang: string }) => Promise<void>;
+  playTTS: (params: { messageId: string; text: string; lang: string; speed?: number }) => Promise<void>;
   createNewThread: () => Promise<void>;
 }
 
@@ -87,7 +87,7 @@ const defaultActions: ChatActions = {
   toggleSpeech: () => {},
   startVAD: () => {},
   stopVAD: () => {},
-  playTTS: async () => {},
+  playTTS: async (_params) => {},
   createNewThread: async () => {},
 };
 // @ts-ignore: suppress createContext overload mismatch
@@ -330,8 +330,8 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       // TODO: finalize audio capture and send to STT
     },
 
-    async playTTS({ messageId, text, lang }) {
-      console.log('[chatStore] playTTS called for', messageId);
+    async playTTS({ messageId, text, lang, speed }) {
+      console.log('[chatStore] playTTS called for', messageId, 'speed:', speed);
       const idx = state.messages.findIndex(m => m.id === messageId);
       if (idx < 0) return;
 
@@ -354,7 +354,10 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           apiKey,
           text,
           modelId,
-          voiceId
+          voiceId,
+          undefined,
+          speed,
+          lang
         );
         const { audioBlob, alignmentData } = resp;
         const wordInfos: WordInfo[] = [];
@@ -451,7 +454,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       const newId = crypto.randomUUID();
       const placeholderTitle = 'New Thread';
       const newThread = await messaging.sendMessage('addChatThread', { id: newId, title: placeholderTitle });
-      setState('threads', ts => [...ts, newThread]);
+      setState('threads', ts => [newThread, ...ts]);
       setState('pendingThreadId', newId);
       // 2) Switch into the new thread
       await this.selectThread(newId);
