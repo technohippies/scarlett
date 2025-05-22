@@ -37,10 +37,14 @@ import { browser } from 'wxt/browser'; // For browser.runtime.getURL in VAD ortC
 // --- Import messaging types and function ---
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import type { BackgroundProtocolMap, DeckInfoForFiltering } from '../../src/shared/messaging-types'; // Corrected import path for both types
+import SubscriptionPlanPanel, { SubscriptionPlan } from '../../src/components/ui/SubscriptionPlanPanel';
 
 // --- Define messaging for the frontend context ---
 // Use the same protocol map as the background
 const { sendMessage: sendBackgroundMessage } = defineExtensionMessaging<BackgroundProtocolMap>();
+// Stub helper functions for onboarding language flow
+const getBestInitialLangCode = (): string => 'en';
+const fetchMessages = async (_langCode: string): Promise<Messages> => ({});
 // We rename sendMessage to avoid conflicts if App.tsx used a variable named sendMessage elsewhere
 
 const ONBOARDING_ELEVENLABS_TEST_TEXT = "Hello from Scarlett! This is an onboarding test.";
@@ -100,73 +104,10 @@ const onboardingTtsProviderOptions: OnboardingTtsProviderOption[] = [
 ];
 
 // Simplified Step type for the new flow
-type Step = 'language' | 'learningGoal' | 'deckSelection' | 'setupLLM' | 'setupEmbedding' | 'setupTTS' | 'setupVAD' | 'redirects';
-
-// Helper function modified to return the best determined language code
-function getBestInitialLangCode(): string {
-  let preferredLang = 'en'; 
-  try {
-    const navLangs = navigator.languages;
-    console.log(`[App] Initial navigator.languages: ${JSON.stringify(navLangs)}`);
-
-    if (navLangs && navLangs.length > 0) {
-      for (const lang of navLangs) {
-        const baseLang = lang.split('-')[0];
-        // Check only against native list for default UI language
-        const foundInNative = nativeLanguagesList.some(nl => nl.value === baseLang);
-        if (foundInNative) { 
-          preferredLang = baseLang;
-          console.log(`[App] Initial UI language set based on native list: ${preferredLang}`);
-          break;
-        }
-      }
-    }
-    // Simplified fallback logic
-    console.log(`[App] Initial UI language code determined: ${preferredLang}`);
-    return preferredLang;
-  } catch (e) {
-    console.error("[App] Error getting initial language preference:", e);
-    return 'en';
-  }
-}
-
-// Fetch messages using browser.runtime.getURL and fetch
-const fetchMessages = async (langCode: string): Promise<Messages> => {
-  console.log(`[App] Attempting to fetch messages for langCode: ${langCode}`);
-  // Use 'as any' to bypass strict WXT typing for getURL with locale pattern
-  const messageUrl = browser.runtime.getURL(`/_locales/${langCode}/messages.json` as any);
-  console.log(`[App] Constructed URL: ${messageUrl}`);
-  try {
-    const response = await fetch(messageUrl);
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status} for ${langCode}`);
-    }
-    const messages: Messages = await response.json();
-    console.log(`[App] Successfully fetched and parsed ${langCode} messages.`);
-    return messages;
-  } catch (error) {
-    console.warn(`[App] Failed to fetch ${langCode} messages from ${messageUrl}:`, error, ". Falling back to 'en'.");
-    // Fallback to English
-    // Use 'as any' for fallback URL too
-    const fallbackUrl = browser.runtime.getURL('/_locales/en/messages.json' as any);
-    try {
-      const fallbackResponse = await fetch(fallbackUrl);
-      if (!fallbackResponse.ok) {
-        throw new Error(`HTTP error! status: ${fallbackResponse.status} for fallback 'en'`);
-      }
-      const englishMessages: Messages = await fallbackResponse.json();
-      console.log("[App] Successfully fetched and parsed fallback 'en' messages."); 
-      return englishMessages;
-    } catch (fallbackError) {
-      // Use simple concatenation as requested
-      console.error('[App] Failed to fetch fallback \'en\' messages from ' + fallbackUrl + ':', fallbackError);
-      return {}; 
-    }
-  }
-};
+type Step = 'choosePlan' | 'language' | 'learningGoal' | 'deckSelection' | 'setupLLM' | 'setupEmbedding' | 'setupTTS' | 'setupVAD' | 'redirects';
 
 // Keep steps definition for progress calculation
-const onboardingSteps: Step[] = ['language', 'learningGoal', 'deckSelection', 'setupLLM', 'setupEmbedding', 'setupTTS', 'setupVAD', 'redirects'];
+const onboardingSteps: Step[] = ['language', 'learningGoal', 'choosePlan', 'deckSelection', 'setupLLM', 'setupEmbedding', 'setupTTS', 'setupVAD', 'redirects'];
 
 const App: Component = () => {
 
@@ -228,7 +169,11 @@ interface OnboardingContentProps {
 // Create a new component to contain the original App logic, now inside the provider
 // Accept props for redirect state
 const OnboardingContent: Component<OnboardingContentProps> = (props) => {
+  // Initialize at plan selection
   const [currentStep, setCurrentStep] = createSignal<Step>('language');
+  // Track subscription plan choice
+  const [subscriptionPlan, setSubscriptionPlan] = createSignal<SubscriptionPlan | null>(null);
+
   // Keep targetLangLabel for goal step display
   const [targetLangLabel, setTargetLangLabel] = createSignal<string>('');
   // Add signals for selections made in child components
@@ -452,8 +397,8 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     await userConfigurationStorage.setValue(updatedConfig);
     console.log('[App] Config after saving goal:', updatedConfig);
 
-    console.log('[App] Proceeding to Deck Selection step.');
-    setCurrentStep('deckSelection'); // <- Change to deckSelection
+    console.log('[App] Proceeding to Choose Plan step.');
+    setCurrentStep('choosePlan'); // <- Change to choosePlan
   };
 
   // --- Fetch and Filter Decks when DeckSelection step is active ---
@@ -833,8 +778,11 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       case 'learningGoal':
         setCurrentStep('language');
         break;
-      case 'deckSelection':
+      case 'choosePlan': // New back case
         setCurrentStep('learningGoal');
+        break;
+      case 'deckSelection':
+        setCurrentStep('choosePlan'); // Was learningGoal
         break;
       case 'setupLLM':
         setCurrentStep('deckSelection');
@@ -1069,19 +1017,30 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
 
   // --- Render Step Logic (Remove Reader Case) --- 
   const renderStep = () => {
+    // Plan selection panel
+    if (currentStep() === 'choosePlan') {
+      return (
+        <div class="w-full max-w-lg flex flex-col items-center">
+          <SubscriptionPlanPanel
+            selectedPlan={() => subscriptionPlan()}
+            onSelectPlan={(plan) => {
+              setSubscriptionPlan(plan);
+              setCurrentStep('deckSelection'); // Was 'language', now 'deckSelection'
+            }}
+          />
+        </div>
+      );
+    }
     const step = currentStep();
     switch (step) {
       case 'language':
         return (
           <Language
-            onTargetLangChange={(value: string, label: string) => { setSelectedTargetLangValue(value); setTargetLangLabel(label); }}
-            onNativeLangChange={(newLangCode: string) => {
-              // uiLangCode is already our primary signal for native language
+            onTargetLangChange={(value, label) => { setSelectedTargetLangValue(value); setTargetLangLabel(label); }}
+            onNativeLangChange={(newLangCode) => {
               if (newLangCode !== uiLangCode()) {
-                  console.log(`[App] renderStep/onNativeLangChange: UI language changing from ${uiLangCode()} to ${newLangCode}`);
-                  setUiLangCode(newLangCode); 
+                setUiLangCode(newLangCode);
               }
-              // We also stored it in selectedNativeLangValue, ensure it's consistent or simplify later
               setSelectedNativeLangValue(newLangCode);
             }}
             iSpeakLabel={i18n().get('onboardingISpeak', 'I speak')}
@@ -1370,20 +1329,21 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
             {renderStep()}
         </div>
 
-        {/* ADD BACK Fixed Footer with Dynamic Button */} 
-        {/* Show footer only for relevant steps */} 
+        {/* FIXED Footer */}
+        <Show when={currentStep() !== 'choosePlan'}>
         <div class="fixed bottom-0 left-0 right-0 p-4 md:p-6 border-t border-neutral-800 bg-background flex justify-center z-10">
           <div class="w-full max-w-xs">
             <Button
               size="lg"
               class="w-full"
-              onClick={handleFooterButtonClick} // Use the dynamic handler
-              disabled={isFooterButtonDisabled()} // Use the dynamic disabled state
+                onClick={handleFooterButtonClick}
+                disabled={isFooterButtonDisabled()}
             >
-              {footerButtonLabel()} {/* Use the dynamic label */}
+                {footerButtonLabel()}
             </Button>
           </div>
         </div>
+        </Show>
     </div>
   );
 };

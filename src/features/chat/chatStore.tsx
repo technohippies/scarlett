@@ -9,7 +9,7 @@ import type { UserConfiguration } from '../../services/storage/types';
 import type { LLMProviderId } from '../../services/llm/types';
 import { generateElevenLabsSpeechWithTimestamps } from '../../services/tts/elevenLabsService';
 import type { WordInfo } from './types';
-import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
+import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID, LANGUAGE_NAME_MAP } from '../../shared/constants';
 import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService';
 
 // RPC client for background storage
@@ -213,6 +213,9 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
 
       // Buffer for AI response
       let full = '';
+      // Determine user's target language code and spacing behavior outside of try/finally
+      const targetCode = props.initialUserConfig.targetLanguage ?? '';
+      const collapseLangs = ['zh','ja','ko'];
       try {
         // build LLMConfig from user-provided configuration
         const fc = props.initialUserConfig.llmConfig;
@@ -233,11 +236,14 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           content: m.text_content
         }));
         console.log('[chatStore] historyForLLM:', historyForLLM);
+        // Dynamically instruct LLM to omit any romanization or pronunciation guides for the target language
+        const langLabel = LANGUAGE_NAME_MAP[targetCode] || targetCode || 'foreign language';
+        const noRomanPrompt = `When including ${langLabel} text in your responses, do NOT include any romanization, phonetic transcriptions, or translations.`;
         const stream = getAiChatResponseStream(
           historyForLLM as any,
           text,
           llmConfig,
-          {}
+          { threadSystemPrompt: noRomanPrompt }
         ) as AsyncGenerator<StreamedChatResponsePart>;
         for await (const part of stream) {
           console.log('[chatStore] received stream part', part);
@@ -255,13 +261,29 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           // Patch the last AI message text via path-based setter
           const lastIndex = state.messages.length - 1;
           if (lastIndex >= 0) {
-            setState('messages', lastIndex, 'text_content', full);
+            // Remove any parentheses content (e.g., Pinyin)
+            let filtered = full.replace(/\s*\([^)]*\)/g, '');
+            // If target language uses no inter-word spacing, collapse whitespace
+            if (collapseLangs.includes(targetCode)) {
+              filtered = filtered.replace(/\s+/g, '');
+            }
+            setState('messages', lastIndex, 'text_content', filtered);
           }
           console.log('[chatStore] updated AI message to', full);
         }
       } catch (e: any) {
         setState('lastError', e.message || String(e));
       } finally {
+        // Strip parentheses and collapse for certain scripts
+        full = full.replace(/\s*\([^)]*\)/g, '').trim();
+        if (collapseLangs.includes(targetCode)) {
+          full = full.replace(/\s+/g, '');
+        }
+        // Update the displayed AI message to the cleaned text
+        const cleanIdx = state.messages.findIndex(m => m.id === placeholderId);
+        if (cleanIdx >= 0) {
+          setState('messages', cleanIdx, 'text_content', full);
+        }
         // Persist the AI's completed response (DB will timestamp)
         try {
           await messaging.sendMessage('addChatMessage', {

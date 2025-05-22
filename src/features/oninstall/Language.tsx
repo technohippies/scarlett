@@ -9,6 +9,7 @@ import {
 import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
 import type { Messages } from '../../types/i18n';
+import { lookup } from '../../shared/languages';
 
 // LanguageOption now might only need value and emoji if name comes from messages
 export interface LanguageOptionStub {
@@ -40,8 +41,8 @@ interface LanguageProps {
 // Helper function to get translated name (could be moved)
 const getLangName = (value: string | undefined, messages: Messages | undefined): string => {
   if (!value || !messages) return '';
-  const key = `langName${value.charAt(0).toUpperCase() + value.slice(1)}`;
-  return messages[key]?.message || value; // Fallback to value code
+  const def = lookup(value);
+  return messages[def.i18nKey]?.message || def.fullName;
 };
 
 export const Language: Component<LanguageProps> = (props) => {

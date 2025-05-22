@@ -45,6 +45,7 @@ export interface FunctionConfig {
 
 // Define the shape of the user's overall configuration
 export interface UserConfiguration {
+    chosenSubscriptionPlan?: 'free' | 'hosted' | null; // Add the new field for subscription plan
     nativeLanguage?: string | null;
     targetLanguage?: string | null;
     showTargetLanguage?: boolean;

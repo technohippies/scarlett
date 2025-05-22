@@ -12,6 +12,7 @@ import {
     getTodaysSongsSummary,
     getRecentFlashcardActivitySummary
 } from '../context/userDataService'; // Import new user data service
+import { lookup } from '../../shared/languages';
 
 console.log('[Roleplay Service] Loaded.');
 
@@ -89,13 +90,8 @@ export async function generateRoleplayScenarios(
     topicHint: string = 'everyday situations, travel, and hobbies'
 ): Promise<ScenarioOption[]> {
     const userCfg = await userConfigurationStorage.getValue();
-    const rawLang = userCfg.targetLanguage ?? 'French';
-    const LANGUAGE_NAME_MAP: Record<string, string> = {
-        en: 'English', zh: 'Chinese', vi: 'Vietnamese', th: 'Thai', id: 'Indonesian',
-        ar: 'Arabic', ja: 'Japanese', ko: 'Korean', es: 'Spanish', fr: 'French'
-    };
-    const code = rawLang.toLowerCase();
-    const targetLanguageName = LANGUAGE_NAME_MAP[code] ?? rawLang;
+    const rawCode = userCfg.targetLanguage ?? 'en';
+    const targetLanguageName = lookup(rawCode).fullName;
     console.log(`[Roleplay Service] Generating 2 scenarios for ${targetLanguageName} based on topic: "${topicHint}" and user context.`);
 
     const llmConfig = await getActiveLLMConfig();

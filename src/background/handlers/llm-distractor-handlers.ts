@@ -8,16 +8,11 @@ import type { FunctionConfig } from '../../services/storage/types';
 import { getLLMDistractorsPrompt } from '../../services/llm/prompts/exercises';
 import { ollamaChat } from '../../services/llm/providers/ollama/chat'; // Assuming dynamicChat might be simplified or replaced
 import type { LLMConfig, LLMChatResponse, LLMProviderId, ChatMessage } from '../../services/llm/types';
+import { lookup } from '../../shared/languages';
 
 // Moved from message-handlers.ts
 function getFullLanguageName(code: string): string {
-    switch (code.toLowerCase()) {
-        case 'en': return 'English';
-        case 'vi': return 'Vietnamese';
-        case 'ko': return 'Korean';
-        case 'zh': return 'Chinese';
-        default: return code;
-    }
+    return lookup(code).fullName;
 }
 
 // Moved and potentially simplified from message-handlers.ts

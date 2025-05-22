@@ -1,4 +1,5 @@
 import { ELEVENLABS_API_BASE_URL, DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
+import { normalizeCode } from '../../shared/languages';
 import type { AlignmentData } from '../../features/translator/TranslatorWidget'; // Import AlignmentData type
 
 export interface ElevenLabsVoiceSettings {
@@ -68,7 +69,7 @@ export async function generateElevenLabsSpeechStream(
 
     // Add language_code to body if lang is provided and model is compatible
     if (lang && (selectedModelId === 'eleven_flash_v2.5' || selectedModelId === 'eleven_turbo_v2.5')) {
-        body.language_code = lang.toLowerCase().startsWith('zh') ? 'zh' : lang; // Ensure general 'zh' for Chinese variants if applicable
+        body.language_code = normalizeCode(lang);
         console.log(`[ElevenLabsService] Enforcing language_code: ${body.language_code} for model ${selectedModelId}`);
     }
 
@@ -162,9 +163,8 @@ export async function generateElevenLabsSpeechWithTimestamps(
     };
     
     // Add language_code to body if lang is provided and model is compatible
-    // (Turbo v2.5 and Flash v2.5 support language enforcement)
     if (lang && (selectedModelId === 'eleven_flash_v2.5' || selectedModelId === 'eleven_turbo_v2.5')) {
-        body.language_code = lang.toLowerCase().startsWith('zh') ? 'zh' : lang; 
+        body.language_code = normalizeCode(lang);
         console.log(`[ElevenLabsService] Enforcing language_code: ${body.language_code} for model ${selectedModelId} (with-timestamps)`);
     }
 
