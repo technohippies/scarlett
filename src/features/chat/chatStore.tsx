@@ -1,5 +1,5 @@
 import { createStore } from 'solid-js/store';
-import { createContext, ParentComponent, useContext, createEffect, onMount } from 'solid-js';
+import { createContext, ParentComponent, useContext, onMount } from 'solid-js';
 import { getAiChatResponseStream } from '../../services/llm/llmChatService';
 import type { LLMConfig, StreamedChatResponsePart } from '../../services/llm/types';
 import { defineExtensionMessaging } from '@webext-core/messaging';
@@ -200,7 +200,6 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       };
       // Capture placeholder metadata for later persistence
       const placeholderId = aiPlaceholder.id;
-      const placeholderTs = aiPlaceholder.timestamp;
       setState('messages', msgs => {
         console.log('[chatStore] appending user and placeholder', userMsg, aiPlaceholder);
         return [...msgs, userMsg, aiPlaceholder];

@@ -86,6 +86,32 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
     }
   };
 
+  // Group character-level WordInfo into words for better display and highlighting
+  const groupedWordMap = () => {
+    const wm = wordMap() || [];
+    const groups: { text: string; indices: number[] }[] = [];
+    let textAcc = '';
+    let idxAcc: number[] = [];
+    wm.forEach((entry, i) => {
+      if (entry.word.trim() === '') {
+        if (textAcc) {
+          groups.push({ text: textAcc, indices: idxAcc });
+          textAcc = '';
+          idxAcc = [];
+        }
+        // preserve single breakable space
+        groups.push({ text: ' ', indices: [i] });
+      } else {
+        textAcc += entry.word;
+        idxAcc.push(i);
+      }
+    });
+    if (textAcc) {
+      groups.push({ text: textAcc, indices: idxAcc });
+    }
+    return groups;
+  };
+
   return (
     <>
       <style>{HIGHLIGHT_CSS}</style>
@@ -103,15 +129,15 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
               <Show
                 when={message.sender === 'ai' && isCurrentSpokenMessage() && wordMap() && wordMap()!.length > 0}
                 fallback={
-                  <span class="inline-flex items-center">
-                    <span class="whitespace-pre-wrap break-words">{message.text_content}</span>
+                  <span class="whitespace-pre-wrap break-words break-all">
+                    {message.text_content}
                     <Show when={message.sender === 'ai' && isStreaming()}>
                       <Spinner class="ml-2 size-4 text-muted-foreground" />
                     </Show>
                   </span>
                 }
               >
-                <span class="inline-flex items-center">
+                <span class="whitespace-pre-wrap break-words break-all">
                   <For each={wordMap()!}>
                     {(item, index) => (
                       <span

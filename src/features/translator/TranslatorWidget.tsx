@@ -46,19 +46,14 @@ const POPOVER_ITEM_CLASS = `${POPOVER_ITEM_CLASS_BASE} justify-start`;
 const HIGHLIGHT_STYLE_ID = "scarlett-word-highlight-styles";
 const HIGHLIGHT_CSS = `
   .scarlett-word-span {
-    /* Base styles for all words, Motion.span will handle transitions for its own props like scale */
-    background-color: transparent; /* Start transparent, classList will apply highlight color */
-    border-radius: 3px; 
-    /* padding: 0 0.1em; */ /* REMOVED to prevent awkward spacing */
-    /* margin: 0 0.02em; */  /* REMOVED to prevent awkward spacing */
-    display: inline-block; /* Still needed for individual background/highlight */
-    /* The transition for background-color is implicitly handled by classList change if Motion.span doesn't override it. */
-    /* Or, if we want Motion to handle it, remove transition from here and add to Motion.span's transition prop. */
-    /* For now, let's assume CSS handles background, Motion handles scale. */
-    transition: background-color 0.2s ease-out; 
+    /* Base styles for all words */
+    background-color: transparent;
+    border-radius: 3px;
+    display: inline; /* use inline so default kerning and wrapping apply */
+    transition: background-color 0.2s ease-out;
   }
-  .scarlett-word-highlight { 
-    background-color: hsl(240, 5%, 25%); /* Lighter version of the background for highlight */
+  .scarlett-word-highlight {
+    background-color: hsl(240, 5%, 25%);
   }
 `;
 
@@ -279,8 +274,9 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
 
         if (result?.browserTtsInitiated) {
             setIsBrowserTtsActive(true);
-            // For browser TTS, we don't get alignment, so split the text for basic word display
-            const wordsFromText = text.split(/(\s+)/).filter(s => s.trim().length > 0).map((t, idx) => ({ text: t, index: idx, startTime: 0, endTime: 0 }));
+            // For browser TTS, we don't get alignment, so split the text including whitespace tokens for basic word display
+            const tokens = text.split(/(\s+)/).filter(s => s.length > 0);
+            const wordsFromText = tokens.map((t, idx) => ({ text: t, index: idx, startTime: 0, endTime: 0 }));
             setWordMap(wordsFromText);
             if (result.error) {
                 setTtsError(result.error);
@@ -294,8 +290,9 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                 const processedWords = processAlignment(text, result.alignment, lang);
                 setWordMap(processedWords);
             } else {
-                // Fallback: If no alignment, split the spoken text by space.
-                const wordsFromText = text.split(/(\s+)/).filter(s => s.trim().length > 0).map((t, idx) => ({ text: t, index: idx, startTime: 0, endTime: 0 }));
+                // Fallback: If no alignment, split the spoken text including whitespace tokens.
+                const tokens = text.split(/(\s+)/).filter(s => s.length > 0);
+                const wordsFromText = tokens.map((t, idx) => ({ text: t, index: idx, startTime: 0, endTime: 0 }));
                 setWordMap(wordsFromText);
             }
 
@@ -421,25 +418,29 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
             </div>
         )}>
             {/* Row 1: Original Text (textToTranslate) */}
-            <div class="text-lg py-2 mb-1 flex items-center flex-wrap">
-                <Show when={ttsTarget() === 'original' && wordMap().length > 0 && !isTranslationLoading() } 
+            <div class="text-lg py-2 mb-1">
+                <Show when={ttsTarget() === 'original' && wordMap().length > 0 && !isTranslationLoading() }
                     fallback={props.textToTranslate() || "Original text"}>
                     {/* Render original text with highlighting if it's the TTS target */}
-                    <For each={wordMap()}>{(word: WordInfo, _index: Accessor<number>) => (
-                        <span
-                            class="scarlett-word-span"
-                            classList={{ 'scarlett-word-highlight': currentHighlightIndex() === word.index && !isBrowserTtsActive() }}
-                            data-word-index={word.index}
-                        >
-                            {word.text.replace(/ /g, '\u00A0')}
-                        </span>
+                    <For each={wordMap()}>{(word: WordInfo) => (
+                        word.text === ' ' || word.text === '\u00A0' ? (
+                            ' '
+                        ) : (
+                            <span
+                                class="scarlett-word-span"
+                                classList={{ 'scarlett-word-highlight': currentHighlightIndex() === word.index && !isBrowserTtsActive() }}
+                                data-word-index={word.index}
+                            >
+                                {word.text}
+                            </span>
+                        )
                     )}
                     </For>
                 </Show>
             </div>
 
             {/* Row 2: Translated Text / Loading State */}
-            <div class="text-lg py-2 mb-1 flex items-center flex-wrap">
+            <div class="text-lg py-2 mb-1">
                 <Show 
                     when={!isTranslationLoading()} 
                     fallback={<span class="text-muted-foreground/80">{isTranslationLoading() ? "Translating..." : (props.translatedText() ? " " : "Enter text for translation output")}</span>}
@@ -449,14 +450,18 @@ const TranslatorWidget: Component<TranslatorWidgetProps> = (props) => {
                     >
                         {/* Render translated text with highlighting if it's the TTS target */}
                         <span ref={wordMapContainerRef}>
-                            <For each={wordMap()}>{(word: WordInfo, _index: Accessor<number>) => (
-                                <span
-                                    class="scarlett-word-span"
-                                    classList={{ 'scarlett-word-highlight': currentHighlightIndex() === word.index && !isBrowserTtsActive() }}
-                                    data-word-index={word.index}
-                                >
-                                    {word.text.replace(/ /g, '\u00A0')}
-                                </span>
+                            <For each={wordMap()}>{(word: WordInfo) => (
+                                word.text === ' ' || word.text === '\u00A0' ? (
+                                    ' '
+                                ) : (
+                                    <span
+                                        class="scarlett-word-span"
+                                        classList={{ 'scarlett-word-highlight': currentHighlightIndex() === word.index && !isBrowserTtsActive() }}
+                                        data-word-index={word.index}
+                                    >
+                                        {word.text}
+                                    </span>
+                                )
                             )}
                             </For>
                         </span>
