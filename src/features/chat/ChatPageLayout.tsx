@@ -1,54 +1,26 @@
-import { Component, createEffect } from 'solid-js';
-import { fromActorRef } from '@xstate/solid';
-import { chatService } from './chatOrchestratorMachine';
+import { Component } from 'solid-js';
+import { useChat } from './chatStore';
 import { ChatPageLayoutView } from './ChatPageLayoutView';
-// import { servicios } from '../../services'; // Removed problematic import
-import type { ChatOrchestratorEvent, ChatOrchestratorState } from './chatOrchestratorMachine';
 
 interface ChatPageLayoutProps {
   onNavigateBack: () => void;
 }
 
 export const ChatPageLayout: Component<ChatPageLayoutProps> = (props) => {
-  // Use singleton chat service actor
-  const actorRef = chatService;
-  const state = fromActorRef(actorRef) as () => ChatOrchestratorState;
-  const send = actorRef.send;
-
-  createEffect(() => {
-    const currentState = state();
-    console.log('[ChatPageLayout] Machine state (from context):', currentState.value);
-    console.log('[ChatPageLayout] Machine context (from context):', currentState.context);
-  });
-  
-  // Derive props from machine context
-  const threads = () => state().context.threads;
-  const messages = state().context.currentChatMessages;
-
+  const [state, actions] = useChat();
   return (
     <ChatPageLayoutView
-      threads={threads()}
-      currentThreadId={state().context.currentThreadId}
+      threads={state.threads}
+      currentThreadId={state.currentThreadId}
       onNavigateBack={props.onNavigateBack}
-      onSelectThread={(threadId) => {
-        send({ type: 'SET_CURRENT_THREAD_ID', threadId } as ChatOrchestratorEvent);
-        send({ type: 'CLEAR_ERROR' } as ChatOrchestratorEvent);
-      }}
-      isSpeechModeActive={state().context.isSpeechModeActive}
-      onToggleMode={() => send({ type: 'TOGGLE_INPUT_MODE' } as ChatOrchestratorEvent)}
-      messages={messages}
-      userInput={state().context.userInput}
-      onInputChange={(text) => send({ type: 'TEXT_INPUT_CHANGE', text } as ChatOrchestratorEvent)}
-      onSendText={() => {
-        console.log('[ChatPageLayout] onSendText triggered');
-        console.log('[ChatPageLayout] actorRef:', actorRef);
-        console.log('[ChatPageLayout] current userInput:', state().context.userInput);
-        send({ type: 'SEND_TEXT_MESSAGE', text: state().context.userInput } as ChatOrchestratorEvent);
-      }}
-      machineStateValue={state().value}
-      machineContext={state().context}
-      sendToMachine={send}
-      isIdle={state().matches('idle')}
+      onSelectThread={(id) => actions.selectThread(id)}
+      isSpeechModeActive={state.isSpeechMode}
+      onToggleMode={() => actions.toggleSpeech()}
+      messages={state.messages}
+      userInput={state.userInput}
+      onInputChange={(text) => actions.setInput(text)}
+      onSendText={() => actions.sendText()}
+      isIdle={!state.isLoading}
     />
   );
 }; 

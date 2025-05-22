@@ -4,8 +4,8 @@ import BookmarksPage from '../../src/pages/bookmarks/BookmarksPage';
 import StudyPage from '../../src/pages/study/StudyPage';
 import SettingsPage from '../../src/pages/settings/SettingsPage';
 import { ChatPageLayout } from '../../src/features/chat/ChatPageLayout';
+import { ChatProvider } from '../../src/features/chat/chatStore';
 import { SettingsProvider } from '../../src/context/SettingsContext';
-import { ChatMachineProvider } from '../../src/features/chat/ChatMachineContext';
 import type { Messages } from '../../src/types/i18n';
 import { browser } from 'wxt/browser';
 import { userConfigurationStorage } from '../../src/services/storage/storage';
@@ -108,9 +108,9 @@ const App: Component = (): JSX.Element => {
         </Match>
         <Match when={activeView() === 'unifiedChat'}>
           <Show when={userConfig()} fallback={<div>Loading chats and configuration...</div>}>
-            <ChatMachineProvider initialUserConfig={userConfig()!}>
+            <ChatProvider initialUserConfig={userConfig()!}>
               <ChatPageLayout onNavigateBack={() => navigateTo('newtab')} />
-            </ChatMachineProvider>
+            </ChatProvider>
           </Show>
         </Match>
       </Switch>

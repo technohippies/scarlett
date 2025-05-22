@@ -4,9 +4,7 @@ import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../component
 import { ChatSidebar } from './ChatSidebar';
 import { ChatMessageArea } from './ChatMessageArea';
 import { TextInputControls } from './TextInputControls';
-import { SpeechInputControls } from './SpeechInputControls';
 import type { Thread, ChatMessage } from './types';
-import type { ChatOrchestratorContext, ChatOrchestratorEvent, ChatOrchestratorState } from './chatOrchestratorMachine'; // For types
 
 export interface ChatPageLayoutViewProps {
   threads: Thread[];
@@ -23,11 +21,6 @@ export interface ChatPageLayoutViewProps {
   // onStartSpeech: () => void; // Will be handled by sendToMachine
   // onCancelSpeech: () => void; // Will be handled by sendToMachine
   // isRecording: boolean; // Will come from machineContext
-
-  // New props for machine state and dispatcher
-  machineStateValue: ChatOrchestratorState['value'];
-  machineContext: ChatOrchestratorContext;
-  sendToMachine: (event: ChatOrchestratorEvent) => void;
 }
 
 export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
@@ -58,22 +51,13 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
             <ChatMessageArea messages={props.messages} />
           </main>
           <div class="p-2 md:p-4 border-t border-border/40 bg-background">
-            {props.machineContext.isSpeechModeActive ? (
-              <SpeechInputControls
-                // Pass necessary parts of the machine state and the send function
-                // SpeechInputControls will need its own props interface updated
-                stateValue={props.machineStateValue} 
-                context={props.machineContext} // Pass relevant context parts or whole context
-                send={props.sendToMachine}
-              />
-            ) : (
-              <TextInputControls
-                userInput={props.userInput}
-                onInputChange={props.onInputChange}
-                onSendMessage={props.onSendText}
-                isDisabled={!props.isIdle} // isIdle comes from machine.matches('idle')
-              />
-            )}
+            {/* Text input controls */}
+            <TextInputControls
+              userInput={props.userInput}
+              onInputChange={props.onInputChange}
+              onSendMessage={props.onSendText}
+              isDisabled={!props.isIdle}
+            />
           </div>
         </div>
       </div>
