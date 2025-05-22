@@ -99,7 +99,7 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
         >
           <div class="relative">
             {/* Unified character-span container for AI messages */}
-            <div class="text-md whitespace-pre-wrap break-words">
+            <div class="text-md whitespace-pre-wrap break-words flex items-center">
               <For each={
                 // Use wordMap if available (TTS active), otherwise split text_content into characters
                 (message.sender === 'ai' && isCurrentSpokenMessage() && wordMap() && wordMap()!.length > 0)
@@ -108,19 +108,17 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
               }>{(item, index) => (
                 <span
                   class="scarlett-unified-word-span"
-                  classList={{ 'scarlett-unified-word-highlight': currentHighlightIndex() === index() && isCurrentSpokenMessage() /* Highlight only if this message is speaking */ }}
+                  classList={{ 'scarlett-unified-word-highlight': currentHighlightIndex() === index() && isCurrentSpokenMessage() }}
                   data-word-index={index()}
                 >
-                  {item.word /* No non-breaking space needed with whitespace-pre-wrap and inline spans */}
+                  {item.word}
                 </span>
               )}</For>
+              {/* Inline spinner during streaming */}
+              <Show when={message.sender === 'ai' && isStreaming()}>
+                <Spinner class="ml-2 size-4 text-muted-foreground" />
+              </Show>
             </div>
-            {/* Spinner overlay during LLM streaming */}
-            {message.sender === 'ai' && isStreaming() && (!message.text_content || message.text_content.trim() === '') && (
-              <div class="absolute inset-0 flex items-center justify-center bg-background bg-opacity-75">
-                <Spinner class="size-5 text-muted-foreground" />
-              </div>
-            )}
           </div>
         </div>
 

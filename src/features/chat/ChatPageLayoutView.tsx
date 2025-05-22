@@ -15,6 +15,7 @@ export interface ChatPageLayoutViewProps {
   onSelectThread: (threadId: string) => void;
   isSpeechModeActive: boolean;
   onToggleMode: () => void;
+  onCreateThread: () => void;
   messages: ChatMessage[];
   userInput: string;
   onInputChange: (text: string) => void;
@@ -48,6 +49,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
             threads={props.threads}
             currentThreadId={props.currentThreadId}
             onSelectThread={props.onSelectThread}
+            onCreateThread={props.onCreateThread}
           />
         </Show>
         <div class="flex flex-col flex-1 overflow-hidden">

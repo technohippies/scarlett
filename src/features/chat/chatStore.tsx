@@ -45,6 +45,7 @@ export interface ChatState {
   currentHighlightIndex: number | null;
   isGlobalTTSSpeaking: boolean;
   animationFrameId: number | null;
+  pendingThreadId: string | null;
 }
 
 export interface ChatActions {
@@ -56,6 +57,7 @@ export interface ChatActions {
   startVAD: () => void;
   stopVAD: () => void;
   playTTS: (params: { messageId: string; text: string; lang: string }) => Promise<void>;
+  createNewThread: () => Promise<void>;
 }
 
 // Props for ChatProvider now include userConfig
@@ -75,6 +77,7 @@ const defaultState: ChatState = {
   currentHighlightIndex: null,
   isGlobalTTSSpeaking: false,
   animationFrameId: null,
+  pendingThreadId: null,
 };
 const defaultActions: ChatActions = {
   loadThreads: async () => {},
@@ -84,7 +87,8 @@ const defaultActions: ChatActions = {
   toggleSpeech: () => {},
   startVAD: () => {},
   stopVAD: () => {},
-  playTTS: async () => {}
+  playTTS: async () => {},
+  createNewThread: async () => {},
 };
 // @ts-ignore: suppress createContext overload mismatch
 const ChatContext = createContext<[ChatState, ChatActions]>([defaultState, defaultActions]);
@@ -103,6 +107,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     currentHighlightIndex: null,
     isGlobalTTSSpeaking: false,
     animationFrameId: null,
+    pendingThreadId: null,
   });
 
   const actions: ChatActions = {
@@ -270,6 +275,38 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         }
         setState({ isLoading: false, userInput: '' });
         console.log('[chatStore] sendText complete');
+        // After first message in a new thread, auto-generate a title summary
+        if (state.pendingThreadId === state.currentThreadId) {
+          try {
+            const fc2 = props.initialUserConfig.llmConfig;
+            if (fc2) {
+              const llmConfig2: LLMConfig = {
+                provider: fc2.providerId as LLMProviderId,
+                model: fc2.modelId,
+                baseUrl: fc2.baseUrl || '',
+                apiKey: fc2.apiKey || undefined,
+                stream: true
+              };
+              const summaryPrompt = 'Summarize this conversation in 3–4 words.';
+              const historyForLLM2 = state.messages.map(m => ({
+                role: m.sender === 'ai' ? 'assistant' : 'user',
+                content: m.text_content
+              }));
+              const summaryStream = getAiChatResponseStream(historyForLLM2 as any, summaryPrompt, llmConfig2, {}) as AsyncGenerator<StreamedChatResponsePart>;
+              let summary = '';
+              for await (const part2 of summaryStream) {
+                if (part2.type === 'content') summary += part2.content;
+              }
+              const trimmed = summary.trim();
+              await messaging.sendMessage('updateChatThreadTitle', { threadId: state.pendingThreadId, newTitle: trimmed });
+              setState('threads', ts => ts.map(t => t.id === state.pendingThreadId ? { ...t, title: trimmed } : t));
+            }
+          } catch (e) {
+            console.error('[chatStore] thread summarization failed', e);
+          } finally {
+            setState('pendingThreadId', null);
+          }
+        }
       }
     },
 
@@ -407,6 +444,17 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           animationFrameId: null
         });
       }
+    },
+
+    async createNewThread() {
+      // 1) Create empty thread and mark as pending
+      const newId = crypto.randomUUID();
+      const placeholderTitle = 'New Thread';
+      const newThread = await messaging.sendMessage('addChatThread', { id: newId, title: placeholderTitle });
+      setState('threads', ts => [...ts, newThread]);
+      setState('pendingThreadId', newId);
+      // 2) Switch into the new thread
+      await this.selectThread(newId);
     }
   };
 

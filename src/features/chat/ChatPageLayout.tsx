@@ -10,12 +10,13 @@ export const ChatPageLayout: Component<ChatPageLayoutProps> = (props) => {
   const [state, actions] = useChat();
   return (
     <ChatPageLayoutView
-      threads={state.threads}
+      threads={state.threads.filter(t => t.id !== state.pendingThreadId)}
       currentThreadId={state.currentThreadId}
       onNavigateBack={props.onNavigateBack}
       onSelectThread={(id) => actions.selectThread(id)}
       isSpeechModeActive={state.isSpeechMode}
       onToggleMode={() => actions.toggleSpeech()}
+      onCreateThread={() => actions.createNewThread()}
       messages={state.messages}
       userInput={state.userInput}
       onInputChange={(text) => actions.setInput(text)}
