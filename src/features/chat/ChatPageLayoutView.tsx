@@ -5,6 +5,7 @@ import { ChatSidebar } from './ChatSidebar';
 import { ChatMessageArea } from './ChatMessageArea';
 import { TextInputControls } from './TextInputControls';
 import { MicVisualizer } from '../../components/ui/MicVisualizer';
+import { SpeechVisualizer } from '../../components/ui/SpeechVisualizer';
 import type { Thread, ChatMessage } from './types';
 
 export interface ChatPageLayoutViewProps {
@@ -42,14 +43,22 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
       </header>
 
       <div class="flex flex-1 overflow-hidden">
-        <ChatSidebar
-          threads={props.threads}
-          currentThreadId={props.currentThreadId}
-          onSelectThread={props.onSelectThread}
-        />
+        <Show when={!props.isSpeechModeActive} fallback={<></>}>
+          <ChatSidebar
+            threads={props.threads}
+            currentThreadId={props.currentThreadId}
+            onSelectThread={props.onSelectThread}
+          />
+        </Show>
         <div class="flex flex-col flex-1 overflow-hidden">
           <main class="flex-1 overflow-y-auto">
-            <ChatMessageArea messages={props.messages} />
+            <Show when={!props.isSpeechModeActive} fallback={
+              <div class="flex items-center justify-center h-full">
+                <SpeechVisualizer />
+              </div>
+            }>
+              <ChatMessageArea messages={props.messages} />
+            </Show>
           </main>
           <div class="p-2 md:p-4 border-t border-border/40 bg-background">
             <Show when={!props.isSpeechModeActive} fallback={

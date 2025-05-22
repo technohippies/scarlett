@@ -18,6 +18,7 @@ export interface ChatMessage {
   audio_url?: string;
   playbackRate?: number;
   metadata?: any;
+  audioObject?: HTMLAudioElement; // Optional, for direct control
 }
 
 export interface Thread {

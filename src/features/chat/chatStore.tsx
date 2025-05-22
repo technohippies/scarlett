@@ -1,5 +1,5 @@
 import { createStore } from 'solid-js/store';
-import { createContext, ParentComponent, useContext, createEffect } from 'solid-js';
+import { createContext, ParentComponent, useContext, createEffect, onMount } from 'solid-js';
 import { getAiChatResponseStream } from '../../services/llm/llmChatService';
 import type { LLMConfig, StreamedChatResponsePart } from '../../services/llm/types';
 import { defineExtensionMessaging } from '@webext-core/messaging';
@@ -7,6 +7,9 @@ import type { BackgroundProtocolMap, NewChatThreadDataForRpc } from '../../share
 import type { Thread, ChatMessage } from './types';
 import type { UserConfiguration } from '../../services/storage/types';
 import type { LLMProviderId } from '../../services/llm/types';
+import { generateElevenLabsSpeechWithTimestamps } from '../../services/tts/elevenLabsService';
+import type { WordInfo } from './types';
+import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
 
 // RPC client for background storage
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
@@ -38,6 +41,10 @@ export interface ChatState {
   isLoading: boolean;
   isVADListening: boolean;
   lastError: string | null;
+  currentSpokenMessageId: string | null;
+  currentHighlightIndex: number | null;
+  isGlobalTTSSpeaking: boolean;
+  animationFrameId: number | null;
 }
 
 export interface ChatActions {
@@ -48,6 +55,7 @@ export interface ChatActions {
   toggleSpeech: () => void;
   startVAD: () => void;
   stopVAD: () => void;
+  playTTS: (params: { messageId: string; text: string; lang: string }) => Promise<void>;
 }
 
 // Props for ChatProvider now include userConfig
@@ -62,7 +70,11 @@ const defaultState: ChatState = {
   isSpeechMode: false,
   isLoading: false,
   isVADListening: false,
-  lastError: null
+  lastError: null,
+  currentSpokenMessageId: null,
+  currentHighlightIndex: null,
+  isGlobalTTSSpeaking: false,
+  animationFrameId: null,
 };
 const defaultActions: ChatActions = {
   loadThreads: async () => {},
@@ -71,7 +83,8 @@ const defaultActions: ChatActions = {
   setInput: () => {},
   toggleSpeech: () => {},
   startVAD: () => {},
-  stopVAD: () => {}
+  stopVAD: () => {},
+  playTTS: async () => {}
 };
 // @ts-ignore: suppress createContext overload mismatch
 const ChatContext = createContext<[ChatState, ChatActions]>([defaultState, defaultActions]);
@@ -86,6 +99,10 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     isLoading: false,
     isVADListening: false,
     lastError: null,
+    currentSpokenMessageId: null,
+    currentHighlightIndex: null,
+    isGlobalTTSSpeaking: false,
+    animationFrameId: null,
   });
 
   const actions: ChatActions = {
@@ -164,6 +181,8 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         sender: 'ai',
         text_content: '',
         timestamp: new Date().toISOString(),
+        tts_lang: props.initialUserConfig.targetLanguage || 'en',
+        isStreaming: true
       };
       // Capture placeholder metadata for later persistence
       const placeholderId = aiPlaceholder.id;
@@ -210,6 +229,11 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         for await (const part of stream) {
           console.log('[chatStore] received stream part', part);
           if (part.type === 'content') {
+            // Clear streaming flag on first content part
+            const idx = state.messages.findIndex(m => m.id === placeholderId);
+            if (idx >= 0) {
+              setState('messages', idx, 'isStreaming', false);
+            }
             full += part.content;
           } else if (part.type === 'error') {
             setState('lastError', part.error);
@@ -231,10 +255,18 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
             id: placeholderId,
             thread_id: aiPlaceholder.thread_id,
             sender: aiPlaceholder.sender,
-            text_content: full
+            text_content: full,
+            tts_lang: aiPlaceholder.tts_lang
           });
         } catch (e: any) {
           console.error('[chatStore] failed to persist AI message', e);
+        }
+        // Ensure streaming flag is cleared after streaming completes
+        {
+          const idx = state.messages.findIndex(m => m.id === placeholderId);
+          if (idx >= 0) {
+            setState('messages', idx, 'isStreaming', false);
+          }
         }
         setState({ isLoading: false, userInput: '' });
         console.log('[chatStore] sendText complete');
@@ -259,10 +291,126 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       console.log('[chatStore] stopVAD called');
       setState('isVADListening', false);
       // TODO: finalize audio capture and send to STT
+    },
+
+    async playTTS({ messageId, text, lang }) {
+      console.log('[chatStore] playTTS called for', messageId);
+      const idx = state.messages.findIndex(m => m.id === messageId);
+      if (idx < 0) return;
+
+      // Stop any existing playback and clear its animation frame
+      const existingAudio = state.messages.find(m => m.audioObject)?.audioObject;
+      if (existingAudio) {
+        existingAudio.pause();
+      }
+      if (state.animationFrameId) {
+        cancelAnimationFrame(state.animationFrameId);
+        setState('animationFrameId', null);
+      }
+
+      try {
+        setState({ currentSpokenMessageId: messageId, isGlobalTTSSpeaking: true, currentHighlightIndex: null });
+        const apiKey = props.initialUserConfig.ttsConfig?.apiKey || '';
+        const modelId = props.initialUserConfig.ttsConfig?.modelId || DEFAULT_ELEVENLABS_MODEL_ID;
+        const voiceId = props.initialUserConfig.elevenLabsVoiceId ?? DEFAULT_ELEVENLABS_VOICE_ID;
+        const resp = await generateElevenLabsSpeechWithTimestamps(
+          apiKey,
+          text,
+          modelId,
+          voiceId
+        );
+        const { audioBlob, alignmentData } = resp;
+        const wordInfos: WordInfo[] = [];
+        if (alignmentData) {
+          const chars = alignmentData.characters;
+          const startTimes = alignmentData.character_start_times_seconds;
+          const endTimes = alignmentData.character_end_times_seconds;
+          for (let i = 0; i < chars.length; i++) {
+            wordInfos.push({ word: chars[i], start: startTimes[i] || 0, end: endTimes[i] || 0, index: i });
+          }
+        }
+        setState('messages', idx, 'ttsWordMap', wordInfos);
+
+        const url = URL.createObjectURL(audioBlob);
+        const audio = new Audio(url);
+        // Store audio object on message for potential later control if needed (optional)
+        // setState('messages', idx, 'audioObject', audio);
+
+        const updateHighlightLoop = () => {
+          if (!audio || audio.paused || audio.ended) {
+            if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+            setState('animationFrameId', null);
+            // Optionally clear highlight if loop stops and audio isn't playing (already handled by onended)
+            return;
+          }
+
+          const currentTime = audio.currentTime;
+          let highlightIdx: number | null = null;
+          for (const charInfo of wordInfos) {
+            if (currentTime >= charInfo.start && currentTime < charInfo.end) {
+              highlightIdx = charInfo.index;
+              break;
+            }
+          }
+          if (state.currentHighlightIndex !== highlightIdx) { 
+            setState('currentHighlightIndex', highlightIdx);
+          }
+          setState('animationFrameId', requestAnimationFrame(updateHighlightLoop));
+        };
+
+        audio.onplay = () => {
+          console.log('[chatStore] Audio onplay');
+          if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+          setState('animationFrameId', requestAnimationFrame(updateHighlightLoop));
+        };
+
+        audio.onpause = () => {
+          console.log('[chatStore] Audio onpause');
+          if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+          setState('animationFrameId', null);
+          // Do not clear isGlobalTTSSpeaking here, only onended or explicit stop
+        };
+
+        audio.onended = () => {
+          console.log('[chatStore] Audio onended');
+          if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+          setState({ 
+            isGlobalTTSSpeaking: false, 
+            currentSpokenMessageId: null, 
+            currentHighlightIndex: null,
+            animationFrameId: null 
+          });
+        };
+
+        audio.play().catch(e => {
+          console.error('[chatStore] Audio play error', e);
+          setState('lastError', 'Failed to play audio.');
+          // Clear TTS state if play fails immediately
+          if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+          setState({
+            isGlobalTTSSpeaking: false, 
+            currentSpokenMessageId: null, 
+            currentHighlightIndex: null,
+            animationFrameId: null
+          });
+        });
+
+      } catch (e: any) {
+        console.error('[chatStore] TTS error', e);
+        setState('lastError', e.message || String(e));
+        // Ensure cleanup if there was an error during TTS setup
+        if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
+        setState({
+          isGlobalTTSSpeaking: false, 
+          currentSpokenMessageId: null, 
+          currentHighlightIndex: null,
+          animationFrameId: null
+        });
+      }
     }
   };
 
-  createEffect(() => {
+  onMount(() => {
     actions.loadThreads();
   });
 
