@@ -1,4 +1,4 @@
-import { Component, createEffect, createMemo } from 'solid-js';
+import { Component, createMemo } from 'solid-js';
 
 export interface SpeechVisualizerProps {
   listening: boolean;
@@ -8,16 +8,6 @@ export interface SpeechVisualizerProps {
 }
 
 export const SpeechVisualizer: Component<SpeechVisualizerProps> = (props) => {
-  createEffect(() => {
-    // This log helps confirm props are received and component is reacting
-    console.log('[SpeechVisualizer] Props received:', {
-      listening: props.listening,
-      processing: props.processing,
-      speaking: props.speaking,
-      audioLevel: props.audioLevel,
-    });
-  });
-
   const visualizerClass = createMemo(() => {
     if (props.processing) {
       return 'processing';
@@ -33,7 +23,7 @@ export const SpeechVisualizer: Component<SpeechVisualizerProps> = (props) => {
 
   const visualizerStyle = createMemo(() => {
     if (props.speaking) {
-      const scale = 1 + props.audioLevel * 0.8;
+      const scale = 1 + props.audioLevel * 1.6;
       return { transform: `scale(${scale})` };
     }
     return {};
