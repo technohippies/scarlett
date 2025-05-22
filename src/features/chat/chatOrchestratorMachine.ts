@@ -4,6 +4,7 @@ import type { UserConfiguration } from '../../services/storage/types';
 import { getAiChatResponseStream } from '../../services/llm/llmChatService';
 import { generateElevenLabsSpeechStream, generateElevenLabsSpeechWithTimestamps } from '../../services/tts/elevenLabsService';
 import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService';
+import { ELEVENLABS_API_BASE_URL, DEFAULT_ELEVENLABS_VOICE_ID, DEFAULT_ELEVENLABS_MODEL_ID } from '../../shared/constants';
 
 // External actionsDefinition and services objects are removed as they are now defined within setup.
 
@@ -13,6 +14,7 @@ export interface ChatOrchestratorContext {
   currentChatMessages: ChatMessage[];
   isSpeechModeActive: boolean;
   userInput: string;
+  audioBlob?: Blob | null;
   aiResponse: string;
   vadInstance: any | null;
   isVADListening: boolean;
@@ -49,6 +51,8 @@ export type ChatOrchestratorEvent =
   | ErrorActorEvent<any, 'playTTS'>
   | { type: 'LLM_TOKEN'; token: string }
   | { type: 'LLM_DONE' }
+  | { type: 'TTS_CHUNK'; chunk: Uint8Array }
+  | { type: 'TTS_DONE' }
   | { type: 'RETRY' }
   | { type: 'CLEAR_ERROR' }
   | { type: 'SYNC_INITIAL_DATA'; threads: Thread[]; currentThreadId: string | null; messages: ChatMessage[]; userConfig: UserConfiguration; }
@@ -63,14 +67,15 @@ export const chatOrchestratorMachine = setup({
     events: {} as ChatOrchestratorEvent,
   },
   actors: {
-    transcribeAudio: fromPromise(async ({ input }: { input: { audioData: any } }) => {
-      console.log('Service: transcribeAudio - placeholder, audio data:', input.audioData);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      if (Math.random() > 0.1) {
-        return { transcript: 'Hello, this is a test transcript.' };
-      } else {
-        throw new Error('Transcription failed');
+    transcribeAudio: fromPromise(async ({ input }: { input: { audioData: Blob; apiKey?: string } }) => {
+      const { audioData, apiKey } = input;
+      if (!apiKey) {
+        console.error('[chatOrchestratorMachine] STT API key missing.');
+        throw new Error('STT API key is not configured.');
       }
+      // Call real STT service
+      const result = await transcribeElevenLabsAudio(apiKey, audioData);
+      return { transcript: result.text };
     }),
     invokeLLM: fromPromise(async ({ input }: { input: { userInput: string } }) => {
       console.log('Service: invokeLLM with input:', input.userInput);
@@ -129,12 +134,39 @@ export const chatOrchestratorMachine = setup({
     }),
     streamTTS: fromCallback((helpers: any) => {
       const { input, emit } = helpers;
-      const { text } = input;
-      // TODO: implement streaming fetch from ElevenLabs and emit AUDIO_CHUNK or TTS_DONE events using emit()
+      const { text, apiKey, voiceId, modelId } = input;
+      (async () => {
+        if (!apiKey) {
+          emit({ type: 'TTS_DONE' });
+          return;
+        }
+        const vid = voiceId || DEFAULT_ELEVENLABS_VOICE_ID;
+        const mid = modelId || DEFAULT_ELEVENLABS_MODEL_ID;
+        const url = `${ELEVENLABS_API_BASE_URL}/text-to-speech/${vid}/stream`;
+        const headers = new Headers({
+          'Accept': 'audio/mpeg',
+          'Content-Type': 'application/json',
+          'xi-api-key': apiKey,
+        });
+        const body = JSON.stringify({ text, model_id: mid });
+        try {
+          const response = await fetch(url, { method: 'POST', headers, body });
+          if (!response.ok || !response.body) throw new Error(`TTS fetch failed: ${response.status}`);
+          const reader = response.body.getReader();
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) {
+              emit({ type: 'TTS_CHUNK', chunk: value });
+            }
+          }
+        } catch (e) {
+          console.error('[chatOrchestratorMachine] TTS streaming error:', e);
+        } finally {
+          emit({ type: 'TTS_DONE' });
+        }
+      })();
     }),
-    elevenStt: fromPromise(async ({ input }: { input: { audioBlob: Blob } }) => {
-      return transcribeElevenLabsAudio(/* apiKey */ '', input.audioBlob);
-    })
   },
   actions: {
     notifySpeechDetected: () => { console.log('Action: Speech Detected'); },
@@ -167,14 +199,13 @@ export const chatOrchestratorMachine = setup({
       return {};
     }),
 
-    assignAudioData: assign(({
-      event
-    }: { event: AnyEventObject }) => {
+    assignAudioData: assign(({ event }: { event: AnyEventObject }) => {
       if (event.type === 'VAD_SPEECH_ENDED') {
         const specificEvent = event as Extract<ChatOrchestratorEvent, { type: 'VAD_SPEECH_ENDED'}>;
-        console.log("VAD_SPEECH_ENDED, audio data available. Context not changed by this action.", specificEvent.audioData);
+        console.log('VAD_SPEECH_ENDED, storing audio data in context.');
+        return { audioBlob: specificEvent.audioData };
       }
-      return {}; 
+      return {};
     }),
 
     assignUserInputText: assign(({
@@ -431,6 +462,7 @@ export const chatOrchestratorMachine = setup({
     currentChatMessages: (input as any)?.messages || [],
     isSpeechModeActive: false,
     userInput: '',
+    audioBlob: undefined,
     aiResponse: '',
     vadInstance: null,
     isVADListening: false,
@@ -550,7 +582,7 @@ export const chatOrchestratorMachine = setup({
           llmConfig: context.userConfig?.llmConfig!,
           chatOptions: {}
         }),
-        onEvent: {
+        on: {
           LLM_TOKEN: { actions: ['appendTokenToLastAIMessage'] },
           LLM_DONE:  { target: 'idle', actions: ['finalizeAIMessage', 'logEvent'] }
         },
@@ -568,7 +600,10 @@ export const chatOrchestratorMachine = setup({
           invoke: {
             id: 'transcribeAudio',
             src: 'transcribeAudio',
-            input: ({ context }: { context: ChatOrchestratorContext }) => ({ audioData: context.userInput }),
+            input: ({ context }: { context: ChatOrchestratorContext }) => ({
+              audioData: context.audioBlob!,
+              apiKey: context.userConfig?.elevenLabsApiKey
+            }),
             onDone: {
               target: 'streamingResponse',
               actions: ['assignTranscriptToContext', 'logEvent']
@@ -590,9 +625,9 @@ export const chatOrchestratorMachine = setup({
                     id: 'invokeLLMStreamSpeech',
                     src: 'streamLLM',
                     input: ({ context }: { context: ChatOrchestratorContext }) => ({ userInput: context.userInput }),
-                    onEvent: {
+                    on: {
                       LLM_TOKEN: { actions: 'appendAIResponse' },
-                      LLM_DONE: { target: 'done' }
+                      LLM_DONE: { target: 'streaming.done' }
                     },
                     onError: { target: '#chatOrchestrator.errorState.llmError', actions: ['assignLlmError', 'logEvent'] }
                   }
@@ -607,8 +642,16 @@ export const chatOrchestratorMachine = setup({
                   invoke: {
                     id: 'invokeTTSStream',
                     src: 'streamTTS',
-                    input: ({ context }: { context: ChatOrchestratorContext }) => ({ text: context.aiResponse }),
-                    onDone: { target: 'done' }
+                    input: ({ context }: { context: ChatOrchestratorContext }) => ({
+                      text: context.aiResponse,
+                      apiKey: context.userConfig?.elevenLabsApiKey,
+                      modelId: context.userConfig?.ttsConfig?.modelId ?? undefined,
+                      voiceId: context.userConfig?.elevenLabsVoiceId,
+                    }),
+                    on: {
+                      TTS_DONE: { target: 'done' }
+                    },
+                    onError: { target: '#chatOrchestrator.errorState.ttsError', actions: ['assignTtsError', 'logEvent'] }
                   }
                 },
                 done: { type: 'final' }

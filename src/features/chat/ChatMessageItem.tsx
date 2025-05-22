@@ -99,24 +99,34 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
         >
           <div class="relative">
             {/* Unified character-span container for AI messages */}
-            <div class="text-md whitespace-pre-wrap break-words flex items-center">
-              <For each={
-                // Use wordMap if available (TTS active), otherwise split text_content into characters
-                (message.sender === 'ai' && isCurrentSpokenMessage() && wordMap() && wordMap()!.length > 0)
-                  ? wordMap()!
-                  : message.text_content.split('').map((char, idx) => ({ word: char, start: 0, end: 0, index: idx }))
-              }>{(item, index) => (
-                <span
-                  class="scarlett-unified-word-span"
-                  classList={{ 'scarlett-unified-word-highlight': currentHighlightIndex() === index() && isCurrentSpokenMessage() }}
-                  data-word-index={index()}
-                >
-                  {item.word}
+            <div class="text-md whitespace-pre-wrap break-words">
+              <Show
+                when={message.sender === 'ai' && isCurrentSpokenMessage() && wordMap() && wordMap()!.length > 0}
+                fallback={
+                  <span class="inline-flex items-center">
+                    <span class="whitespace-pre-wrap break-words">{message.text_content}</span>
+                    <Show when={message.sender === 'ai' && isStreaming()}>
+                      <Spinner class="ml-2 size-4 text-muted-foreground" />
+                    </Show>
+                  </span>
+                }
+              >
+                <span class="inline-flex items-center">
+                  <For each={wordMap()!}>
+                    {(item, index) => (
+                      <span
+                        class="scarlett-unified-word-span"
+                        classList={{ 'scarlett-unified-word-highlight': currentHighlightIndex() === index() && isCurrentSpokenMessage() }}
+                        data-word-index={index()}
+                      >
+                        {item.word}
+                      </span>
+                    )}
+                  </For>
+                  <Show when={message.sender === 'ai' && isStreaming()}>
+                    <Spinner class="ml-2 size-4 text-muted-foreground" />
+                  </Show>
                 </span>
-              )}</For>
-              {/* Inline spinner during streaming */}
-              <Show when={message.sender === 'ai' && isStreaming()}>
-                <Spinner class="ml-2 size-4 text-muted-foreground" />
               </Show>
             </div>
           </div>

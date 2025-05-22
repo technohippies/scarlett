@@ -10,6 +10,7 @@ import type { LLMProviderId } from '../../services/llm/types';
 import { generateElevenLabsSpeechWithTimestamps } from '../../services/tts/elevenLabsService';
 import type { WordInfo } from './types';
 import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
+import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService';
 
 // RPC client for background storage
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
@@ -109,6 +110,10 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     animationFrameId: null,
     pendingThreadId: null,
   });
+
+  // VAD recorder and buffer
+  let mediaRecorder: MediaRecorder | null = null;
+  let audioChunks: Blob[] = [];
 
   const actions: ChatActions = {
     async loadThreads() {
@@ -321,13 +326,55 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     startVAD() {
       console.log('[chatStore] startVAD called');
       setState('isVADListening', true);
-      // TODO: hook into STT/VAD pipeline
+      // Begin capturing audio via MediaRecorder
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+          mediaRecorder.ondataavailable = e => { audioChunks.push(e.data); };
+          mediaRecorder.start();
+          // Auto-stop after fixed interval (e.g., 5 seconds) if user doesn't click stop
+          setTimeout(() => {
+            if (mediaRecorder && state.isVADListening) {
+              console.log('[chatStore] Auto-stopping VAD after timeout');
+              actions.stopVAD();
+            }
+          }, 5000);
+        })
+        .catch(e => {
+          console.error('[chatStore] Unable to start audio capture', e);
+          setState('lastError', 'Microphone access denied.');
+          setState('isVADListening', false);
+        });
     },
 
-    stopVAD() {
+    async stopVAD() {
       console.log('[chatStore] stopVAD called');
       setState('isVADListening', false);
-      // TODO: finalize audio capture and send to STT
+      if (mediaRecorder) {
+        mediaRecorder.onstop = async () => {
+          const blob = new Blob(audioChunks, { type: audioChunks[0]?.type || 'audio/webm' });
+          // Transcribe blob to text
+          const apiKey = props.initialUserConfig.ttsConfig?.apiKey || props.initialUserConfig.elevenLabsApiKey;
+          if (!apiKey) {
+            console.warn('[chatStore] STT API key not configured');
+            setState('lastError', 'Speech-to-text API key is missing. Please configure it in Settings.');
+            return;
+          }
+          try {
+            const result = await transcribeElevenLabsAudio(apiKey, blob);
+            // Populate input and send as text
+            setState('userInput', result.text);
+            await actions.sendText();
+          } catch (e: any) {
+            console.error('[chatStore] STT error', e);
+            setState('lastError', e.message || String(e));
+          }
+        };
+        mediaRecorder.stop();
+      } else {
+        console.warn('[chatStore] stopVAD called but recorder not initialized');
+      }
     },
 
     async playTTS({ messageId, text, lang, speed }) {

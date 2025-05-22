@@ -38,8 +38,8 @@ export async function transcribeElevenLabsAudio(
 ): Promise<ElevenLabsTranscriptionResponse> {
     const apiUrl = `${ELEVENLABS_API_BASE_URL}/speech-to-text`;
 
+    // Use xi-api-key header for Speech-to-Text API authentication
     const headers = new Headers({
-        // 'Content-Type': 'multipart/form-data' is set automatically by browser for FormData
         'xi-api-key': apiKey,
     });
 
