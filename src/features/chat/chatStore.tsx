@@ -394,7 +394,8 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
 
       try {
         setState({ currentSpokenMessageId: messageId, isGlobalTTSSpeaking: true, currentHighlightIndex: null });
-        const apiKey = props.initialUserConfig.ttsConfig?.apiKey || '';
+        // Generate full audio blob with timestamps for highlighting
+        const apiKey = props.initialUserConfig.ttsConfig?.apiKey || props.initialUserConfig.elevenLabsApiKey || '';
         const modelId = props.initialUserConfig.ttsConfig?.modelId || DEFAULT_ELEVENLABS_MODEL_ID;
         const voiceId = props.initialUserConfig.elevenLabsVoiceId ?? DEFAULT_ELEVENLABS_VOICE_ID;
         const resp = await generateElevenLabsSpeechWithTimestamps(
@@ -407,27 +408,20 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           lang
         );
         const { audioBlob, alignmentData } = resp;
-        const wordInfos: WordInfo[] = [];
-        if (alignmentData) {
-          const chars = alignmentData.characters;
-          const startTimes = alignmentData.character_start_times_seconds;
-          const endTimes = alignmentData.character_end_times_seconds;
-          for (let i = 0; i < chars.length; i++) {
-            wordInfos.push({ word: chars[i], start: startTimes[i] || 0, end: endTimes[i] || 0, index: i });
-          }
-        }
+        const wordInfos: WordInfo[] = alignmentData
+          ? alignmentData.characters.map((char, i) => ({ word: char, start: alignmentData.character_start_times_seconds[i] || 0, end: alignmentData.character_end_times_seconds[i] || 0, index: i }))
+          : [];
         setState('messages', idx, 'ttsWordMap', wordInfos);
-
         const url = URL.createObjectURL(audioBlob);
         const audio = new Audio(url);
+
         // Store audio object on message for potential later control if needed (optional)
-        // setState('messages', idx, 'audioObject', audio);
+        setState('messages', idx, 'audioObject', audio);
 
         const updateHighlightLoop = () => {
           if (!audio || audio.paused || audio.ended) {
             if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
             setState('animationFrameId', null);
-            // Optionally clear highlight if loop stops and audio isn't playing (already handled by onended)
             return;
           }
 
@@ -439,7 +433,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
               break;
             }
           }
-          if (state.currentHighlightIndex !== highlightIdx) { 
+          if (state.currentHighlightIndex !== highlightIdx) {
             setState('currentHighlightIndex', highlightIdx);
           }
           setState('animationFrameId', requestAnimationFrame(updateHighlightLoop));
@@ -455,31 +449,17 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           console.log('[chatStore] Audio onpause');
           if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
           setState('animationFrameId', null);
-          // Do not clear isGlobalTTSSpeaking here, only onended or explicit stop
         };
 
         audio.onended = () => {
           console.log('[chatStore] Audio onended');
           if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
-          setState({ 
-            isGlobalTTSSpeaking: false, 
-            currentSpokenMessageId: null, 
-            currentHighlightIndex: null,
-            animationFrameId: null 
-          });
+          setState({ isGlobalTTSSpeaking: false, currentSpokenMessageId: null, currentHighlightIndex: null, animationFrameId: null });
         };
 
         audio.play().catch(e => {
           console.error('[chatStore] Audio play error', e);
-          setState('lastError', 'Failed to play audio.');
-          // Clear TTS state if play fails immediately
-          if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
-          setState({
-            isGlobalTTSSpeaking: false, 
-            currentSpokenMessageId: null, 
-            currentHighlightIndex: null,
-            animationFrameId: null
-          });
+          setState('lastError', 'Failed to play TTS audio.');
         });
 
       } catch (e: any) {
