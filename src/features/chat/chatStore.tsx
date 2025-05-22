@@ -47,6 +47,7 @@ export interface ChatState {
   isGlobalTTSSpeaking: boolean;
   animationFrameId: number | null;
   pendingThreadId: string | null;
+  audioLevel: number;
 }
 
 export interface ChatActions {
@@ -79,6 +80,7 @@ const defaultState: ChatState = {
   isGlobalTTSSpeaking: false,
   animationFrameId: null,
   pendingThreadId: null,
+  audioLevel: 0,
 };
 const defaultActions: ChatActions = {
   loadThreads: async () => {},
@@ -109,6 +111,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     isGlobalTTSSpeaking: false,
     animationFrameId: null,
     pendingThreadId: null,
+    audioLevel: 0,
   });
 
   // VAD recorder, stream and buffer
@@ -446,6 +449,24 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         // Store audio object on message for potential later control if needed (optional)
         setState('messages', idx, 'audioObject', audio);
 
+        // Setup Web Audio API to analyze TTS output
+        const audioCtx = new AudioContext();
+        const sourceNode = audioCtx.createMediaElementSource(audio);
+        const analyserNode = audioCtx.createAnalyser();
+        analyserNode.fftSize = 32;
+        sourceNode.connect(analyserNode);
+        analyserNode.connect(audioCtx.destination);
+        const dataArray = new Uint8Array(analyserNode.frequencyBinCount);
+        const updateAudioLevel = () => {
+          analyserNode.getByteFrequencyData(dataArray);
+          const sum = dataArray.reduce((a, b) => a + b, 0);
+          const avg = sum / dataArray.length / 255;
+          setState('audioLevel', avg);
+          if (!audio.paused && !audio.ended) {
+            requestAnimationFrame(updateAudioLevel);
+          }
+        };
+
         const updateHighlightLoop = () => {
           if (!audio || audio.paused || audio.ended) {
             if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
@@ -471,18 +492,20 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           console.log('[chatStore] Audio onplay');
           if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
           setState('animationFrameId', requestAnimationFrame(updateHighlightLoop));
+          audioCtx.resume().then(() => updateAudioLevel());
         };
 
         audio.onpause = () => {
           console.log('[chatStore] Audio onpause');
           if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
-          setState('animationFrameId', null);
+          setState({ animationFrameId: null, audioLevel: 0 });
         };
 
         audio.onended = () => {
           console.log('[chatStore] Audio onended');
           if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
-          setState({ isGlobalTTSSpeaking: false, currentSpokenMessageId: null, currentHighlightIndex: null, animationFrameId: null });
+          setState({ isGlobalTTSSpeaking: false, currentSpokenMessageId: null, currentHighlightIndex: null, animationFrameId: null, audioLevel: 0 });
+          sourceNode.disconnect(); analyserNode.disconnect(); audioCtx.close();
           // Auto-restart VAD if still in speech mode
           if (state.isSpeechMode) {
             console.log('[chatStore] TTS ended, restarting VAD');
@@ -504,7 +527,8 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           isGlobalTTSSpeaking: false, 
           currentSpokenMessageId: null, 
           currentHighlightIndex: null,
-          animationFrameId: null
+          animationFrameId: null,
+          audioLevel: 0
         });
       }
     },

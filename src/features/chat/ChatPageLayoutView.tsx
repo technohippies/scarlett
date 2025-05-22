@@ -22,6 +22,8 @@ export interface ChatPageLayoutViewProps {
   onSendText: () => void;
   isIdle: boolean;
   isVADListening: boolean;
+  isSpeaking: boolean;
+  audioLevel: number;
   onStartVAD: () => void;
   onStopVAD: () => void;
 }
@@ -71,7 +73,12 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
           <main class="flex-1 overflow-y-auto">
             <Show when={!props.isSpeechModeActive} fallback={
               <div class="flex items-center justify-center h-full">
-                <SpeechVisualizer />
+                <SpeechVisualizer
+                  listening={props.isVADListening}
+                  processing={!props.isIdle}
+                  speaking={props.isSpeaking}
+                  audioLevel={props.audioLevel}
+                />
               </div>
             }>
               <ChatMessageArea messages={props.messages} />

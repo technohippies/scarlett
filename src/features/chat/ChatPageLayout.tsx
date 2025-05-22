@@ -23,6 +23,8 @@ export const ChatPageLayout: Component<ChatPageLayoutProps> = (props) => {
       onSendText={() => actions.sendText()}
       isIdle={!state.isLoading}
       isVADListening={state.isVADListening}
+      isSpeaking={state.isGlobalTTSSpeaking}
+      audioLevel={state.audioLevel}
       onStartVAD={() => actions.startVAD()}
       onStopVAD={() => actions.stopVAD()}
     />
