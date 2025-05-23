@@ -276,9 +276,9 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           if (lastIndex >= 0) {
             // Remove any parentheses content (e.g., Pinyin)
             let filtered = full.replace(/\s*\([^)]*\)/g, '');
-            // If target language uses no inter-word spacing, collapse whitespace
+            // If target language uses no inter-word spacing, collapse spaces only between CJK characters
             if (collapseLangs.includes(targetCode)) {
-              filtered = filtered.replace(/\s+/g, '');
+              filtered = filtered.replace(/([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])\s+([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])/gu, '$1$2');
             }
             setState('messages', lastIndex, 'text_content', filtered);
           }
@@ -290,7 +290,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         // Strip parentheses and collapse for certain scripts
         full = full.replace(/\s*\([^)]*\)/g, '').trim();
         if (collapseLangs.includes(targetCode)) {
-          full = full.replace(/\s+/g, '');
+          full = full.replace(/([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])\s+([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])/gu, '$1$2');
         }
         // Update the displayed AI message to the cleaned text
         const cleanIdx = state.messages.findIndex(m => m.id === placeholderId);
@@ -473,9 +473,29 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           lang
         );
         const { audioBlob, alignmentData } = resp;
-        const wordInfos: WordInfo[] = alignmentData
-          ? alignmentData.characters.map((char, i) => ({ word: char, start: alignmentData.character_start_times_seconds[i] || 0, end: alignmentData.character_end_times_seconds[i] || 0, index: i }))
-          : [];
+        // Build character-level WordInfo array over the full text, preserving spaces
+        let wordInfos: WordInfo[] = [];
+        if (alignmentData && Array.isArray(alignmentData.characters) && alignmentData.characters.length > 0) {
+          const { characters, character_start_times_seconds: starts, character_end_times_seconds: ends } = alignmentData;
+          let alignIdx = 0;
+          // Iterate each char in the original text
+          for (let i = 0; i < text.length; i++) {
+            const char = text.charAt(i);
+            if (alignIdx < characters.length && characters[alignIdx] === char) {
+              wordInfos.push({ word: char, start: starts[alignIdx] || 0, end: ends[alignIdx] || 0, index: i });
+              alignIdx++;
+            } else {
+              // whitespace or unmatched char: preserve with previous timestamp
+              const prevEnd = wordInfos.length > 0 ? wordInfos[wordInfos.length - 1].end : 0;
+              wordInfos.push({ word: char, start: prevEnd, end: prevEnd, index: i });
+            }
+          }
+        } else {
+          // Fallback: split full text by character (including spaces)
+          for (let i = 0; i < text.length; i++) {
+            wordInfos.push({ word: text.charAt(i), start: 0, end: 0, index: i });
+          }
+        }
         setState('messages', idx, 'ttsWordMap', wordInfos);
         const url = URL.createObjectURL(audioBlob);
         const audio = new Audio(url);
