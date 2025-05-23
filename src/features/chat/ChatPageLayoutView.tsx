@@ -126,15 +126,17 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
           <SwitchControl class="relative"><SwitchThumb /></SwitchControl>
           <SwitchLabel>Speech Mode</SwitchLabel>
         </Switch>
-        <EmbeddingProcessingPanel
-          pendingEmbeddingCount={() => pendingEmbeddingData()?.count || 0}
-          isEmbedding={isEmbedding}
-          embedStatusMessage={embedStatusMessage}
-          processedCount={processedCount}
-          totalCount={totalCount}
-          onProcessClick={handleEmbedClick}
-          class="ml-2"
-        />
+        <Show when={(pendingEmbeddingData()?.count || 0) > 0 || isEmbedding()} fallback={<></>}>
+          <EmbeddingProcessingPanel
+            pendingEmbeddingCount={() => pendingEmbeddingData()?.count || 0}
+            isEmbedding={isEmbedding}
+            embedStatusMessage={embedStatusMessage}
+            processedCount={processedCount}
+            totalCount={totalCount}
+            onProcessClick={handleEmbedClick}
+            class="ml-2"
+          />
+        </Show>
       </header>
 
       <div class="flex flex-1 overflow-hidden">

@@ -18,6 +18,10 @@ export interface EmbeddingProcessingPanelProps {
 }
 
 export const EmbeddingProcessingPanel: Component<EmbeddingProcessingPanelProps> = (props) => {
+  // Hide the panel when there's nothing to embed and not currently embedding
+  if (!props.isEmbedding() && props.pendingEmbeddingCount() === 0) {
+    return null;
+  }
   const i18n = () => {
     const msgs = props.messages;
     return {
@@ -34,7 +38,7 @@ export const EmbeddingProcessingPanel: Component<EmbeddingProcessingPanelProps> 
       return (
         <span class="flex items-center justify-center w-full">
           <Spinner class="mr-2 h-5 w-5 animate-spin" />
-          {i18n().get('embeddingPanelButtonEmbeddingInProgress', 'Embedding...')}
+          {i18n().get('embeddingPanelButtonEmbeddingInProgress', 'Embedding Webpage')}
           {(total > 0) && <span class="ml-2 text-sm">({processed}/{total})</span>}
         </span>
       );
@@ -42,15 +46,15 @@ export const EmbeddingProcessingPanel: Component<EmbeddingProcessingPanelProps> 
       return (
         <span class="flex items-center justify-center w-full">
           <ArrowClockwise weight="bold" size={18} class="mr-2" />
-          {i18n().get('embeddingPanelButtonEmbed', 'Embed')} ({props.pendingEmbeddingCount()})
+          {i18n().get('embeddingPanelButtonEmbed', 'Update Memory')} ({props.pendingEmbeddingCount()})
         </span>
       );
     } else {
-        return (
-            <span class="flex items-center justify-center w-full">
-                {i18n().get('embeddingPanelButtonEmbed', 'Embed')}
-            </span>
-        );
+      return (
+        <span class="flex items-center justify-center w-full">
+          {i18n().get('embeddingPanelButtonEmbed', 'Update Memory')}
+        </span>
+      );
     }
   };
 
