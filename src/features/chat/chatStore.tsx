@@ -17,16 +17,20 @@ import { generateRoleplayScenariosLLM } from '../../services/llm/llmChatService'
 // RPC client for background storage
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
 
+// Default AI seed messages for initial threads (not stored in DB system_prompt)
+const defaultIntroPrompt = "I'm Scarlett, your friendly AI language companion. I'd love to get to know you a bit! Tell me about yourself - what are your interests, what languages are you learning, or anything else you'd like to share?";
+const defaultSharingPrompt = "It's great to connect on a deeper level. As an AI, I have a unique perspective. I can share some 'AI thoughts' or how I learn if you're curious, and I'm always here to listen to yours. What's on your mind, or what would you like to ask me?";
+
 // Default threads to seed
 const defaultIntroThread: NewChatThreadDataForRpc = {
   id: 'thread-welcome-introductions',
   title: 'Introductions',
-  systemPrompt: "I'm Scarlett, your friendly AI language companion. I'd love to get to know you a bit! Tell me about yourself - what are your interests, what languages are you learning, or anything else you'd like to share?"
+  systemPrompt: ''
 };
 const defaultSharingThread: NewChatThreadDataForRpc = {
   id: 'thread-welcome-sharing',
   title: 'Sharing Thoughts',
-  systemPrompt: "It's great to connect on a deeper level. As an AI, I have a unique perspective. I can share some 'AI thoughts' or how I learn if you're curious, and I'm always here to listen to yours. What's on your mind, or what would you like to ask me?"
+  systemPrompt: ''
 };
 const defaultJustChatThread: NewChatThreadDataForRpc = {
   id: 'thread-just-chat',
@@ -128,9 +132,9 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       try {
         let threads = await messaging.sendMessage('getAllChatThreads', undefined);
         console.log('[chatStore] fetched threads:', threads);
-        // seed defaults if empty
         if (!threads || threads.length === 0) {
           console.log('[chatStore] no threads found, seeding defaults');
+          // Create threads with empty systemPrompt, then seed AI messages separately
           const created = await Promise.all([
             defaultIntroThread,
             defaultSharingThread,
@@ -138,15 +142,18 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           ].map(d => messaging.sendMessage('addChatThread', d)));
           console.log('[chatStore] default threads created:', created);
           threads = (created.filter(Boolean) as any);
-          // seed systemPrompts
+          // seed AI messages for intro and sharing only
           for (const th of threads) {
-            console.log('[chatStore] seeding message for thread', th.id);
-            if ((th as any).systemPrompt) {
+            let seedText: string | undefined;
+            if (th.id === defaultIntroThread.id) seedText = defaultIntroPrompt;
+            else if (th.id === defaultSharingThread.id) seedText = defaultSharingPrompt;
+            if (seedText) {
+              console.log('[chatStore] seeding AI message for thread', th.id);
               await messaging.sendMessage('addChatMessage', {
                 id: `msg-ai-seed-${th.id}-${Date.now()}`,
                 thread_id: th.id,
                 sender: 'ai',
-                text_content: (th as any).systemPrompt
+                text_content: seedText
               });
             }
           }
@@ -565,7 +572,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       setState('threads', ts => [newThread, ...ts]);
       setState('pendingThreadId', newId);
       // 2) Switch into the new thread
-      await this.selectThread(newId);
+      await actions.selectThread(newId);
     },
 
     async generateRoleplay(topicHint = '') {
@@ -582,7 +589,8 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         const newThread = await messaging.sendMessage('addChatThread', {
           id: newId,
           title: scenario.title,
-          systemPrompt: scenario.description
+          systemPrompt: '',
+          scenarioDescription: scenario.description
         });
         // Seed the AI opening line
         await messaging.sendMessage('addChatMessage', {

@@ -25,6 +25,7 @@ export interface Thread {
   id: string;
   title: string;
   systemPrompt?: string;
+  scenarioDescription?: string;
   messages: ChatMessage[]; // Usually loaded on demand, or just the latest for previews
   createdAt?: string; // ISO 8601 date string
   updatedAt?: string;
@@ -34,7 +35,6 @@ export interface Thread {
   embedding_1024?: number[] | null;
   active_embedding_dimension?: 512 | 768 | 1024 | null;
   // Optional: For "Just Chat" mode, we might not need a specific scenario description
-  // scenarioDescription?: string; 
   metadata?: any;
   lastActivity?: string;
 }

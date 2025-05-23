@@ -8,6 +8,7 @@ const mapDbRowToThread = (row: any): Thread => {
     id: row.id,
     title: row.title,
     systemPrompt: row.system_prompt,
+    scenarioDescription: row.scenario_description,
     createdAt: row.created_at,
     lastActivity: row.last_activity_at,
     messages: [], // Messages will be loaded separately
@@ -44,6 +45,7 @@ export const getAllChatThreads = async (): Promise<Thread[]> => {
         id, 
         title, 
         system_prompt, 
+        scenario_description, 
         created_at, 
         last_activity_at,
         embedding_512,
@@ -99,6 +101,7 @@ export interface NewChatThreadData {
   id: string; 
   title: string;
   systemPrompt?: string;
+  scenarioDescription?: string;
   embedding_512?: number[] | null;
   embedding_768?: number[] | null;
   embedding_1024?: number[] | null;
@@ -121,8 +124,7 @@ export const addChatThread = async (threadData: NewChatThreadData): Promise<Thre
         threadData.systemPrompt || '',
         now,
         now,
-        
-        null,
+        threadData.scenarioDescription ?? null,
         null,
         null,
 
@@ -136,6 +138,7 @@ export const addChatThread = async (threadData: NewChatThreadData): Promise<Thre
       id: threadData.id,
       title: threadData.title,
       systemPrompt: threadData.systemPrompt || '',
+      scenarioDescription: threadData.scenarioDescription,
       createdAt: now,
       lastActivity: now,
       messages: [],

@@ -5,6 +5,7 @@ import { ChatMessageItem } from './ChatMessageItem'; // Assuming this component 
 
 interface ChatMessageAreaProps {
   messages: ChatMessage[];
+  description?: string;
   // Props needed for highlighting spoken words, etc.
   activeSpokenMessageId?: string | null;
   ttsWordMap?: WordInfo[];
@@ -13,6 +14,9 @@ interface ChatMessageAreaProps {
 }
 
 export const ChatMessageArea: Component<ChatMessageAreaProps> = (props) => {
+  createEffect(() => {
+    console.log('[ChatMessageArea] description prop:', props.description);
+  });
   let scrollHostRef: HTMLDivElement | undefined;
   const [state, actions] = useChat();
 
@@ -25,6 +29,11 @@ export const ChatMessageArea: Component<ChatMessageAreaProps> = (props) => {
 
   return (
     <div ref={scrollHostRef} class="flex-grow p-4 space-y-6 bg-background overflow-y-auto" id="message-list-container">
+      {props.description && (
+        <div class="mb-4 p-2 bg-muted/20 text-muted-foreground italic rounded">
+          {props.description}
+        </div>
+      )}
       <Show when={props.messages.length > 0} fallback={<div class="text-center text-muted-foreground p-8">No messages yet.</div>}>
         <For each={props.messages}>
           {(message) => (

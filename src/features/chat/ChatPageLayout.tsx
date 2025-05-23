@@ -12,6 +12,9 @@ export const ChatPageLayout: Component<ChatPageLayoutProps> = (props) => {
     <ChatPageLayoutView
       threads={state.threads.filter(t => t.id !== state.pendingThreadId)}
       currentThreadId={state.currentThreadId}
+      threadSystemPrompt={
+        state.threads.find(t => t.id === state.currentThreadId)?.scenarioDescription
+      }
       onNavigateBack={props.onNavigateBack}
       onSelectThread={(id) => actions.selectThread(id)}
       isSpeechModeActive={state.isSpeechMode}

@@ -422,6 +422,7 @@ export interface NewChatThreadDataForRpc {
   id: string;
   title: string;
   systemPrompt?: string;
+  scenarioDescription?: string;
 }
 
 export interface NewChatMessageDataForRpc {

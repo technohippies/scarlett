@@ -22,6 +22,7 @@ export interface ChatPageLayoutViewProps {
   onToggleMode: () => void;
   onCreateThread: () => void;
   onGenerateRoleplay: () => void;
+  threadSystemPrompt?: string;
   messages: ChatMessage[];
   userInput: string;
   onInputChange: (text: string) => void;
@@ -35,6 +36,9 @@ export interface ChatPageLayoutViewProps {
 }
 
 export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
+  createEffect(() => {
+    console.log('[ChatPageLayoutView] threadSystemPrompt prop:', props.threadSystemPrompt);
+  });
   // Stop VAD when speech mode is disabled
   createEffect(() => {
     if (!props.isSpeechModeActive && props.isVADListening) {
@@ -162,7 +166,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
                 />
               </div>
             }>
-              <ChatMessageArea messages={props.messages} />
+              <ChatMessageArea messages={props.messages} description={props.threadSystemPrompt} />
             </Show>
           </main>
           <div class="p-2 md:p-4 border-t border-border/40 bg-background">
