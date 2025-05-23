@@ -28,6 +28,7 @@ const LEARNING_HIGHLIGHT_STYLE_ID = 'scarlett-learning-highlight-styles';
 import TranslatorWidget from '../src/features/translator/TranslatorWidget';
 import type { AlignmentData } from '../src/features/translator/TranslatorWidget';
 import { extractReadableMarkdown } from '../src/lib/html-processor'; // Import the extraction function
+import Defuddle from 'defuddle'; // Use default export from Defuddle
 import type {
     DisplayTranslationPayload, // Expect payload from background for displaying
     UpdateAlignmentPayload, // Payload from background with alignment
@@ -176,16 +177,19 @@ export default defineContentScript({
                 try {
                     const url = window.location.href;
                     const title = document.title;
-                    const htmlContent = await extractMainContent(); // Use helper function
-                    if (htmlContent) {
-                        console.log(`[Scarlett CS] Sending processPageVisit for URL: ${url.substring(0, 100)}`);
-                        // Use messageSender to send to background
-                        messageSender.sendMessage('processPageVisit', { url, title, htmlContent });
-                    } else {
-                         console.warn('[Scarlett CS] No content extracted, skipping processPageVisit.');
-                    }
+                    // Use Defuddle to extract markdown and metadata in one pass
+                    const defuddle = new Defuddle(document, { markdown: true, url });
+                    const defuddleResult = defuddle.parse();
+                    const markdownContent = defuddleResult.content;
+                    console.log(`[Scarlett CS] Defuddle extracted markdown (length: ${markdownContent?.length}) for URL: ${url.substring(0, 100)}`);
+                    messageSender.sendMessage('processPageVisit', {
+                        url,
+                        title: defuddleResult.title || title,
+                        markdownContent,
+                        defuddleMetadata: defuddleResult
+                    });
                 } catch (error) {
-                     console.error('[Scarlett CS] Error during scheduled page processing:', error);
+                    console.error('[Scarlett CS] Defuddle extraction failed:', error);
                 }
             }, PAGE_VISIT_DELAY);
         };

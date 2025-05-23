@@ -326,7 +326,7 @@ export interface BackgroundProtocolMap {
         Promise<TagSuggestResponse>;
     getPageInfo: () => Promise<GetPageInfoResponse>;
     getSelectedText: () => Promise<GetSelectedTextResponse>;
-    processPageVisit: (data: { url: string; title: string; htmlContent: string }) => Promise<void>;
+    processPageVisit: (data: { url: string; title: string; markdownContent: string; defuddleMetadata: any }) => Promise<void>;
     triggerBatchEmbedding(): Promise<{ 
         success: boolean; 
         finalizedCount?: number; 
@@ -430,7 +430,7 @@ export interface BackgroundProtocolMap {
         Promise<TagSuggestResponse>;
     getPageInfo: () => Promise<GetPageInfoResponse>;
     getSelectedText: () => Promise<GetSelectedTextResponse>;
-    processPageVisit: (data: { url: string; title: string; htmlContent: string }) => Promise<void>;
+    processPageVisit: (data: { url: string; title: string; markdownContent: string; defuddleMetadata: any }) => Promise<void>;
     triggerBatchEmbedding(): Promise<{ 
         success: boolean; 
         finalizedCount?: number; 

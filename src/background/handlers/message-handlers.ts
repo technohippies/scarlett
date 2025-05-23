@@ -480,7 +480,8 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
     });
 
     messaging.onMessage('processPageVisit', async ({ data, sender }) => {
-        const { url, title: originalTitle, htmlContent } = data;
+        // Data comes directly from Defuddle.parse()
+        const { url, title: originalTitle, markdownContent, defuddleMetadata } = data;
         console.log(`[Message Handlers] Received processPageVisit for URL: ${url}`);
         
         if (!sender || !sender.tab || !sender.tab.id) {
@@ -497,26 +498,14 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
             }
             console.log(`[Message Handlers processPageVisit] URL ${url} info not processed recently or not found. Proceeding.`);
 
-            console.log(`[Message Handlers processPageVisit] Requesting markdown extraction from content script (Tab ID: ${senderTabId}) for URL: ${url}...`);
-            const markdownResponse = await messaging.sendMessage(
-                'extractMarkdownFromHtml', 
-                { htmlContent, baseUrl: url },
-                { tabId: senderTabId, frameId: sender.frameId }
-            );
-
-            if (!markdownResponse || !markdownResponse.success || !markdownResponse.markdown) {
-                console.warn(`[Message Handlers processPageVisit] Markdown extraction failed in content script for URL ${url}. Error: ${markdownResponse?.error}. Aborting save.`);
-                return;
-            }
-            const { markdown, title: extractedTitle } = markdownResponse;
-            
-            const finalTitle = extractedTitle || originalTitle;
-            console.log(`[Message Handlers processPageVisit] Markdown received from CS (length: ${markdown.length}), Title: ${finalTitle}`);
-
-            await recordPageVisitVersion({ 
+            // Directly record the markdown + Defuddle metadata
+            const finalTitle = originalTitle;
+            console.log(`[Message Handlers processPageVisit] Recording markdownContent (length: ${markdownContent?.length}) for URL: ${url}`);
+            await recordPageVisitVersion({
                 url,
-                title: finalTitle, 
-                markdown_content: markdown, 
+                title: finalTitle,
+                markdown_content: markdownContent,
+                defuddle_metadata: defuddleMetadata
             });
             console.log(`[Message Handlers processPageVisit] DB info operation complete for URL: ${url}`);
 

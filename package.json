@@ -22,7 +22,6 @@
   "dependencies": {
     "@electric-sql/pglite": "^0.3.1",
     "@huggingface/transformers": "^3.5.1",
-    "@mozilla/readability": "^0.6.0",
     "@ricky0123/vad-web": "^0.0.24",
     "@silk-wallet/silk-wallet-sdk": "^0.6.0",
     "@solid-primitives/scheduled": "^1.5.1",
@@ -46,7 +45,6 @@
     "tailwind-merge": "^3.2.0",
     "three": "^0.176.0",
     "ts-fsrs": "^4.7.1",
-    "turndown": "^7.2.0",
     "xstate": "^5.19.3"
   },
   "devDependencies": {
@@ -59,7 +57,6 @@
     "@storybook/test": "^8.6.12",
     "@types/chrome": "^0.0.318",
     "@types/marked": "^6.0.0",
-    "@types/turndown": "^5.0.5",
     "@unocss/preset-uno": "66.1.0-beta.12",
     "@unocss/preset-wind4": "^66.1.0-beta.13",
     "@wxt-dev/auto-icons": "^1.0.2",

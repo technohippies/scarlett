@@ -38,6 +38,7 @@ interface PageVisitData {
   url: string;
   title?: string | null;
   markdown_content?: string | null;
+  defuddle_metadata?: any; // Raw Defuddle metadata
 }
 
 /**
@@ -45,7 +46,7 @@ interface PageVisitData {
  * Ensures the main page record exists and inserts a new version snapshot.
  */
 export async function recordPageVisitVersion(data: PageVisitData): Promise<void> {
-  const { url, title, markdown_content } = data;
+  const { url, title, markdown_content, defuddle_metadata } = data;
   const currentTimestamp = new Date().toISOString(); // Consistent timestamp
 
   console.log(`[DB VisitedPages] recordPageVisitVersion for URL: ${url}`);
@@ -100,17 +101,18 @@ export async function recordPageVisitVersion(data: PageVisitData): Promise<void>
     // MODIFIED: Set visit_count to 1 for new versions
     const insertVersionSql = `
       INSERT INTO page_versions (
-          url, markdown_content, markdown_hash, captured_at,
+          url, markdown_content, markdown_hash, defuddle_metadata, captured_at,
           embedding_model_id, last_embedded_at, processed_for_embedding_at,
           visit_count 
       )
-      VALUES ($1, $2, $3, $4, NULL, NULL, NULL, 1); -- visit_count is now 1
+      VALUES ($1, $2, $3, $4, $5, NULL, NULL, NULL, 1); -- visit_count is now 1
     `;
     const versionParams = [
-      url,              // $1
-      markdown_content, // $2
-      markdownHash,     // $3
-      currentTimestamp  // $4
+      url,                   // $1
+      markdown_content,      // $2
+      markdownHash,          // $3
+      defuddle_metadata,     // $4
+      currentTimestamp        // $5
     ];
 
     console.log(`[DB VisitedPages] Inserting new page_version for URL: ${url}`);
