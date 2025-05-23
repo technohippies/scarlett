@@ -21,6 +21,7 @@ export interface ChatPageLayoutViewProps {
   isSpeechModeActive: boolean;
   onToggleMode: () => void;
   onCreateThread: () => void;
+  onGenerateRoleplay: () => void;
   messages: ChatMessage[];
   userInput: string;
   onInputChange: (text: string) => void;
@@ -146,6 +147,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
             currentThreadId={props.currentThreadId}
             onSelectThread={props.onSelectThread}
             onCreateThread={props.onCreateThread}
+            onGenerateRoleplay={props.onGenerateRoleplay}
           />
         </Show>
         <div class="flex flex-col flex-1 overflow-hidden">

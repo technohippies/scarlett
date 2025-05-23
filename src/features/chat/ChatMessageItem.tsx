@@ -116,13 +116,11 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
     <>
       <style>{HIGHLIGHT_CSS}</style>
       <div class={`flex flex-col ${message.sender === 'user' ? 'items-end' : 'items-start'}`}>
-        <div
-          class={`max-w-[75%] md:max-w-[70%] p-2 px-3 rounded-lg shadow-sm break-words no-underline outline-none ${
+        <div class={`max-w-[75%] md:max-w-[70%] p-2 px-3 rounded-lg break-words no-underline outline-none ${
             message.sender === 'user'
-              ? 'bg-neutral-700 text-neutral-50'
+              ? 'bg-neutral-700 text-neutral-50 shadow-sm'
               : 'bg-transparent text-foreground'
-          }`}
-        >
+          }`}>
           <div class="relative">
             {/* Unified character-span container for AI messages */}
             <div class="text-md whitespace-pre-wrap break-words">

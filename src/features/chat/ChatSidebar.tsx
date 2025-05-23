@@ -8,6 +8,7 @@ interface ChatSidebarProps {
   currentThreadId: string | null;
   onSelectThread: (threadId: string) => void;
   onCreateThread: () => void;
+  onGenerateRoleplay: () => void;
   // Add any other props needed, e.g., for generating roleplays or other actions
 }
 
@@ -40,7 +41,7 @@ export const ChatSidebar: Component<ChatSidebarProps> = (props) => {
       </div>
       <div class="p-2 border-t border-border/40">
         {/* Generate Roleplay action */}
-        <Button variant="outline" class="w-full">
+        <Button variant="outline" class="w-full" onClick={props.onGenerateRoleplay}>
           Generate Roleplay
         </Button>
       </div>

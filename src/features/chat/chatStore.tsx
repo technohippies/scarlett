@@ -12,12 +12,12 @@ import type { WordInfo } from './types';
 import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID } from '../../shared/constants';
 import { lookup } from '../../shared/languages';
 import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService';
+import { generateRoleplayScenariosLLM } from '../../services/llm/llmChatService';
 
 // RPC client for background storage
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
 
 // Default threads to seed
-const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
 const defaultIntroThread: NewChatThreadDataForRpc = {
   id: 'thread-welcome-introductions',
   title: 'Introductions',
@@ -29,9 +29,9 @@ const defaultSharingThread: NewChatThreadDataForRpc = {
   systemPrompt: "It's great to connect on a deeper level. As an AI, I have a unique perspective. I can share some 'AI thoughts' or how I learn if you're curious, and I'm always here to listen to yours. What's on your mind, or what would you like to ask me?"
 };
 const defaultJustChatThread: NewChatThreadDataForRpc = {
-  id: JUST_CHAT_THREAD_ID,
-  title: 'Just Chat (Speech)',
-  systemPrompt: 'You are a friendly AI assistant for voice chat. Keep responses concise for speech.'
+  id: 'thread-just-chat',
+  title: 'Just Chat',
+  systemPrompt: ''
 };
 
 export interface ChatState {
@@ -61,6 +61,7 @@ export interface ChatActions {
   stopVAD: () => void;
   playTTS: (params: { messageId: string; text: string; lang: string; speed?: number }) => Promise<void>;
   createNewThread: () => Promise<void>;
+  generateRoleplay: (topicHint?: string) => Promise<void>;
 }
 
 // Props for ChatProvider now include userConfig
@@ -93,6 +94,7 @@ const defaultActions: ChatActions = {
   stopVAD: () => {},
   playTTS: async (_params) => {},
   createNewThread: async () => {},
+  generateRoleplay: async (_topicHint) => {},
 };
 // @ts-ignore: suppress createContext overload mismatch
 const ChatContext = createContext<[ChatState, ChatActions]>([defaultState, defaultActions]);
@@ -151,10 +153,10 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         }
         console.log('[chatStore] final thread list:', threads);
         setState('threads', threads || []);
-        // select first non-just-chat as primary, else first
+        // select first thread as primary
         if (threads && threads.length > 0) {
           console.log('[chatStore] selecting initial thread');
-          const primary = threads.find((t: any) => t.id !== JUST_CHAT_THREAD_ID) || threads[0];
+          const primary = threads[0];
           await actions.selectThread(primary.id);
         }
       } catch (e: any) {
@@ -564,6 +566,39 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       setState('pendingThreadId', newId);
       // 2) Switch into the new thread
       await this.selectThread(newId);
+    },
+
+    async generateRoleplay(topicHint = '') {
+      setState('isLoading', true);
+      setState('lastError', null);
+      try {
+        // Determine target language name
+        const code = props.initialUserConfig.targetLanguage || 'en';
+        const langName = lookup(code).fullName || code;
+        // Generate scenario via LLM service
+        const [scenario] = await generateRoleplayScenariosLLM(langName, topicHint);
+        // Create new thread with title and description
+        const newId = crypto.randomUUID();
+        const newThread = await messaging.sendMessage('addChatThread', {
+          id: newId,
+          title: scenario.title,
+          systemPrompt: scenario.description
+        });
+        // Seed the AI opening line
+        await messaging.sendMessage('addChatMessage', {
+          id: `${newId}-ai-opening`,
+          thread_id: newId,
+          sender: 'ai',
+          text_content: scenario.ai_opening_line
+        });
+        // Update local state and switch to new thread
+        setState('threads', ts => [newThread, ...ts]);
+        await actions.selectThread(newId);
+      } catch (e: any) {
+        setState('lastError', e.message || String(e));
+      } finally {
+        setState('isLoading', false);
+      }
     }
   };
 

@@ -1,7 +1,6 @@
 import { getDbInstance } from './init';
 import type { Thread, ChatMessage } from '../../features/chat/types';
 import type { PGlite } from '@electric-sql/pglite';
-import { JUST_CHAT_THREAD_ID } from '../../features/chat/types';
 
 // Helper to convert DB row to Thread type (adjust as needed for embedding columns)
 const mapDbRowToThread = (row: any): Thread => {
@@ -243,15 +242,6 @@ export const updateChatThread = async (
     const currentThreadResult = await db.query('SELECT * FROM chat_threads WHERE id = ?', [threadId]);
     return currentThreadResult.rows.length > 0 ? mapDbRowToThread(currentThreadResult.rows[0]) : null;
   }
-  if (threadId === JUST_CHAT_THREAD_ID && (updates.title || updates.systemPrompt)) {
-    console.warn("Attempted to update title or systemPrompt for JUST_CHAT_THREAD_ID. This is not allowed.");
-    if (updates.title) delete updates.title;
-    if (updates.systemPrompt) delete updates.systemPrompt;
-    if (Object.keys(updates).length === 0) {
-      const currentThreadResult = await db.query('SELECT * FROM chat_threads WHERE id = ?', [threadId]);
-      return currentThreadResult.rows.length > 0 ? mapDbRowToThread(currentThreadResult.rows[0]) : null;
-    }
-  }
 
   const now = new Date().toISOString();
   const fieldsToUpdate: string[] = [];
@@ -320,10 +310,6 @@ export const updateChatThreadTitle = async (threadId: string, newTitle: string):
 };
 
 export const deleteChatThread = async (db: PGlite, threadId: string): Promise<boolean> => {
-  if (threadId === JUST_CHAT_THREAD_ID) {
-    console.warn("Attempted to delete JUST_CHAT_THREAD_ID. This is not allowed.");
-    return false;
-  }
   try {
     await db.transaction(async (tx) => {
       await tx.query('DELETE FROM chat_messages WHERE thread_id = ?', [threadId]);

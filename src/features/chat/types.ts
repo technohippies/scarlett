@@ -45,8 +45,6 @@ export interface ChatSession {
   lastActivity: string; // Timestamp or relative time
 }
 
-export const JUST_CHAT_THREAD_ID = '__just_chat_speech_mode__';
-
 // Add WordInfo here
 export interface WordInfo {
   word: string;

@@ -17,6 +17,7 @@ export const ChatPageLayout: Component<ChatPageLayoutProps> = (props) => {
       isSpeechModeActive={state.isSpeechMode}
       onToggleMode={() => actions.toggleSpeech()}
       onCreateThread={() => actions.createNewThread()}
+      onGenerateRoleplay={() => actions.generateRoleplay()}
       messages={state.messages}
       userInput={state.userInput}
       onInputChange={(text) => actions.setInput(text)}
