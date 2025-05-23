@@ -1,4 +1,5 @@
 import type { FunctionConfig } from '../storage/types'; // Import FunctionConfig
+import { browser } from 'wxt/browser'; // For runtime.getURL in in-browser embedding
 // import type { LLMProviderId } from './types'; // Keep this for casting if needed -- Removed as unused
 
 // REMOVED hardcoded config
@@ -34,7 +35,8 @@ export async function getEmbedding(text: string, config: FunctionConfig): Promis
   // Destructure needed info from config
   const { providerId, modelId, baseUrl, /*apiKey*/ } = config; // apiKey removed as it's not used in the current supported providers (Ollama)
 
-  if (!providerId || !modelId || !baseUrl) {
+  // Allow in-browser provider (no baseUrl needed) or require baseUrl for others
+  if (!providerId || !modelId || (providerId !== 'in-browser' && !baseUrl)) {
     console.error('[getEmbedding] Incomplete embedding configuration provided:', config);
     throw new Error('Incomplete embedding configuration.');
   }
@@ -43,8 +45,37 @@ export async function getEmbedding(text: string, config: FunctionConfig): Promis
 
   try {
     switch (providerId) {
+      case 'in-browser': {
+        console.log(`[getEmbedding] Running in-browser ONNX embedding for model: ${modelId}`);
+        const tf = await import('@huggingface/transformers');
+        const { pipeline, env } = tf;
+        // Configure local model path and disable remote
+        const getUrl = (browser.runtime.getURL as any);
+        env.localModelPath = getUrl('models/');
+        env.allowLocalModels = true;
+        env.allowRemoteModels = false;
+        const onnxBackend = (env.backends as any).onnx;
+        if (onnxBackend?.wasm) {
+          onnxBackend.wasm.wasmPaths = getUrl('transformers-wasm/');
+        }
+        // Initialize feature-extraction pipeline
+        const extractor = await pipeline('feature-extraction', modelId);
+        const output = await extractor(text, { pooling: 'mean', normalize: true });
+        // Extract vector from output
+        let vector: number[];
+        if (Array.isArray(output) && Array.isArray(output[0])) {
+          vector = output[0] as number[];
+        } else if ((output as any).data && Array.isArray((output as any).data[0])) {
+          vector = (output as any).data[0];
+        } else {
+          throw new Error('Unexpected extractor output format');
+        }
+        const dimension = vector.length;
+        console.log(`[getEmbedding] In-browser embedding dimension: ${dimension}`);
+        return { embedding: vector, modelName: modelId, dimension };
+      }
       case 'ollama': { // Explicitly handle ollama
-        const url = `${baseUrl.replace(/\/$/, '')}/api/embeddings`;
+        const url = `${baseUrl!.replace(/\/$/, '')}/api/embeddings`;
         const response = await fetch(url, {
           method: 'POST',
           headers: {

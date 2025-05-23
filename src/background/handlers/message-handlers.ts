@@ -553,8 +553,13 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
                 return { success: false, message: 'User settings not found.', pagesProcessed: 0, errors: 1 };
             }
 
-            // --- Determine preliminaryEmbeddingConfig ---
-            if (settings.embeddingConfig && settings.embeddingConfig.providerId && settings.embeddingConfig.modelId && settings.embeddingConfig.baseUrl) {
+            // Support in-browser ONNX embedding (no baseUrl) or require baseUrl for other providers
+            if (
+              settings.embeddingConfig &&
+              settings.embeddingConfig.providerId &&
+              settings.embeddingConfig.modelId &&
+              (settings.embeddingConfig.providerId === 'in-browser' || settings.embeddingConfig.baseUrl)
+            ) {
                 preliminaryEmbeddingConfig = settings.embeddingConfig;
                 console.log('[Message Handlers triggerBatchEmbedding] Preliminary check: Using settings.embeddingConfig.');
             } else {

@@ -227,6 +227,7 @@ CREATE TABLE IF NOT EXISTS page_versions (
     url TEXT NOT NULL REFERENCES pages(url) ON DELETE CASCADE, -- Link back to the main URL
     markdown_content TEXT NULL,           -- The *original* processed markdown (can be set to NULL after summarization)
     markdown_hash TEXT NULL,              -- Hash of *original* markdown_content
+    defuddle_metadata JSONB NULL, -- Raw Defuddle metadata from Defuddle.parse()
     summary_content TEXT NULL,            -- NEW: The LLM-generated summary
     summary_hash TEXT NULL,               -- NEW: Hash of summary_content
     captured_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, -- When this version was captured

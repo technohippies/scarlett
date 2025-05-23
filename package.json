@@ -35,6 +35,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "csv-stringify": "^6.5.2",
+    "defuddle": "^0.6.4",
     "highlight.js": "^11.11.1",
     "lottie-solid": "^1.2.0",
     "lottie-web": "^5.12.2",
