@@ -26,6 +26,7 @@ export const ChatPageLayout: Component<ChatPageLayoutProps> = (props) => {
       onInputChange={(text) => actions.setInput(text)}
       onSendText={() => actions.sendText()}
       isIdle={!state.isLoading}
+      isRoleplayLoading={state.isRoleplayLoading}
       isVADListening={state.isVADListening}
       isSpeaking={state.isGlobalTTSSpeaking}
       audioLevel={state.audioLevel}

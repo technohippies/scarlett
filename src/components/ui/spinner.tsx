@@ -12,7 +12,7 @@ export const Spinner: Component<{ class?: string }> = (props) => {
       stroke-width="2"
       stroke-linecap="round"
       stroke-linejoin="round"
-      class={cn("animate-spin h-5 w-5 text-muted-foreground", local.class)} // Added text color
+      class={cn("animate-spin origin-center h-5 w-5 text-muted-foreground", local.class)} // Added smooth spin origin-center
       {...others}
     >
       <path d="M21 12a9 9 0 1 1-6.219-8.56" />

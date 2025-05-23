@@ -45,6 +45,7 @@ export interface ChatState {
   userInput: string;
   isSpeechMode: boolean;
   isLoading: boolean;
+  isRoleplayLoading: boolean;
   isVADListening: boolean;
   lastError: string | null;
   currentSpokenMessageId: string | null;
@@ -79,6 +80,7 @@ const defaultState: ChatState = {
   userInput: '',
   isSpeechMode: false,
   isLoading: false,
+  isRoleplayLoading: false,
   isVADListening: false,
   lastError: null,
   currentSpokenMessageId: null,
@@ -111,6 +113,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     userInput: '',
     isSpeechMode: false,
     isLoading: false,
+    isRoleplayLoading: false,
     isVADListening: false,
     lastError: null,
     currentSpokenMessageId: null,
@@ -576,7 +579,8 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     },
 
     async generateRoleplay(topicHint = '') {
-      setState('isLoading', true);
+      console.log('[chatStore] generateRoleplay called. Setting isRoleplayLoading to true.');
+      setState('isRoleplayLoading', true);
       setState('lastError', null);
       try {
         // Determine target language name
@@ -605,7 +609,8 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       } catch (e: any) {
         setState('lastError', e.message || String(e));
       } finally {
-        setState('isLoading', false);
+        console.log('[chatStore] generateRoleplay finished. Setting isRoleplayLoading to false.');
+        setState('isRoleplayLoading', false);
       }
     }
   };

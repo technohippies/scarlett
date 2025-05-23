@@ -1,7 +1,8 @@
-import { Component, For } from 'solid-js';
+import { Component, For, createEffect } from 'solid-js';
 import { Plus } from 'phosphor-solid';
 import { Button } from '../../components/ui/button'; // Assuming Button component path
 import type { Thread } from './types';
+import { Spinner } from '../../components/ui/spinner';
 
 interface ChatSidebarProps {
   threads: Thread[];
@@ -9,10 +10,15 @@ interface ChatSidebarProps {
   onSelectThread: (threadId: string) => void;
   onCreateThread: () => void;
   onGenerateRoleplay: () => void;
+  isRoleplayLoading: boolean;
   // Add any other props needed, e.g., for generating roleplays or other actions
 }
 
 export const ChatSidebar: Component<ChatSidebarProps> = (props) => {
+  createEffect(() => {
+    console.log('[ChatSidebar] isRoleplayLoading:', props.isRoleplayLoading);
+  });
+
   return (
     <aside class="hidden md:flex flex-col w-64 lg:w-72 border-r border-border/40 bg-muted/20">
       <div class="p-2 pt-4 overflow-y-auto flex-grow">
@@ -41,8 +47,13 @@ export const ChatSidebar: Component<ChatSidebarProps> = (props) => {
       </div>
       <div class="p-2 border-t border-border/40">
         {/* Generate Roleplay action */}
-        <Button variant="outline" class="w-full" onClick={props.onGenerateRoleplay}>
-          Generate Roleplay
+        <Button
+          variant="outline"
+          class="w-full flex justify-center"
+          onClick={props.onGenerateRoleplay}
+          disabled={props.isRoleplayLoading}
+        >
+          {props.isRoleplayLoading ? <Spinner class="animate-spin size-5" /> : 'Generate Roleplay'}
         </Button>
       </div>
     </aside>

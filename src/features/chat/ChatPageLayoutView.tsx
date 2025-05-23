@@ -22,6 +22,7 @@ export interface ChatPageLayoutViewProps {
   onToggleMode: () => void;
   onCreateThread: () => void;
   onGenerateRoleplay: () => void;
+  isRoleplayLoading: boolean;
   threadSystemPrompt?: string;
   messages: ChatMessage[];
   userInput: string;
@@ -36,6 +37,12 @@ export interface ChatPageLayoutViewProps {
 }
 
 export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
+  createEffect(() => {
+    console.log('[ChatPageLayoutView EFFECT] isRoleplayLoading prop:', props.isRoleplayLoading);
+  });
+  createEffect(() => {
+    console.log('[ChatPageLayoutView EFFECT] isSpeechModeActive prop:', props.isSpeechModeActive);
+  });
   createEffect(() => {
     console.log('[ChatPageLayoutView] threadSystemPrompt prop:', props.threadSystemPrompt);
   });
@@ -146,13 +153,19 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
 
       <div class="flex flex-1 overflow-hidden">
         <Show when={!props.isSpeechModeActive} fallback={<></>}>
-          <ChatSidebar
-            threads={props.threads}
-            currentThreadId={props.currentThreadId}
-            onSelectThread={props.onSelectThread}
-            onCreateThread={props.onCreateThread}
-            onGenerateRoleplay={props.onGenerateRoleplay}
-          />
+          {(() => {
+            console.log('[ChatPageLayoutView] Rendering ChatSidebar. isSpeechModeActive:', props.isSpeechModeActive, 'isRoleplayLoading:', props.isRoleplayLoading);
+            return (
+              <ChatSidebar
+                threads={props.threads}
+                currentThreadId={props.currentThreadId}
+                onSelectThread={props.onSelectThread}
+                onCreateThread={props.onCreateThread}
+                onGenerateRoleplay={props.onGenerateRoleplay}
+                isRoleplayLoading={props.isRoleplayLoading}
+              />
+            );
+          })()}
         </Show>
         <div class="flex flex-col flex-1 overflow-hidden">
           <main class="flex-1 overflow-y-auto">
