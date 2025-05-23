@@ -60,6 +60,12 @@ export default defineContentScript({
     cssInjectionMode: 'ui', // Let WXT handle CSS injection
 
     async main(ctx) {
+        // Only run in top-level frame to avoid duplicate processing in iframes
+        if (window.top !== window.self) {
+            console.log('[Scarlett CS] Not top-level frame, skipping content script.');
+            return;
+        }
+        console.log('[Scarlett CS] Main function running in top-level frame.');
         console.log('[Scarlett CS] Main function started.');
         // --- Song Detection Setup ---
         let currentTrack = '';
@@ -177,10 +183,12 @@ export default defineContentScript({
                 try {
                     const url = window.location.href;
                     const title = document.title;
-                    // Use Defuddle to extract markdown and metadata in one pass
-                    const defuddle = new Defuddle(document, { markdown: true, url });
+                    // Use separateMarkdown to get markdown content alongside HTML
+                    const defuddle = new Defuddle(document, { markdown: true, separateMarkdown: true, url });
                     const defuddleResult = defuddle.parse();
-                    const markdownContent = defuddleResult.content;
+                    console.log('[Scarlett CS] Defuddle parse full output:', defuddleResult);
+                    // Prefer markdown conversion if available
+                    const markdownContent = defuddleResult.contentMarkdown ?? defuddleResult.content;
                     console.log(`[Scarlett CS] Defuddle extracted markdown (length: ${markdownContent?.length}) for URL: ${url.substring(0, 100)}`);
                     messageSender.sendMessage('processPageVisit', {
                         url,
@@ -616,42 +624,6 @@ export default defineContentScript({
             }
         };
         
-        const extractMainContent = async (): Promise<string | null> => {
-             try {
-                 const selectors = [
-                     '#bodyContent', // Specific to Wikipedia
-                     'main',
-                     'article',
-                     '.main-content', 
-                     '.post-body',
-                     '.entry-content'
-                 ];
-                 let mainContentElement: HTMLElement | null = null;
-                 for (const selector of selectors) {
-                     mainContentElement = document.querySelector(selector);
-                     if (mainContentElement) {
-                         console.log(`[Scarlett CS Extract] Found main content with: ${selector}`);
-                         break;
-                     }
-                 }
-                 let htmlContent: string | null = null;
-                 if (mainContentElement) {
-                     htmlContent = mainContentElement.innerHTML;
-                 } else {
-                     console.warn('[Scarlett CS Extract] Could not find specific main content container. Falling back to document.body.innerHTML.');
-                     htmlContent = document.body.innerHTML;
-                 }
-                 if (!htmlContent) {
-                     console.warn('[Scarlett CS Extract] HTML content extraction resulted in empty content.');
-                     return null;
-                 }
-                 console.log(`[Scarlett CS Extract] Extracted content length: ${htmlContent.length}`);
-                 return htmlContent;
-             } catch (error) {
-                 console.error('[Scarlett CS Extract] Error extracting content:', error);
-                 return null;
-             }
-        }
 
         window.requestIdleCallback(fetchAndHighlightLearningWords, { timeout: 1000 });
         

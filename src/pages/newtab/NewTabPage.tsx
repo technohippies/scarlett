@@ -8,6 +8,7 @@ import type { Messages } from '../../types/i18n'; // Import Messages type
 import { useSettings } from '../../context/SettingsContext'; // <-- Import useSettings
 import { type Mood } from '../../features/mood/MoodSelector';
 import { addMoodEntry } from '../../services/db/mood';
+import { getEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
 
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
 
@@ -141,42 +142,64 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
 
   const [isEmbedding, setIsEmbedding] = createSignal(false);
   const [embedStatusMessage, setEmbedStatusMessage] = createSignal<string | null>(null);
+  const [processedCount, setProcessedCount] = createSignal(0);
+  const [totalCount, setTotalCount] = createSignal(0);
 
   const handleEmbedClick = async () => {
     console.log('[NewTabPage] handleEmbedClick triggered.');
     setIsEmbedding(true);
     setEmbedStatusMessage(i18n().get('newTabPageEmbeddingStarting', 'Starting embedding process...'));
     try {
-      const result = await messaging.sendMessage('triggerBatchEmbedding', undefined);
-      
-      if (result.success) {
-        console.log('[NewTabPage] Batch embedding successful:', result);
-        let status = i18n().get('newTabPageEmbeddingComplete', 'Embedding complete.');
-        const details = [];
-        if (result.finalizedCount && result.finalizedCount > 0) {
-          details.push(i18n().get('newTabPageEmbeddingFinalized', '{count} new pages embedded').replace('{count}', result.finalizedCount.toString()));
-        }
-        if (result.duplicateCount && result.duplicateCount > 0) {
-          details.push(i18n().get('newTabPageEmbeddingDuplicates', '{count} duplicates skipped').replace('{count}', result.duplicateCount.toString()));
-        }
-        if (result.errorCount && result.errorCount > 0) {
-          details.push(i18n().get('newTabPageEmbeddingErrors', '{count} errors').replace('{count}', result.errorCount.toString()));
-        }
-        if (details.length > 0) status += ` (${details.join(', ')})`;
-        setEmbedStatusMessage(status + '.');
-        refetchEmbeddingCount(); 
-      } else {
-        console.error('[NewTabPage] Batch embedding failed:', result.error);
-        const errorMsg = result.error || i18n().get('newTabPageEmbeddingFailedFallback', 'Embedding failed.');
-        setEmbedStatusMessage(`${i18n().get('newTabPageEmbeddingErrorPrefix', 'Error:')} ${errorMsg}`);
+      // Fetch pages needing embedding
+      const res = await messaging.sendMessage('getPagesNeedingEmbedding', undefined);
+      const pages = res.pages ?? [];
+      const total = pages.length;
+      setTotalCount(total);
+      setProcessedCount(0);
+      // Ensure in-browser embedding config is available
+      const embedCfg = settings.config.embeddingConfig;
+      if (!embedCfg) {
+        console.error('[NewTabPage] Embedding configuration is missing.');
+        setEmbedStatusMessage(i18n().get('newTabPageEmbeddingConfigMissing', 'Embedding not configured.'));
+        setIsEmbedding(false);
+        return;
       }
-    } catch (error: any) {
-      console.error('[NewTabPage] Error sending triggerBatchEmbedding message:', error);
-      const errorMsg = error.message || i18n().get('newTabPageEmbeddingTriggerErrorFallback', 'Could not trigger embedding.');
-      setEmbedStatusMessage(`${i18n().get('newTabPageEmbeddingErrorPrefix', 'Error:')} ${errorMsg}`);
+      for (const [idx, page] of pages.entries()) {
+        const current = idx + 1;
+        setProcessedCount(current);
+        setEmbedStatusMessage(
+          i18n().get('newTabPageEmbeddingProgress', 'Embedding {current} of {total}...')
+            .replace('{current}', current.toString())
+            .replace('{total}', total.toString())
+        );
+        try {
+          const embeddingResult: EmbeddingResult | null = await getEmbedding(
+            page.markdownContent,
+            embedCfg
+          );
+          if (embeddingResult) {
+            await messaging.sendMessage('finalizePageVersionEmbedding', {
+              versionId: page.versionId,
+              embeddingInfo: embeddingResult
+            });
+          } else {
+            console.error('[NewTabPage] Embedding returned null for version:', page.versionId);
+          }
+        } catch (e) {
+          console.error('[NewTabPage] Error during embedding for version:', page.versionId, e);
+        }
+      }
+      setEmbedStatusMessage(i18n().get('newTabPageEmbeddingComplete', 'Embedding complete.'));
+      refetchEmbeddingCount();
+    } catch (err: any) {
+      console.error('[NewTabPage] Error in embedding pipeline:', err);
+      setEmbedStatusMessage(
+        `${i18n().get('newTabPageEmbeddingErrorPrefix', 'Error:')} ${err.message || err}`
+      );
     } finally {
       setIsEmbedding(false);
-      setTimeout(() => setEmbedStatusMessage(null), 7000);
+      // Clear status after delay
+      setTimeout(() => setEmbedStatusMessage(null), 5000);
     }
   };
 
@@ -214,6 +237,8 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
       pendingEmbeddingCount={() => embeddingCountData()?.count || 0}
       isEmbedding={isEmbedding}
       embedStatusMessage={embedStatusMessage}
+      processedCount={processedCount}
+      totalCount={totalCount}
       currentStreak={createMemo(() => streakData()?.currentStreak)}
       streakLoading={createMemo(() => streakData.loading)}
       onEmbedClick={handleEmbedClick}

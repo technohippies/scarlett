@@ -160,6 +160,7 @@ export async function finalizePageVersionEmbedding(data: EmbeddingUpdateData): P
         const dimension = embeddingInfo.dimension;
 
         switch(dimension) {
+            case 384: embeddingCol = 'embedding_384'; break;
             case 512: embeddingCol = 'embedding_512'; break;
             case 768: embeddingCol = 'embedding_768'; break;
             case 1024: embeddingCol = 'embedding_1024'; break;
@@ -297,6 +298,7 @@ export async function getSummaryEmbeddingForVersion(version_id: number): Promise
         // Determine the correct embedding column
         let embeddingCol: string;
         switch(dimension) {
+            case 384: embeddingCol = 'embedding_384'; break;
             case 512: embeddingCol = 'embedding_512'; break;
             case 768: embeddingCol = 'embedding_768'; break;
             case 1024: embeddingCol = 'embedding_1024'; break;
@@ -342,6 +344,7 @@ export interface PageVersionToEmbed {
     url: string;
     markdown_content: string;
     markdown_hash: string | null; // Include hash
+    description?: string | null; // Defuddle-provided description
 }
 
 /** Represents the latest embedded version found for a URL */
@@ -353,6 +356,7 @@ export interface LatestEmbeddedVersion {
     embedding_model_id?: string | null; // Ensure this is present
     active_embedding_dimension?: number | null; // Add this field
     embedding_512?: number[];
+    embedding_384?: number[]; // Added support for MiniLM-L6-v2
     embedding_768?: number[];
     embedding_1024?: number[];
 }
@@ -384,9 +388,10 @@ export async function findLatestEmbeddedVersion(url: string): Promise<LatestEmbe
                 summary_hash,
                 embedding_model_id,
                 active_embedding_dimension, -- Added this column
-                embedding_512, 
-                embedding_768, 
-                embedding_1024 
+                embedding_512,
+                embedding_384, -- Added support for MiniLM-L6-v2
+                embedding_768,
+                embedding_1024
             FROM page_versions
             WHERE url = $1 AND last_embedded_at IS NOT NULL
             ORDER BY last_embedded_at DESC
@@ -422,7 +427,12 @@ export async function getPagesNeedingEmbedding(limit: number = 50): Promise<Page
     try {
         db = await getDbInstance();
         const sql = `
-            SELECT version_id, url, markdown_content, markdown_hash
+            SELECT
+                version_id,
+                url,
+                markdown_content,
+                markdown_hash,
+                defuddle_metadata->>'description' AS description
             FROM page_versions 
             WHERE last_embedded_at IS NULL 
             ORDER BY captured_at ASC -- Process oldest unembedded first?

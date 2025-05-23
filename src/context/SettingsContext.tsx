@@ -526,7 +526,8 @@ export const SettingsProvider: ParentComponent = (props) => {
         // In-Browser ONNX embedding: return the single all-MiniLM-L6-v2 model
         if (provider.id === 'in-browser') {
             console.log(`[SettingsContext fetchRawModelsForProvider] Providing in-browser ONNX model for provider: ${provider.id}`);
-            return [{ id: 'all-minilm-l6-v2-onnx', name: 'all-MiniLM-L6-v2 ONNX' }];
+            // Use the exact folder name to allow local ONNX model loading
+            return [{ id: 'all-MiniLM-L6-v2', name: 'all-MiniLM-L6-v2 (ONNX)' }];
         }
         const providerImpl = providerImplementations[provider.id as keyof typeof providerImplementations];
         if (!providerImpl || !providerImpl.listModels) {

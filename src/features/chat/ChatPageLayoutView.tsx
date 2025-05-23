@@ -1,4 +1,4 @@
-import { Component, Show, createEffect, onCleanup } from 'solid-js';
+import { Component, Show, createEffect, onCleanup, createSignal, createResource } from 'solid-js';
 import { CaretLeft } from 'phosphor-solid';
 import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../components/ui/switch';
 import { ChatSidebar } from './ChatSidebar';
@@ -7,6 +7,11 @@ import { TextInputControls } from './TextInputControls';
 import { MicVisualizer } from '../../components/ui/MicVisualizer';
 import { SpeechVisualizer } from '../../components/ui/SpeechVisualizer';
 import type { Thread, ChatMessage } from './types';
+import { defineExtensionMessaging } from '@webext-core/messaging';
+import type { BackgroundProtocolMap } from '../../shared/messaging-types';
+import { EmbeddingProcessingPanel } from '../embedding/EmbeddingProcessingPanel';
+import { getEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
+import { useSettings } from '../../context/SettingsContext';
 
 export interface ChatPageLayoutViewProps {
   threads: Thread[];
@@ -44,6 +49,69 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
     }
   });
 
+  // --- Embedding Processing State & Handlers ---
+  const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
+  const [pendingEmbeddingData, { refetch: refetchPendingEmbeddingCount }] = createResource(
+    async () => {
+      const res = await messaging.sendMessage('getPendingEmbeddingCount', undefined);
+      return res ?? { count: 0 };
+    },
+    { initialValue: { count: 0 } }
+  );
+  const [isEmbedding, setIsEmbedding] = createSignal(false);
+  const [embedStatusMessage, setEmbedStatusMessage] = createSignal<string | null>(null);
+  const [processedCount, setProcessedCount] = createSignal(0);
+  const [totalCount, setTotalCount] = createSignal(0);
+  const settings = useSettings();
+
+  const handleEmbedClick = async () => {
+    setIsEmbedding(true);
+    setEmbedStatusMessage('Starting embedding process...');
+    try {
+      const res = await messaging.sendMessage('getPagesNeedingEmbedding', undefined);
+      const pages = res.pages ?? [];
+      const total = pages.length;
+      setTotalCount(total);
+      setProcessedCount(0);
+      const embedCfg = settings.config.embeddingConfig;
+      if (!embedCfg) {
+        console.error('[Chat] Embedding configuration is missing.');
+        setEmbedStatusMessage('Embedding not configured.');
+        setIsEmbedding(false);
+        return;
+      }
+      for (const [idx, page] of pages.entries()) {
+        const current = idx + 1;
+        setProcessedCount(current);
+        setEmbedStatusMessage(`Embedding ${current} of ${total}...`);
+        try {
+          const result: EmbeddingResult | null = await getEmbedding(
+            page.markdownContent,
+            embedCfg
+          );
+          if (result) {
+            await messaging.sendMessage('finalizePageVersionEmbedding', {
+              versionId: page.versionId,
+              embeddingInfo: result
+            });
+          } else {
+            console.error('[Chat] Embedding returned null for version:', page.versionId);
+          }
+        } catch (e) {
+          console.error('[Chat] Error during embedding for version:', page.versionId, e);
+        }
+      }
+      setEmbedStatusMessage('Embedding complete.');
+      refetchPendingEmbeddingCount();
+    } catch (e: any) {
+      console.error('[Chat] Embedding pipeline error:', e);
+      setEmbedStatusMessage(`Error: ${e.message || e}`);
+    } finally {
+      setIsEmbedding(false);
+      setTimeout(() => setEmbedStatusMessage(null), 7000);
+    }
+  };
+
   return (
     <div class="flex flex-col h-screen bg-background text-foreground">
       <header class="flex items-center p-2 md:p-4 border-b border-border/40 bg-background z-10">
@@ -58,6 +126,15 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
           <SwitchControl class="relative"><SwitchThumb /></SwitchControl>
           <SwitchLabel>Speech Mode</SwitchLabel>
         </Switch>
+        <EmbeddingProcessingPanel
+          pendingEmbeddingCount={() => pendingEmbeddingData()?.count || 0}
+          isEmbedding={isEmbedding}
+          embedStatusMessage={embedStatusMessage}
+          processedCount={processedCount}
+          totalCount={totalCount}
+          onProcessClick={handleEmbedClick}
+          class="ml-2"
+        />
       </header>
 
       <div class="flex flex-1 overflow-hidden">

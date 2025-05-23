@@ -107,6 +107,6 @@ export default defineConfig({
     },
   },
   webExt: { // Keep startUrls if desired for development
-    startUrls: ["https://en.wikipedia.org/wiki/Love"],
+    startUrls: ["https://www.dictionary.com/browse/recursion"],
   },
 });

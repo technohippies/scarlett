@@ -483,6 +483,7 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         // Data comes directly from Defuddle.parse()
         const { url, title: originalTitle, markdownContent, defuddleMetadata } = data;
         console.log(`[Message Handlers] Received processPageVisit for URL: ${url}`);
+        console.log('[Message Handlers] defuddleMetadata for URL:', url, defuddleMetadata);
         
         if (!sender || !sender.tab || !sender.tab.id) {
              console.error(`[Message Handlers processPageVisit] Missing sender information for URL: ${url}. Cannot request markdown.`);
@@ -525,6 +526,43 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         }
     });
 
+    // Add UI-driven embedding endpoints before legacy batch handler
+    messaging.onMessage('getPagesNeedingEmbedding', async () => {
+        console.log('[Message Handlers] Received getPagesNeedingEmbedding request.');
+        // Fetch raw page versions from DB and map to RPC type
+        const dbPages = await getPagesNeedingEmbedding();
+        const pages = dbPages.map(p => ({
+            versionId: p.version_id,
+            url: p.url,
+            markdownContent: p.markdown_content,
+            description: p.description ?? null,
+            markdownHash: p.markdown_hash
+        }));
+        return { success: true, pages };
+    });
+
+    messaging.onMessage('finalizePageVersionEmbedding', async ({ data }) => {
+        console.log('[Message Handlers] Received finalizePageVersionEmbedding:', data);
+        const { versionId, embeddingInfo, summaryContent, summaryHash } = data;
+        try {
+            if (summaryContent && summaryHash) {
+                await updatePageVersionSummaryAndCleanup({
+                    version_id: versionId,
+                    summary_content: summaryContent,
+                    summary_hash: summaryHash
+                });
+                console.log('[Message Handlers] Updated summary for version:', versionId);
+            }
+            await finalizePageVersionEmbedding({ version_id: versionId, embeddingInfo });
+            console.log('[Message Handlers] Finalized embedding for version:', versionId);
+            return { success: true };
+        } catch (error) {
+            console.error('[Message Handlers] Error in finalizePageVersionEmbedding:', error);
+            return { success: false, error: (error as Error).message };
+        }
+    });
+
+    // --- Legacy batch embedding (for external providers) ---
     messaging.onMessage('triggerBatchEmbedding', async () => {
         console.log('[Message Handlers] Received triggerBatchEmbedding request.');
         let pagesProcessedCount = 0;
@@ -616,23 +654,47 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
                         continue;
                     }
 
-                    console.log(`[Message Handlers triggerBatchEmbedding] Original markdown hashes differ or no previous embedded version. Proceeding with summarization for version_id: ${page.version_id}.`);
-                    
-                    const summary = await getSummaryFromLLM(page.markdown_content);
-                    if (!summary) {
-                        console.warn(`[Message Handlers triggerBatchEmbedding] Summarization failed for version_id: ${page.version_id}. Skipping.`);
-                        errorsEncountered++;
-                        continue;
-                    }
-                    const summaryHash = await calculateHash(summary);
+                    console.log(`[Message Handlers triggerBatchEmbedding] Original markdown hashes differ or no previous embedded version. Generating summary for version_id: ${page.version_id}.`);
 
-                    const embeddingResult = await getEmbeddingForText(page.markdown_content, preliminaryEmbeddingConfig);
+                    // Use Defuddle description if available, otherwise fall back to LLM (only if configured)
+                    let summaryToUse: string | null = null;
+                    let summaryHash: string | null = null;
+                    if (page.description && page.description.trim() !== '') {
+                        console.log(`[Message Handlers triggerBatchEmbedding] Using Defuddle description as summary for version_id: ${page.version_id}.`);
+                        summaryToUse = page.description.trim();
+                        summaryHash = await calculateHash(summaryToUse);
+                    } else {
+                        console.log(`[Message Handlers triggerBatchEmbedding] Defuddle description missing; using LLM for version_id: ${page.version_id}.`);
+                        // Limit input for summarization to avoid oversized payloads
+                        const summaryInput = page.markdown_content.length > 5000 
+                            ? page.markdown_content.slice(0, 5000) 
+                            : page.markdown_content;
+                        summaryToUse = await getSummaryFromLLM(summaryInput);
+                        if (!summaryToUse) {
+                            console.warn(`[Message Handlers triggerBatchEmbedding] LLM summary not available for version_id: ${page.version_id}. Skipping summary update.`);
+                        } else {
+                            summaryHash = await calculateHash(summaryToUse);
+                        }
+                    }
+                    
+                    // Determine embedding input: use summary if available, else use truncated page content
+                    const rawInput = summaryToUse && summaryToUse.trim() !== ''
+                        ? summaryToUse
+                        : page.markdown_content.slice(0, 10000);
+                    const embeddingInput = rawInput;
+                    console.log(`[Message Handlers triggerBatchEmbedding] Embedding input length: ${embeddingInput.length} for version_id: ${page.version_id}`);
+                    const embeddingResult = await getEmbeddingForText(embeddingInput, preliminaryEmbeddingConfig);
                     if (embeddingResult && embeddingResult.embedding && embeddingResult.embedding.length > 0) {
-                        await updatePageVersionSummaryAndCleanup({ 
-                            version_id: page.version_id, 
-                            summary_content: summary, 
-                            summary_hash: summaryHash 
-                        });
+                        // Update summary only when we have content
+                        if (summaryToUse && summaryHash) {
+                            await updatePageVersionSummaryAndCleanup({
+                                version_id: page.version_id,
+                                summary_content: summaryToUse,
+                                summary_hash: summaryHash
+                            });
+                        } else {
+                            console.log(`[Message Handlers triggerBatchEmbedding] No summary to update for version_id: ${page.version_id}.`);
+                        }
 
                         if (latestEmbeddedVersion) {
                             if (summaryHash && latestEmbeddedVersion.summary_hash && summaryHash === latestEmbeddedVersion.summary_hash) {

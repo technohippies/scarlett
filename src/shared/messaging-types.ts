@@ -3,6 +3,7 @@ import type { Rating } from 'ts-fsrs';
 import type { DueLearningItem } from "../services/srs/types";
 import type { Bookmark, Tag } from "../services/db/types";
 import type { Thread, ChatMessage } from '../features/chat/types';
+import type { EmbeddingResult } from '../services/llm/embedding';
 
 /**
  * Payload sent from the background script to the content script
@@ -311,7 +312,24 @@ export interface DeckInfoForFiltering {
     pathIdentifier: string;
 }
 
+export interface PageVersionToEmbed {
+  versionId: number;
+  url: string;
+  markdownContent: string;
+  description?: string | null;
+  markdownHash?: string | null;
+}
+
 export interface BackgroundProtocolMap {
+    /** Return pages needing embedding for UI-driven in-browser pipeline */
+    getPagesNeedingEmbedding(): Promise<{ success: boolean; pages: PageVersionToEmbed[] }>;
+    /** Finalize a single page version embedding from UI-driven pipeline */
+    finalizePageVersionEmbedding(data: {
+      versionId: number;
+      embeddingInfo: EmbeddingResult;
+      summaryContent?: string;
+      summaryHash?: string;
+    }): Promise<{ success: boolean; error?: string }>;
     getDueItems(data: GetDueItemsRequest): Promise<GetDueItemsResponse>;
     getDistractorsForItem(data: GetDistractorsRequest): Promise<GetDistractorsResponse>;
     submitReviewResult(data: SubmitReviewRequest): Promise<SubmitReviewResponse>;
@@ -335,8 +353,8 @@ export interface BackgroundProtocolMap {
         error?: string;
     }>;
     getPendingEmbeddingCount(): Promise<{ count: number }>;
-    generateTTS(data: GenerateTTSPayload): Promise<void>; // Assuming GenerateTTSPayload is defined
-    extractMarkdownFromHtml(data: ExtractMarkdownRequest): Promise<ExtractMarkdownResponse>; // Assuming these are defined
+    generateTTS(data: GenerateTTSPayload): Promise<void>;
+    extractMarkdownFromHtml(data: ExtractMarkdownRequest): Promise<ExtractMarkdownResponse>;
     REQUEST_TTS_FROM_WIDGET(data: { text: string; lang: string; speed?: number }): 
         Promise<{ success: boolean; audioDataUrl?: string; error?: string }>;
     REQUEST_ACTIVE_LEARNING_WORDS(data: RequestActiveLearningWordsPayload): Promise<RequestActiveLearningWordsResponse>;
@@ -416,6 +434,15 @@ export interface NewChatMessageDataForRpc {
 }
 
 export interface BackgroundProtocolMap {
+    /** Return pages needing embedding for UI-driven in-browser pipeline */
+    getPagesNeedingEmbedding(): Promise<{ success: boolean; pages: PageVersionToEmbed[] }>;
+    /** Finalize a single page version embedding from UI-driven pipeline */
+    finalizePageVersionEmbedding(data: {
+      versionId: number;
+      embeddingInfo: EmbeddingResult;
+      summaryContent?: string;
+      summaryHash?: string;
+    }): Promise<{ success: boolean; error?: string }>;
     getDueItems(data: GetDueItemsRequest): Promise<GetDueItemsResponse>;
     getDistractorsForItem(data: GetDistractorsRequest): Promise<GetDistractorsResponse>;
     submitReviewResult(data: SubmitReviewRequest): Promise<SubmitReviewResponse>;

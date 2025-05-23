@@ -63,10 +63,29 @@ export async function getEmbedding(text: string, config: FunctionConfig): Promis
         const output = await extractor(text, { pooling: 'mean', normalize: true });
         // Extract vector from output
         let vector: number[];
-        if (Array.isArray(output) && Array.isArray(output[0])) {
+        if (Array.isArray(output) && output.length > 0 && typeof output[0] === 'number') {
+          // output is a pooled 1D numeric array
+          vector = output as number[];
+        } else if (Array.isArray(output) && Array.isArray(output[0])) {
+          // output is array of token vectors, take the pooled first element
           vector = output[0] as number[];
-        } else if ((output as any).data && Array.isArray((output as any).data[0])) {
-          vector = (output as any).data[0];
+        } else if (ArrayBuffer.isView(output)) {
+          // output is a TypedArray
+          vector = Array.from(output as any);
+        } else if ((output as any).data) {
+          const data = (output as any).data;
+          if (Array.isArray(data) && typeof data[0] === 'number') {
+            // data is a pooled 1D numeric array
+            vector = data as number[];
+          } else if (Array.isArray(data) && Array.isArray(data[0])) {
+            // data is array of token vectors, take the first
+            vector = data[0] as number[];
+          } else if (ArrayBuffer.isView(data)) {
+            // data is a TypedArray
+            vector = Array.from(data as any);
+          } else {
+            throw new Error('Unexpected extractor output.data format');
+          }
         } else {
           throw new Error('Unexpected extractor output format');
         }

@@ -59,15 +59,14 @@ export const EmbeddingProcessingPanel: Component<EmbeddingProcessingPanelProps> 
   };
 
   return (
-    // Replace the outer div with a Button component
     <Button
       onClick={props.onProcessClick}
       disabled={isDisabled()}
-      size="xl" // Use extra large size
-      class={`w-full max-w-xs min-w-[280px] ${props.class ?? ''}`} // Button takes width, max-width, and positioning classes
-      variant={props.pendingEmbeddingCount() > 0 && !props.isEmbedding() ? "outline" : "secondary"} // Use outline when active, secondary when disabled/empty
+      size="sm" // Reduced size for header placement
+      class={`${props.class ?? ''}`} // Auto width for header button
+      variant={props.pendingEmbeddingCount() > 0 && !props.isEmbedding() ? "outline" : "secondary"}
     >
-      {buttonContent()} {/* Render dynamic content */}
+      {buttonContent()}
     </Button>
     
     // --- Removed old structure --- 

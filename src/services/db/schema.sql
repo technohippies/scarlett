@@ -235,6 +235,7 @@ CREATE TABLE IF NOT EXISTS page_versions (
     embedding_model_id TEXT NULL,       -- Identifier for the embedding model used (e.g., 'text-embedding-ada-002', 'ollama:mxbai-embed-large')
     last_embedded_at TIMESTAMPTZ NULL,   -- Timestamp of when embedding was last successfully stored
     embedding_512 vector(512) NULL,
+    embedding_384 vector(384) NULL, -- Added: support for MiniLM-L6-v2 embeddings
     embedding_768 vector(768) NULL,
     embedding_1024 vector(1024) NULL,
     active_embedding_dimension INTEGER NULL, -- Which dimension is currently populated?
