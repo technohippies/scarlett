@@ -18,6 +18,7 @@ import { getDbInstance } from '../db/init'; // Import getDbInstance
 import { getTopPlayedSongs, getRecentPlayedSongs } from '../db/music';
 import { getOrInitDailyStudyStats } from '../db/study_session';
 import { getStudyStreakData } from '../db/streaks';
+import { buildRAGContext, formatRAGContextForPrompt, searchUserMemory } from './rag';
 
 import { userConfigurationStorage } from '../storage/storage'; // Import userConfigurationStorage
 import { lookup } from '../../shared/languages'; // Use centralized language lookup
@@ -33,7 +34,7 @@ interface UnifiedChatOptions {
 }
 
 // --- NEW FUNCTION to fetch and format user context ---
-async function fetchAndFormatUserContext(): Promise<string> {
+export async function fetchAndFormatUserContext(): Promise<string> {
   console.log('[llmChatService DEBUG] Entered fetchAndFormatUserContext function.'); // VERY FIRST LOG
   let contextParts: string[] = [];
   const db = await getDbInstance(); // Get DB instance
@@ -81,6 +82,22 @@ async function fetchAndFormatUserContext(): Promise<string> {
   } catch (e) {
     console.warn("[llmChatService DEBUG] CRITICAL ERROR fetching today\'s mood for context:", e); // Enhanced log
   }
+
+  // --- START: Add RAG User Memory Context ---
+  try {
+    const userMemory = await searchUserMemory('user preferences name goals');
+    if (userMemory.length > 0) {
+      const memoryContext = userMemory
+        .slice(0, 3) // Limit to top 3 most relevant memories
+        .map(result => result.content)
+        .join('; ');
+      contextParts.push(`User Context: ${memoryContext}`);
+      console.log('[llmChatService DEBUG] Added user memory context from RAG.');
+    }
+  } catch (error) {
+    console.warn('[llmChatService DEBUG] Failed to fetch user memory context:', error);
+  }
+  // --- END: Add RAG User Memory Context ---
 
   try {
     const recentPagesLimit = 5;
@@ -171,10 +188,10 @@ async function fetchAndFormatUserContext(): Promise<string> {
     const recentSongs = await getRecentPlayedSongs(3);
     if (recentSongs.length > 0) {
       const songLines = recentSongs.map(s => `- ${s.track_name} by ${s.artist_name}`);
-      contextParts.push("Recent Songs:\n" + songLines.join('\n'));
+      contextParts.push("Recently Played Songs:\n" + songLines.join('\n'));
     }
   } catch (e) {
-    console.warn("[llmChatService] Error fetching played songs for context:", e);
+    console.warn("[llmChatService] Error fetching songs for context:", e);
   }
   // --- END: Add Songs Listening Context ---
 
@@ -205,6 +222,28 @@ async function prepareLLMMessages(
     userActivityContext = await fetchAndFormatUserContext(); 
   }
   
+  // Add dynamic RAG context based on the current user query
+  let ragContext = "";
+  try {
+    // Get user's LLM config to determine model for context window management
+    const userConfig = await userConfigurationStorage.getValue();
+    const modelId = userConfig?.llmConfig?.modelId || 'default';
+    
+    // Build RAG context for the current query
+    const ragResult = await buildRAGContext(latestUserMessageContent, modelId, {
+      maxResults: 8,
+      minRelevanceScore: 0.3,
+      sources: ['chat', 'bookmark', 'page', 'learning']
+    });
+    
+    if (ragResult.results.length > 0) {
+      ragContext = formatRAGContextForPrompt(ragResult);
+      console.log(`[llmChatService] Added RAG context: ${ragResult.results.length} results, ${ragResult.totalTokensUsed} tokens`);
+    }
+  } catch (error) {
+    console.warn('[llmChatService] Failed to build RAG context:', error);
+  }
+  
   const systemMessages: ChatMessage[] = [];
 
   let fullSystemPrompt = "";
@@ -217,6 +256,9 @@ async function prepareLLMMessages(
     fullSystemPrompt = effectiveBaseSystem;
     if (userActivityContext) {
       fullSystemPrompt += "\n\n" + userActivityContext;
+    }
+    if (ragContext) {
+      fullSystemPrompt += "\n\n" + ragContext;
     }
     if (options.threadSystemPrompt) {
       fullSystemPrompt += "\n\n[Current Thread Focus]\n" + options.threadSystemPrompt;

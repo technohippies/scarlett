@@ -11,10 +11,11 @@ export interface ChatMessage {
   tts_voice_id?: string;
   isStreaming?: boolean; // Added for UI control during streaming
   // Embedding fields
+  embedding_384?: number[] | null;
   embedding_512?: number[] | null;
   embedding_768?: number[] | null;
   embedding_1024?: number[] | null;
-  active_embedding_dimension?: 512 | 768 | 1024 | null;
+  active_embedding_dimension?: 384 | 512 | 768 | 1024 | null;
   audio_url?: string;
   playbackRate?: number;
   metadata?: any;
@@ -30,10 +31,11 @@ export interface Thread {
   createdAt?: string; // ISO 8601 date string
   updatedAt?: string;
   // Embedding fields
+  embedding_384?: number[] | null;
   embedding_512?: number[] | null;
   embedding_768?: number[] | null;
   embedding_1024?: number[] | null;
-  active_embedding_dimension?: 512 | 768 | 1024 | null;
+  active_embedding_dimension?: 384 | 512 | 768 | 1024 | null;
   // Optional: For "Just Chat" mode, we might not need a specific scenario description
   metadata?: any;
   lastActivity?: string;

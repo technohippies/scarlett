@@ -13,6 +13,7 @@ import { DEFAULT_ELEVENLABS_MODEL_ID, DEFAULT_ELEVENLABS_VOICE_ID } from '../../
 import { lookup } from '../../shared/languages';
 import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService';
 import { generateRoleplayScenariosLLM } from '../../services/llm/llmChatService';
+import { getEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
 
 // RPC client for background storage
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
@@ -189,11 +190,23 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     },
 
     async sendText() {
-      console.log('[chatStore] sendText called, userInput=', state.userInput);
+      if (!state.userInput.trim() || !state.currentThreadId) return;
+      setState({ isLoading: true, lastError: null });
       const text = state.userInput.trim();
-      if (!text || !state.currentThreadId) return;
-      setState('isLoading', true);
-      setState('lastError', null);
+      
+      // Generate embedding for user message if embedding is configured
+      let userEmbeddingResult: EmbeddingResult | null = null;
+      const embeddingConfig = props.initialUserConfig.embeddingConfig;
+      if (embeddingConfig) {
+        try {
+          console.log('[chatStore] Generating embedding for user message...');
+          userEmbeddingResult = await getEmbedding(text, embeddingConfig);
+          console.log('[chatStore] User message embedding generated:', userEmbeddingResult?.dimension);
+        } catch (error) {
+          console.error('[chatStore] Failed to generate user message embedding:', error);
+          // Continue without embedding - don't block the chat
+        }
+      }
 
       const userMsg: ChatMessage = {
         id: `${state.currentThreadId}-user-${Date.now()}`,
@@ -201,6 +214,11 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         sender: 'user',
         text_content: text,
         timestamp: new Date().toISOString(),
+        // Add embedding data if available
+        ...(userEmbeddingResult && {
+          [`embedding_${userEmbeddingResult.dimension}`]: userEmbeddingResult.embedding,
+          active_embedding_dimension: userEmbeddingResult.dimension as 512 | 768 | 1024
+        })
       };
       const aiPlaceholder: ChatMessage = {
         id: `${state.currentThreadId}-ai-${Date.now()}`,
@@ -297,15 +315,35 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         if (cleanIdx >= 0) {
           setState('messages', cleanIdx, 'text_content', full);
         }
+        
+        // Generate embedding for AI message if embedding is configured
+        let aiEmbeddingResult: EmbeddingResult | null = null;
+        if (embeddingConfig && full.trim()) {
+          try {
+            console.log('[chatStore] Generating embedding for AI message...');
+            aiEmbeddingResult = await getEmbedding(full, embeddingConfig);
+            console.log('[chatStore] AI message embedding generated:', aiEmbeddingResult?.dimension);
+          } catch (error) {
+            console.error('[chatStore] Failed to generate AI message embedding:', error);
+            // Continue without embedding - don't block the chat
+          }
+        }
+        
         // Persist the AI's completed response (DB will timestamp)
         try {
-          await messaging.sendMessage('addChatMessage', {
+          const aiMessageToSave: ChatMessage = {
             id: placeholderId,
             thread_id: aiPlaceholder.thread_id,
             sender: aiPlaceholder.sender,
             text_content: full,
-            tts_lang: aiPlaceholder.tts_lang
-          });
+            tts_lang: aiPlaceholder.tts_lang,
+            // Add embedding data if available
+            ...(aiEmbeddingResult && {
+              [`embedding_${aiEmbeddingResult.dimension}`]: aiEmbeddingResult.embedding,
+              active_embedding_dimension: aiEmbeddingResult.dimension as 512 | 768 | 1024
+            })
+          };
+          await messaging.sendMessage('addChatMessage', aiMessageToSave);
         } catch (e: any) {
           console.error('[chatStore] failed to persist AI message', e);
         }

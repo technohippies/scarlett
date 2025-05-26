@@ -121,8 +121,13 @@ CREATE TABLE IF NOT EXISTS bookmarks (
     selected_text TEXT NULL,-- Added: Store the clipped text snippet
     saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     tags TEXT NULL,         -- Comma-separated tags or JSON array
-    embedding TEXT NULL -- Temporarily change to TEXT to avoid vector type error
-    -- embedding vector(1024) NULL -- Use vector type (adjust dimension if needed)
+    embedding_384 vector(384) NULL, -- Added: support for MiniLM-L6-v2 embeddings
+    embedding_512 vector(512) NULL,
+    embedding_768 vector(768) NULL,
+    embedding_1024 vector(1024) NULL,
+    active_embedding_dimension INTEGER NULL, -- Which dimension is currently populated?
+    embedding_model_id TEXT NULL,
+    last_embedded_at TIMESTAMPTZ NULL
 );
 
 -- Table for managing predefined and user-added tags
@@ -345,10 +350,11 @@ CREATE TABLE IF NOT EXISTS chat_threads (
     -- Embedding fields for the thread itself
     embedding_model_id TEXT NULL,
     last_embedded_at TIMESTAMPTZ NULL,
-    embedding_512 TEXT NULL, -- Changed from BLOB to TEXT
-    embedding_768 TEXT NULL, -- Changed from BLOB to TEXT
-    embedding_1024 TEXT NULL, -- Changed from BLOB to TEXT
-    active_embedding_dimension INTEGER NULL -- 512, 768, or 1024
+    embedding_384 vector(384) NULL, -- Added: support for MiniLM-L6-v2 embeddings
+    embedding_512 vector(512) NULL, -- Changed from TEXT to vector(512)
+    embedding_768 vector(768) NULL, -- Changed from TEXT to vector(768)
+    embedding_1024 vector(1024) NULL, -- Changed from TEXT to vector(1024)
+    active_embedding_dimension INTEGER NULL -- 384, 512, 768, or 1024
 );
 
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -359,10 +365,11 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     tts_lang TEXT NULL, 
     tts_alignment_data TEXT NULL, 
-    embedding_512 TEXT NULL, -- Changed from vector(512) to TEXT
-    embedding_768 TEXT NULL, -- Changed from vector(768) to TEXT
-    embedding_1024 TEXT NULL, -- Changed from vector(1024) to TEXT
-    active_embedding_dimension INTEGER NULL, -- Stores 512, 768, or 1024 etc.
+    embedding_384 vector(384) NULL, -- Added: support for MiniLM-L6-v2 embeddings
+    embedding_512 vector(512) NULL, -- Changed from TEXT to vector(512)
+    embedding_768 vector(768) NULL, -- Changed from TEXT to vector(768)
+    embedding_1024 vector(1024) NULL, -- Changed from TEXT to vector(1024)
+    active_embedding_dimension INTEGER NULL, -- Stores 384, 512, 768, or 1024 etc.
     processed_for_embedding_at TIMESTAMPTZ NULL,
     embedding_model_id TEXT NULL
 );

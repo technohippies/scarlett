@@ -7,14 +7,15 @@ const mapDbRowToThread = (row: any): Thread => {
   return {
     id: row.id,
     title: row.title,
-    systemPrompt: row.system_prompt,
+    systemPrompt: row.system_prompt || '',
     scenarioDescription: row.scenario_description,
     createdAt: row.created_at,
     lastActivity: row.last_activity_at,
-    messages: [], // Messages will be loaded separately
-    embedding_512: row.embedding_512 ? JSON.parse(row.embedding_512) : null,
-    embedding_768: row.embedding_768 ? JSON.parse(row.embedding_768) : null,
-    embedding_1024: row.embedding_1024 ? JSON.parse(row.embedding_1024) : null,
+    messages: [], // Messages are loaded separately
+    embedding_384: row.embedding_384,
+    embedding_512: row.embedding_512,
+    embedding_768: row.embedding_768,
+    embedding_1024: row.embedding_1024,
     active_embedding_dimension: row.active_embedding_dimension,
   };
 };
@@ -24,16 +25,16 @@ const mapDbRowToChatMessage = (row: any): ChatMessage => {
   return {
     id: row.id,
     thread_id: row.thread_id,
-    sender: row.sender as 'user' | 'ai',
+    sender: row.sender,
     text_content: row.text_content,
     timestamp: row.timestamp,
     tts_lang: row.tts_lang,
-    alignmentData: row.tts_alignment_data ? JSON.parse(row.tts_alignment_data) : null,
-    embedding_512: row.embedding_512 ? JSON.parse(row.embedding_512) : null,
-    embedding_768: row.embedding_768 ? JSON.parse(row.embedding_768) : null,
-    embedding_1024: row.embedding_1024 ? JSON.parse(row.embedding_1024) : null,
+    alignmentData: row.tts_alignment_data ? JSON.parse(row.tts_alignment_data) : undefined,
+    embedding_384: row.embedding_384,
+    embedding_512: row.embedding_512,
+    embedding_768: row.embedding_768,
+    embedding_1024: row.embedding_1024,
     active_embedding_dimension: row.active_embedding_dimension,
-    isStreaming: row.is_streaming === 1,
   };
 };
 
@@ -48,6 +49,7 @@ export const getAllChatThreads = async (): Promise<Thread[]> => {
         scenario_description, 
         created_at, 
         last_activity_at,
+        embedding_384,
         embedding_512,
         embedding_768,
         embedding_1024,
@@ -78,6 +80,7 @@ export const getChatMessagesByThreadId = async (threadId: string): Promise<ChatM
         timestamp, 
         tts_lang, 
         tts_alignment_data,
+        embedding_384,
         embedding_512,
         embedding_768,
         embedding_1024,
@@ -102,22 +105,29 @@ export interface NewChatThreadData {
   title: string;
   systemPrompt?: string;
   scenarioDescription?: string;
+  embedding_384?: number[] | null;
   embedding_512?: number[] | null;
   embedding_768?: number[] | null;
   embedding_1024?: number[] | null;
-  active_embedding_dimension?: 512 | 768 | 1024 | null;
+  active_embedding_dimension?: 384 | 512 | 768 | 1024 | null;
 }
 
 export const addChatThread = async (threadData: NewChatThreadData): Promise<Thread> => {
   const db: PGlite = await getDbInstance();
   const now = new Date().toISOString();
   try {
+    // Format embeddings as PostgreSQL vector literals
+    const embedding_384 = threadData.embedding_384 ? `[${threadData.embedding_384.join(',')}]` : null;
+    const embedding_512 = threadData.embedding_512 ? `[${threadData.embedding_512.join(',')}]` : null;
+    const embedding_768 = threadData.embedding_768 ? `[${threadData.embedding_768.join(',')}]` : null;
+    const embedding_1024 = threadData.embedding_1024 ? `[${threadData.embedding_1024.join(',')}]` : null;
+    
     await db.query(
       `INSERT INTO chat_threads (
          id, title, system_prompt, created_at, last_activity_at, 
          scenario_description, embedding_model_id, last_embedded_at, 
-         embedding_512, embedding_768, embedding_1024, active_embedding_dimension
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12);`,
+         embedding_384, embedding_512, embedding_768, embedding_1024, active_embedding_dimension
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);`,
       [
         threadData.id,
         threadData.title,
@@ -127,10 +137,10 @@ export const addChatThread = async (threadData: NewChatThreadData): Promise<Thre
         threadData.scenarioDescription ?? null,
         null,
         null,
-
-        threadData.embedding_512 ? JSON.stringify(threadData.embedding_512) : null,
-        threadData.embedding_768 ? JSON.stringify(threadData.embedding_768) : null,
-        threadData.embedding_1024 ? JSON.stringify(threadData.embedding_1024) : null,
+        embedding_384,
+        embedding_512,
+        embedding_768,
+        embedding_1024,
         threadData.active_embedding_dimension ?? null,
       ]
     );
@@ -142,6 +152,7 @@ export const addChatThread = async (threadData: NewChatThreadData): Promise<Thre
       createdAt: now,
       lastActivity: now,
       messages: [],
+      embedding_384: threadData.embedding_384,
       embedding_512: threadData.embedding_512,
       embedding_768: threadData.embedding_768,
       embedding_1024: threadData.embedding_1024,
@@ -161,10 +172,11 @@ export interface NewChatMessageData {
   text_content: string;
   tts_lang?: string;
   tts_alignment_data?: any; 
+  embedding_384?: number[] | null;
   embedding_512?: number[] | null;
   embedding_768?: number[] | null;
   embedding_1024?: number[] | null;
-  active_embedding_dimension?: 512 | 768 | 1024 | null;
+  active_embedding_dimension?: 384 | 512 | 768 | 1024 | null;
 }
 
 export const addChatMessage = async (messageData: NewChatMessageData): Promise<ChatMessage> => {
@@ -172,9 +184,15 @@ export const addChatMessage = async (messageData: NewChatMessageData): Promise<C
   const now = new Date().toISOString();
   try {
     await db.transaction(async (tx) => {
+      // Format embeddings as PostgreSQL vector literals
+      const embedding_384 = messageData.embedding_384 ? `[${messageData.embedding_384.join(',')}]` : null;
+      const embedding_512 = messageData.embedding_512 ? `[${messageData.embedding_512.join(',')}]` : null;
+      const embedding_768 = messageData.embedding_768 ? `[${messageData.embedding_768.join(',')}]` : null;
+      const embedding_1024 = messageData.embedding_1024 ? `[${messageData.embedding_1024.join(',')}]` : null;
+      
       await tx.query(
-        `INSERT INTO chat_messages (id, thread_id, sender, text_content, timestamp, tts_lang, tts_alignment_data, embedding_512, embedding_768, embedding_1024, active_embedding_dimension)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);`,
+        `INSERT INTO chat_messages (id, thread_id, sender, text_content, timestamp, tts_lang, tts_alignment_data, embedding_384, embedding_512, embedding_768, embedding_1024, active_embedding_dimension, processed_for_embedding_at, embedding_model_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);`,
         [
           messageData.id,
           messageData.thread_id,
@@ -183,10 +201,13 @@ export const addChatMessage = async (messageData: NewChatMessageData): Promise<C
           now,
           messageData.tts_lang ?? null,
           messageData.tts_alignment_data ? JSON.stringify(messageData.tts_alignment_data) : null,
-          messageData.embedding_512 ? JSON.stringify(messageData.embedding_512) : null,
-          messageData.embedding_768 ? JSON.stringify(messageData.embedding_768) : null,
-          messageData.embedding_1024 ? JSON.stringify(messageData.embedding_1024) : null,
+          embedding_384,
+          embedding_512,
+          embedding_768,
+          embedding_1024,
           messageData.active_embedding_dimension ?? null,
+          messageData.embedding_384 || messageData.embedding_512 || messageData.embedding_768 || messageData.embedding_1024 ? now : null, // Set processed_for_embedding_at if any embedding exists
+          null, // embedding_model_id - we can add this to the interface later if needed
         ]
       );
       await tx.query(
@@ -203,6 +224,7 @@ export const addChatMessage = async (messageData: NewChatMessageData): Promise<C
       timestamp: now,
       tts_lang: messageData.tts_lang,
       alignmentData: messageData.tts_alignment_data,
+      embedding_384: messageData.embedding_384,
       embedding_512: messageData.embedding_512,
       embedding_768: messageData.embedding_768,
       embedding_1024: messageData.embedding_1024,
@@ -235,10 +257,11 @@ export const updateChatThread = async (
   updates: {
     title?: string;
     systemPrompt?: string;
+    embedding_384?: number[] | null;
     embedding_512?: number[] | null;
     embedding_768?: number[] | null;
     embedding_1024?: number[] | null;
-    active_embedding_dimension?: 512 | 768 | 1024 | null;
+    active_embedding_dimension?: 384 | 512 | 768 | 1024 | null;
   }
 ): Promise<Thread | null> => {
   if (Object.keys(updates).length === 0) {
@@ -258,17 +281,21 @@ export const updateChatThread = async (
     fieldsToUpdate.push('system_prompt = ?');
     values.push(updates.systemPrompt);
   }
+  if (updates.embedding_384 !== undefined) {
+    fieldsToUpdate.push('embedding_384 = ?');
+    values.push(updates.embedding_384 ?? null);
+  }
   if (updates.embedding_512 !== undefined) {
     fieldsToUpdate.push('embedding_512 = ?');
-    values.push(updates.embedding_512 ? JSON.stringify(updates.embedding_512) : null);
+    values.push(updates.embedding_512 ?? null);
   }
   if (updates.embedding_768 !== undefined) {
     fieldsToUpdate.push('embedding_768 = ?');
-    values.push(updates.embedding_768 ? JSON.stringify(updates.embedding_768) : null);
+    values.push(updates.embedding_768 ?? null);
   }
   if (updates.embedding_1024 !== undefined) {
     fieldsToUpdate.push('embedding_1024 = ?');
-    values.push(updates.embedding_1024 ? JSON.stringify(updates.embedding_1024) : null);
+    values.push(updates.embedding_1024 ?? null);
   }
   if (updates.active_embedding_dimension !== undefined) {
     fieldsToUpdate.push('active_embedding_dimension = ?');
