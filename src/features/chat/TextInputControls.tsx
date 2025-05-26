@@ -1,6 +1,7 @@
 import { Component } from 'solid-js';
 import { TextField, TextFieldInput } from '../../components/ui/text-field'; // Assuming path
 import { Button } from '../../components/ui/button'; // Assuming path
+import { PaperPlaneTilt } from 'phosphor-solid';
 
 interface TextInputControlsProps {
   userInput: string;
@@ -32,11 +33,11 @@ export const TextInputControls: Component<TextInputControlsProps> = (props) => {
       </TextField>
       <Button 
         onClick={props.onSendMessage} 
-        class="h-10 px-4 w-24"
+        class="h-10 w-10 p-0"
         disabled={props.isDisabled || !props.userInput.trim()}
+        aria-label="Send message"
       >
-        Send
-        {/* SVG icon for send can be added here */}
+        <PaperPlaneTilt weight="fill" class="size-4" />
       </Button>
     </div>
   );

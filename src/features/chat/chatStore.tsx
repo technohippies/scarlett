@@ -194,6 +194,9 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       setState({ isLoading: true, lastError: null });
       const text = state.userInput.trim();
       
+      // Clear the input immediately after capturing the text
+      setState('userInput', '');
+      
       // Generate embedding for user message if embedding is configured
       let userEmbeddingResult: EmbeddingResult | null = null;
       const embeddingConfig = props.initialUserConfig.embeddingConfig;
@@ -354,7 +357,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
             setState('messages', idx, 'isStreaming', false);
           }
         }
-        setState({ isLoading: false, userInput: '' });
+        setState({ isLoading: false });
         console.log('[chatStore] sendText complete');
         // If speech mode is active, play TTS for AI response
         if (state.isSpeechMode) {
