@@ -3,6 +3,7 @@ import { Switch, SwitchControl, SwitchThumb } from '../../components/ui/switch';
 import { Button } from '../../components/ui/button';
 import { Separator } from '../../components/ui/separator';
 import type { DomainDetail } from '../../services/storage/types';
+import { trackMilestone } from '../../utils/analytics';
 
 export interface FocusModePanelProps {
   isFocusModeActive: Accessor<boolean>;
@@ -38,7 +39,13 @@ export const FocusModePanel: Component<FocusModePanelProps> = (props) => {
             <h3 class="text-xl font-semibold text-foreground">Focus Mode</h3>
             <Switch
               checked={props.isFocusModeActive()}
-              onChange={(checked) => props.onToggleFocusMode(checked)}
+              onChange={(checked) => {
+                props.onToggleFocusMode(checked);
+                // Track focus mode activation (only when enabled)
+                if (checked) {
+                  trackMilestone.focusModeActivated();
+                }
+              }}
               disabled={props.isLoading()}
               id="focus-mode-toggle"
               aria-label="Enable Focus Mode"

@@ -21,6 +21,7 @@ export const ChatPageLayout: Component<ChatPageLayoutProps> = (props) => {
       onToggleMode={() => actions.toggleSpeech()}
       onCreateThread={() => actions.createNewThread()}
       onGenerateRoleplay={() => actions.generateRoleplay()}
+      onDeleteThread={(id) => actions.deleteThread(id)}
       messages={state.messages}
       userInput={state.userInput}
       onInputChange={(text) => actions.setInput(text)}

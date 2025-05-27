@@ -1,4 +1,5 @@
 import { getDbInstance } from './init';
+import { trackMilestone } from '../../utils/analytics';
 
 export interface StudyStreakData {
   currentStreak: number;
@@ -176,6 +177,15 @@ export async function processDailyGoalCompletion(): Promise<StudyStreakData | nu
   });
 
   if (updateSuccess) {
+    // Track milestone streaks at meaningful intervals
+    if (newCurrentStreak === 7 || newCurrentStreak === 30 || newCurrentStreak === 100 || 
+        (newCurrentStreak > 0 && newCurrentStreak % 50 === 0)) {
+      trackMilestone.studyStreakMilestone(newCurrentStreak);
+    }
+    
+    // Track daily goal completion
+    trackMilestone.dailyGoalCompleted();
+    
     return { 
         currentStreak: newCurrentStreak, 
         longestStreak: newLongestStreak, 

@@ -65,7 +65,8 @@ import {
     getChatMessagesByThreadId as dbGetChatMessagesByThreadId,
     addChatThread as dbAddChatThread,
     addChatMessage as dbAddChatMessage,
-    updateChatThreadTitle as dbUpdateChatThreadTitle
+    updateChatThreadTitle as dbUpdateChatThreadTitle,
+    deleteChatThread as dbDeleteChatThread
 } from '../../services/db/chat';
 import type { 
     NewChatThreadDataForRpc, 
@@ -1078,6 +1079,19 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         } catch (error) {
             console.error(`[Message Handlers updateChatThreadTitle] Error for threadId ${threadId}:`, error);
             throw error; 
+        }
+    });
+
+    messaging.onMessage('deleteChatThread', async (message) => {
+        const { threadId } = message.data;
+        console.log(`[Message Handlers] Received deleteChatThread request for threadId: ${threadId}`);
+        try {
+            const db = await getDbInstance();
+            const success = await dbDeleteChatThread(db, threadId);
+            return { success, error: success ? undefined : 'Failed to delete thread' };
+        } catch (error) {
+            console.error(`[Message Handlers deleteChatThread] Error for threadId ${threadId}:`, error);
+            return { success: false, error: error instanceof Error ? error.message : String(error) };
         }
     });
     // --- END NEW CHAT HANDLERS ---

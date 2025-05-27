@@ -375,6 +375,7 @@ export interface BackgroundProtocolMap {
     addChatThread(data: NewChatThreadDataForRpc): Promise<Thread>;
     addChatMessage(data: NewChatMessageDataForRpc): Promise<ChatMessage>;
     updateChatThreadTitle(data: { threadId: string; newTitle: string }): Promise<void>;
+    deleteChatThread(data: { threadId: string }): Promise<{ success: boolean; error?: string }>;
 }
 // ---- END: BackgroundProtocolMap Definition ----
 
@@ -489,5 +490,6 @@ export interface BackgroundProtocolMap {
     addChatThread(data: NewChatThreadDataForRpc): Promise<Thread>;
     addChatMessage(data: NewChatMessageDataForRpc): Promise<ChatMessage>;
     updateChatThreadTitle(data: { threadId: string; newTitle: string }): Promise<void>;
+    deleteChatThread(data: { threadId: string }): Promise<{ success: boolean; error?: string }>;
 }
 // --- END NEW CHAT RPC DEFINITIONS ---

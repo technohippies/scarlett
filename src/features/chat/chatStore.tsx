@@ -14,6 +14,7 @@ import { lookup } from '../../shared/languages';
 import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService';
 import { generateRoleplayScenariosLLM } from '../../services/llm/llmChatService';
 import { getEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
+import { trackMilestone } from '../../utils/analytics';
 
 // RPC client for background storage
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
@@ -68,6 +69,7 @@ export interface ChatActions {
   playTTS: (params: { messageId: string; text: string; lang: string; speed?: number }) => Promise<void>;
   createNewThread: () => Promise<void>;
   generateRoleplay: (topicHint?: string) => Promise<void>;
+  deleteThread: (threadId: string) => Promise<void>;
 }
 
 // Props for ChatProvider now include userConfig
@@ -102,6 +104,7 @@ const defaultActions: ChatActions = {
   playTTS: async (_params) => {},
   createNewThread: async () => {},
   generateRoleplay: async (_topicHint) => {},
+  deleteThread: async (_threadId) => {},
 };
 // @ts-ignore: suppress createContext overload mismatch
 const ChatContext = createContext<[ChatState, ChatActions]>([defaultState, defaultActions]);
@@ -241,6 +244,12 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       // Persist the user's message
       try {
         await messaging.sendMessage('addChatMessage', userMsg);
+        
+        // Track first chat message milestone (only once)
+        const isFirstMessage = state.messages.length === 0; // No previous messages in this thread
+        if (isFirstMessage) {
+          trackMilestone.firstChatMessage();
+        }
       } catch (e: any) {
         console.error('[chatStore] failed to persist user message', e);
       }
@@ -433,6 +442,9 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
               actions.stopVAD();
             }
           }, 5000);
+          
+          // Track first VAD usage (fire and forget)
+          trackMilestone.firstVADUsage();
         })
         .catch(e => {
           console.error('[chatStore] Unable to start audio capture', e);
@@ -588,6 +600,9 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
           setState('animationFrameId', requestAnimationFrame(updateHighlightLoop));
           audioCtx.resume().then(() => updateAudioLevel());
+          
+          // Track first TTS usage (fire and forget)
+          trackMilestone.firstTTSUsage();
         };
 
         audio.onpause = () => {
@@ -667,11 +682,39 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         // Update local state and switch to new thread
         setState('threads', ts => [newThread, ...ts]);
         await actions.selectThread(newId);
+        
+        // Track roleplay generation
+        trackMilestone.roleplayGenerated();
       } catch (e: any) {
         setState('lastError', e.message || String(e));
       } finally {
         console.log('[chatStore] generateRoleplay finished. Setting isRoleplayLoading to false.');
         setState('isRoleplayLoading', false);
+      }
+    },
+
+    async deleteThread(threadId) {
+      console.log('[chatStore] deleteThread called, id=', threadId);
+      setState({ isLoading: true, lastError: null });
+      try {
+        await messaging.sendMessage('deleteChatThread', { threadId });
+        setState('threads', ts => ts.filter(t => t.id !== threadId));
+        
+        // If the deleted thread was the current one, select another thread or clear selection
+        if (state.currentThreadId === threadId) {
+          const remainingThreads = state.threads.filter(t => t.id !== threadId);
+          if (remainingThreads.length > 0) {
+            // Select the first remaining thread
+            await actions.selectThread(remainingThreads[0].id);
+          } else {
+            // No threads left, clear selection and messages
+            setState({ currentThreadId: null, messages: [] });
+          }
+        }
+      } catch (e: any) {
+        setState('lastError', e.message || String(e));
+      } finally {
+        setState('isLoading', false);
       }
     }
   };

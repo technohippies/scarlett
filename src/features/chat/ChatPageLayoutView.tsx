@@ -22,6 +22,7 @@ export interface ChatPageLayoutViewProps {
   onToggleMode: () => void;
   onCreateThread: () => void;
   onGenerateRoleplay: () => void;
+  onDeleteThread: (threadId: string) => void;
   isRoleplayLoading: boolean;
   threadSystemPrompt?: string;
   messages: ChatMessage[];
@@ -162,6 +163,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
                 onSelectThread={props.onSelectThread}
                 onCreateThread={props.onCreateThread}
                 onGenerateRoleplay={props.onGenerateRoleplay}
+                onDeleteThread={props.onDeleteThread}
                 isRoleplayLoading={props.isRoleplayLoading}
               />
             );

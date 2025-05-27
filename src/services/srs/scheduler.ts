@@ -1,6 +1,9 @@
 import { getDbInstance } from '../db/init';
 import type { DueLearningItem } from './types';
 import { FSRS, Card, Grade, State, generatorParameters, RecordLogItem } from 'ts-fsrs';
+import { getOrInitDailyStudyStats, incrementNewItemsStudiedToday } from '../db/study_session';
+import { recordStudyActivityToday } from '../db/streaks';
+import { trackMilestone } from '../../utils/analytics';
 
 // Create a single FSRS instance (can be reused)
 // Pass default parameters explicitly
@@ -326,6 +329,14 @@ export async function updateSRSState(
             );
             
              console.log(`[SRS Scheduler] Successfully updated learningId ${learningId}`);
+             
+             // Track flashcard milestones at meaningful intervals
+             const totalStudied = newCardState.reps + newCardState.lapses;
+             if (totalStudied === 1 || totalStudied === 10 || totalStudied === 50 || 
+                 totalStudied === 100 || totalStudied === 500 || totalStudied === 1000 ||
+                 (totalStudied > 1000 && totalStudied % 500 === 0)) {
+               trackMilestone.flashcardsMilestone(totalStudied);
+             }
         }); // Commit transaction
 
     } catch (error) {

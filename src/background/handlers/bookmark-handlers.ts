@@ -5,6 +5,7 @@ import type { Browser } from 'wxt/browser';
 // Assuming response types are defined in messaging-types
 import type { SaveBookmarkResponse, LoadBookmarksResponse } from '../../shared/messaging-types';
 import { ensureDbInitialized } from '../../services/db/init'; // Import ensureDbInitialized
+import { trackMilestone } from '../../utils/analytics';
 
 console.log('[Bookmark Handlers] Module loaded.');
 
@@ -49,6 +50,10 @@ export async function handleSaveBookmark(
     // Assuming createBookmark is defined in learning.ts and takes an object
     const newBookmark = await createBookmark(bookmarkData);
     console.log('[handleSaveBookmark] Bookmark saved successfully:', newBookmark);
+    
+    // Track first bookmark milestone
+    trackMilestone.firstBookmark();
+    
     return { success: true, bookmark: newBookmark };
 
   } catch (error: any) {

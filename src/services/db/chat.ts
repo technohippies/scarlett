@@ -242,7 +242,7 @@ export const updateThreadLastActivity = async (threadId: string): Promise<void> 
   const now = new Date().toISOString();
   try {
     await db.query(
-      'UPDATE chat_threads SET last_activity_at = ? WHERE id = ?',
+      'UPDATE chat_threads SET last_activity_at = $1 WHERE id = $2',
       [now, threadId]
     );
   } catch (error) {
@@ -265,57 +265,58 @@ export const updateChatThread = async (
   }
 ): Promise<Thread | null> => {
   if (Object.keys(updates).length === 0) {
-    const currentThreadResult = await db.query('SELECT * FROM chat_threads WHERE id = ?', [threadId]);
+    const currentThreadResult = await db.query('SELECT * FROM chat_threads WHERE id = $1', [threadId]);
     return currentThreadResult.rows.length > 0 ? mapDbRowToThread(currentThreadResult.rows[0]) : null;
   }
 
   const now = new Date().toISOString();
   const fieldsToUpdate: string[] = [];
   const values: any[] = [];
+  let paramIndex = 1;
 
   if (updates.title !== undefined) {
-    fieldsToUpdate.push('title = ?');
+    fieldsToUpdate.push(`title = $${paramIndex++}`);
     values.push(updates.title);
   }
   if (updates.systemPrompt !== undefined) {
-    fieldsToUpdate.push('system_prompt = ?');
+    fieldsToUpdate.push(`system_prompt = $${paramIndex++}`);
     values.push(updates.systemPrompt);
   }
   if (updates.embedding_384 !== undefined) {
-    fieldsToUpdate.push('embedding_384 = ?');
+    fieldsToUpdate.push(`embedding_384 = $${paramIndex++}`);
     values.push(updates.embedding_384 ?? null);
   }
   if (updates.embedding_512 !== undefined) {
-    fieldsToUpdate.push('embedding_512 = ?');
+    fieldsToUpdate.push(`embedding_512 = $${paramIndex++}`);
     values.push(updates.embedding_512 ?? null);
   }
   if (updates.embedding_768 !== undefined) {
-    fieldsToUpdate.push('embedding_768 = ?');
+    fieldsToUpdate.push(`embedding_768 = $${paramIndex++}`);
     values.push(updates.embedding_768 ?? null);
   }
   if (updates.embedding_1024 !== undefined) {
-    fieldsToUpdate.push('embedding_1024 = ?');
+    fieldsToUpdate.push(`embedding_1024 = $${paramIndex++}`);
     values.push(updates.embedding_1024 ?? null);
   }
   if (updates.active_embedding_dimension !== undefined) {
-    fieldsToUpdate.push('active_embedding_dimension = ?');
+    fieldsToUpdate.push(`active_embedding_dimension = $${paramIndex++}`);
     values.push(updates.active_embedding_dimension ?? null);
   }
   
   if (fieldsToUpdate.length === 0) {
-    const currentThreadResult = await db.query('SELECT * FROM chat_threads WHERE id = ?', [threadId]);
+    const currentThreadResult = await db.query('SELECT * FROM chat_threads WHERE id = $1', [threadId]);
     return currentThreadResult.rows.length > 0 ? mapDbRowToThread(currentThreadResult.rows[0]) : null;
   }
 
-  fieldsToUpdate.push('last_activity_at = ?');
+  fieldsToUpdate.push(`last_activity_at = $${paramIndex++}`);
   values.push(now);
   values.push(threadId);
 
-  const sql = `UPDATE chat_threads SET ${fieldsToUpdate.join(', ')} WHERE id = ?`;
+  const sql = `UPDATE chat_threads SET ${fieldsToUpdate.join(', ')} WHERE id = $${paramIndex}`;
 
   try {
     await db.query(sql, values);
-    const result = await db.query('SELECT * FROM chat_threads WHERE id = ?', [threadId]);
+    const result = await db.query('SELECT * FROM chat_threads WHERE id = $1', [threadId]);
     return result.rows.length > 0 ? mapDbRowToThread(result.rows[0]) : null;
   } catch (error) {
     console.error(`Error updating chat thread ${threadId}:`, error);
@@ -342,8 +343,8 @@ export const updateChatThreadTitle = async (threadId: string, newTitle: string):
 export const deleteChatThread = async (db: PGlite, threadId: string): Promise<boolean> => {
   try {
     await db.transaction(async (tx) => {
-      await tx.query('DELETE FROM chat_messages WHERE thread_id = ?', [threadId]);
-      await tx.query('DELETE FROM chat_threads WHERE id = ?', [threadId]);
+      await tx.query('DELETE FROM chat_messages WHERE thread_id = $1', [threadId]);
+      await tx.query('DELETE FROM chat_threads WHERE id = $1', [threadId]);
     });
     return true;
   } catch (error) {
