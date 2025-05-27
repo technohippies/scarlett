@@ -9,11 +9,14 @@ export default defineConfig({
   modules: [
     '@wxt-dev/module-solid',
     '@wxt-dev/unocss',
+    // '@wxt-dev/analytics/module', // Removed - using manual analytics configuration
     // '@wxt-dev/auto-icons', // This was removed in your manual edit, keeping it removed unless told otherwise
   ],
   // The 'entrypoints' object is removed as it's not a valid top-level config property.
   // WXT auto-discovers entrypoints from the 'entrypoints/' directory.
   vite: () => ({ // Keep vite as a function
+    // Allow loading env vars prefixed with VITE_ or WXT_
+    envPrefix: ['VITE_', 'WXT_'],
     plugins: [
       copyPgliteAssets() // Add the custom Vite plugin here
     ],

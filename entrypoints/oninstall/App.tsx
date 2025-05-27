@@ -37,7 +37,8 @@ import { browser } from 'wxt/browser'; // For browser.runtime.getURL in VAD ortC
 // --- Import messaging types and function ---
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import type { BackgroundProtocolMap, DeckInfoForFiltering } from '../../src/shared/messaging-types'; // Corrected import path for both types
-import SubscriptionPlanPanel, { SubscriptionPlan } from '../../src/components/ui/SubscriptionPlanPanel';
+// --- Import analytics ---
+import { analytics } from '../../src/utils/analytics';
 
 // --- Define messaging for the frontend context ---
 // Use the same protocol map as the background
@@ -104,11 +105,11 @@ const onboardingTtsProviderOptions: OnboardingTtsProviderOption[] = [
     // { id: 'kokoro', name: 'Kokoro (Local)', logoUrl: '/images/tts-providers/kokoro.png' }, 
 ];
 
-// Simplified Step type for the new flow
-type Step = 'choosePlan' | 'language' | 'learningGoal' | 'deckSelection' | 'setupLLM' | 'setupEmbedding' | 'setupTTS' | 'setupVAD' | 'redirects';
+// Simplified Step type for the new flow - remove choosePlan
+type Step = 'language' | 'learningGoal' | 'deckSelection' | 'setupLLM' | 'setupEmbedding' | 'setupTTS' | 'setupVAD' | 'redirects';
 
-// Keep steps definition for progress calculation
-const onboardingSteps: Step[] = ['language', 'learningGoal', 'choosePlan', 'deckSelection', 'setupLLM', 'setupEmbedding', 'setupTTS', 'setupVAD', 'redirects'];
+// Keep steps definition for progress calculation - remove choosePlan
+const onboardingSteps: Step[] = ['language', 'learningGoal', 'deckSelection', 'setupLLM', 'setupEmbedding', 'setupTTS', 'setupVAD', 'redirects'];
 
 const App: Component = () => {
 
@@ -170,10 +171,10 @@ interface OnboardingContentProps {
 // Create a new component to contain the original App logic, now inside the provider
 // Accept props for redirect state
 const OnboardingContent: Component<OnboardingContentProps> = (props) => {
-  // Initialize at plan selection
+  // Initialize at language selection instead of plan selection
   const [currentStep, setCurrentStep] = createSignal<Step>('language');
-  // Track subscription plan choice
-  const [subscriptionPlan, setSubscriptionPlan] = createSignal<SubscriptionPlan | null>(null);
+  // Remove subscription plan tracking
+  // const [subscriptionPlan, setSubscriptionPlan] = createSignal<SubscriptionPlan | null>(null);
 
   // Keep targetLangLabel for goal step display
   const [targetLangLabel, setTargetLangLabel] = createSignal<string>('');
@@ -222,6 +223,13 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   // --- Use Settings Context --- 
   const settingsContext = useSettings(); // Now we can use the context!
   const ttsTestAudio = settingsContext.ttsTestAudio; // Get audio signal
+
+  // --- Track step changes for analytics ---
+  createEffect(() => {
+    const step = currentStep();
+    // Only log step changes, don't track every page view
+    console.log(`[Analytics] Onboarding step: ${step}`);
+  });
 
   // --- TTS State Management for Onboarding (Kokoro state removed) ---
   const [selectedTtsProviderIdOnboarding, setSelectedTtsProviderIdOnboarding] = createSignal<string | undefined>(undefined);
@@ -399,7 +407,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     console.log('[App] Config after saving goal:', updatedConfig);
 
     console.log('[App] Proceeding to Choose Plan step.');
-    setCurrentStep('choosePlan'); // <- Change to choosePlan
+    setCurrentStep('deckSelection'); // <- Change to deckSelection
   };
 
   // --- Fetch and Filter Decks when DeckSelection step is active ---
@@ -476,6 +484,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   // --- Handler to proceed from Deck Selection ---
   const handleDecksComplete = async () => {
     console.log('[App] Deck Selection Complete. Selected identifiers:', selectedDeckIdentifiers());
+    
     // User selections are already processed by handleDeckToggleInOnboarding calling addLearningDeck.
     // No specific config needs to be saved here for *which* decks were added to user_learning,
     // as that's managed in the database directly.
@@ -487,6 +496,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   // Option A: Keep direct storage manipulation (simpler for now, might diverge from settings page)
   const handleLLMComplete = async (config: FunctionConfig) => {
     console.log('[App] LLM Setup Complete:', config);
+    
     if (!config.providerId || !config.modelId) {
         console.warn('[App] LLM setup skipped or incomplete. Proceeding without saving LLM config.');
     } else {
@@ -500,6 +510,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   
   const handleEmbeddingComplete = async (config: FunctionConfig) => {
     console.log('[App] Embedding Setup Complete:', config);
+    
     if (!config.providerId || !config.modelId) {
         console.warn('[App] Embedding setup skipped or incomplete.');
     } else {
@@ -548,6 +559,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   // --- New Handler for Skipping TTS Setup ---
   const handleSkipTTS = async () => {
     console.log('[App Onboarding] TTS setup skipped by user.');
+    
     // Clear any transient TTS selections for this onboarding session
     setSelectedTtsProviderIdOnboarding(undefined);
     setElevenLabsApiKeyOnboarding('');
@@ -755,6 +767,20 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     console.log('[App] Attempting to save final config:', finalConfig); // Existing log
     await userConfigurationStorage.setValue(finalConfig);
     console.log('[App] Final config save complete.'); // Added log
+    
+    // Track onboarding completion
+    try {
+      await analytics.track('onboarding-completed', {
+        llmProvider: finalConfig.llmConfig?.providerId || 'none',
+        llmModel: finalConfig.llmConfig?.modelId || 'none',
+        embeddingProvider: finalConfig.embeddingConfig?.providerId || 'none',
+        embeddingModel: finalConfig.embeddingConfig?.modelId || 'none',
+        hasElevenLabsKey: finalConfig.ttsConfig?.providerId === 'elevenlabs' ? 'true' : 'false'
+      });
+    } catch (error) {
+      console.warn('[Analytics] Failed to track onboarding completion:', error);
+    }
+    
     // window.close(); // Close the onboarding tab - Replaced below
     window.location.href = 'newtab.html'; // Navigate to newtab.html
   };
@@ -779,11 +805,8 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       case 'learningGoal':
         setCurrentStep('language');
         break;
-      case 'choosePlan': // New back case
-        setCurrentStep('learningGoal');
-        break;
       case 'deckSelection':
-        setCurrentStep('choosePlan'); // Was learningGoal
+        setCurrentStep('learningGoal'); // Fixed: should go back to learningGoal
         break;
       case 'setupLLM':
         setCurrentStep('deckSelection');
@@ -1018,25 +1041,6 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
 
   // --- Render Step Logic (Remove Reader Case) --- 
   const renderStep = () => {
-    // Plan selection panel
-    if (currentStep() === 'choosePlan') {
-      return (
-        <div class="w-full max-w-lg flex flex-col items-center">
-          <SubscriptionPlanPanel
-            selectedPlan={subscriptionPlan()}
-            onSelectPlan={(plan) => {
-              setSubscriptionPlan(plan);
-              setCurrentStep('deckSelection'); // Was 'language', now 'deckSelection'
-            }}
-            isConnected={false}
-            onConnect={() => {}}
-            onSubscribe={() => {}}
-            isSubscribing={false}
-            isSubscribed={false}
-          />
-        </div>
-      );
-    }
     const step = currentStep();
     switch (step) {
       case 'language':
@@ -1336,7 +1340,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         </div>
 
         {/* FIXED Footer */}
-        <Show when={currentStep() !== 'choosePlan'}>
+        <Show when={true}>
         <div class="fixed bottom-0 left-0 right-0 p-4 md:p-6 border-t border-neutral-800 bg-background flex justify-center z-10">
           <div class="w-full max-w-xs">
             <Button

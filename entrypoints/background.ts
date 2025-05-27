@@ -3,6 +3,7 @@
  * It orchestrates database initialization, context menu setup, and message handling.
  */
 import { defineBackground } from '#imports';
+import { analytics } from '../src/utils/analytics';
 import { ensureDbInitialized } from '../src/services/db/init';
 import { seedInitialTags } from '../src/services/db/tags';
 import { registerMessageHandlers } from '../src/background/handlers/message-handlers';
@@ -185,6 +186,7 @@ async function handleNavigation(details: OnBeforeNavigateDetails): Promise<void>
         try {
           await browser.tabs.update(details.tabId, { url: newRedirectUrl });
           console.log(`[Redirect] Successfully redirected tab ${details.tabId} to ${newRedirectUrl}`);
+          
           return; // Stop processing further rules once a redirect occurs
         } catch (updateError) {
           console.error(`[Redirect] Error updating tab ${details.tabId}:`, updateError);
@@ -205,7 +207,16 @@ export default defineBackground({
   main() {
     console.log('[Scarlett BG Entrypoint] Background main() function running (synchronous).');
 
-    // --- Explicitly ensure storage is touched early --- 
+    // Track background script startup (fire and forget)
+    (async () => {
+      try {
+        console.log('[Analytics] Background script started');
+      } catch (error) {
+        console.warn('[Analytics] Background script startup logged');
+      }
+    })();
+
+    // --- Explicitly ensure storage is touched early ---
     userConfigurationStorage.getValue().then(() => {
         console.log('[Scarlett BG Entrypoint] userConfigurationStorage potentially initialized.');
     }).catch(err => {
@@ -254,6 +265,21 @@ export default defineBackground({
     // Use browser namespace for cross-browser compatibility
     browser.runtime.onInstalled.addListener(async (details) => {
         console.log('[Scarlett BG Entrypoint] onInstalled event triggered:', details);
+
+        // Track extension installation/update
+        try {
+          console.log('[Analytics] Tracking extension install/update...');
+          console.log('[Analytics] Analytics object:', analytics);
+          
+          const result = await analytics.track('extension-installed', {
+            reason: details.reason,
+            version: browser.runtime.getManifest().version
+          });
+          
+          console.log('[Analytics] Extension install/update tracked successfully, result:', result);
+        } catch (error) {
+          console.warn('[Analytics] Failed to track extension install/update:', error);
+        }
 
         // --- Perform Async Setup Tasks on Install/Update ---
         try {
