@@ -9,46 +9,37 @@ import { trackMilestone } from '../../utils/analytics';
 
 console.log('[Bookmark Handlers] Module loaded.');
 
-/**
- * Handles saving a new bookmark.
- * Expects message.data with url, title?, tags?, selectedText?.
- */
+// Define the payload type for saveBookmark
 interface SaveBookmarkPayload {
   url: string;
   title?: string | null;
-  tags?: string | null; // Comma-separated tags
-  selectedText?: string | null; // Add selected text if sent from popup
+  tags?: string | null;
+  selectedText?: string | null;
 }
 
+/**
+ * Handles saving a new bookmark.
+ */
 export async function handleSaveBookmark(
   payload: SaveBookmarkPayload,
   _sender: Browser.runtime.MessageSender
 ): Promise<SaveBookmarkResponse> { // Return type based on messaging-types
   console.log('[handleSaveBookmark] Received payload:', payload);
-  if (!payload || !payload.url) {
-    console.error('[handleSaveBookmark] Invalid payload:', payload);
-    return { success: false, error: 'Invalid payload: URL is required.' };
-  }
-
   try {
     // Ensure DB is ready before accessing it
     await ensureDbInitialized(); 
     console.log('[handleSaveBookmark] DB initialized. Saving bookmark...');
 
-    // Prepare data for createBookmark
-    // Note: createBookmark might need its own Input type
-    const bookmarkData: CreateBookmarkInput = {
+    // Create bookmark input
+    const bookmarkInput: CreateBookmarkInput = {
       url: payload.url,
-      title: payload.title,
-      tags: payload.tags, 
-      selectedText: payload.selectedText,
-      // embedding: undefined, // Handle embedding later if needed
-      // context: payload.selectedText // Example if schema had a context field
+      title: payload.title || null,
+      tags: payload.tags || null,
+      selectedText: payload.selectedText || null
     };
 
-    // We need to ensure createBookmark accepts this structure or adjust accordingly
-    // Assuming createBookmark is defined in learning.ts and takes an object
-    const newBookmark = await createBookmark(bookmarkData);
+    // Create the bookmark (without immediate embedding)
+    const newBookmark = await createBookmark(bookmarkInput);
     console.log('[handleSaveBookmark] Bookmark saved successfully:', newBookmark);
     
     // Track first bookmark milestone

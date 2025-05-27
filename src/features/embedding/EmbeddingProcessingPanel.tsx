@@ -38,7 +38,7 @@ export const EmbeddingProcessingPanel: Component<EmbeddingProcessingPanelProps> 
       return (
         <span class="flex items-center justify-center w-full">
           <Spinner class="mr-2 h-5 w-5 animate-spin" />
-          {i18n().get('embeddingPanelButtonEmbeddingInProgress', 'Embedding Webpage')}
+          {i18n().get('embeddingPanelButtonEmbeddingInProgress', 'Embedding...')}
           {(total > 0) && <span class="ml-2 text-sm">({processed}/{total})</span>}
         </span>
       );
@@ -67,7 +67,7 @@ export const EmbeddingProcessingPanel: Component<EmbeddingProcessingPanelProps> 
       onClick={props.onProcessClick}
       disabled={isDisabled()}
       size="sm" // Reduced size for header placement
-      class={`${props.class ?? ''}`} // Auto width for header button
+      class={`w-[180px] ${props.class ?? ''}`} // Fixed width instead of min-width to prevent any resizing
       variant={props.pendingEmbeddingCount() > 0 && !props.isEmbedding() ? "outline" : "secondary"}
     >
       {buttonContent()}

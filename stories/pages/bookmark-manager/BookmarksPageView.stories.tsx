@@ -11,7 +11,6 @@ const mockBookmarks: Bookmark[] = [
     selected_text: 'This is the specific text snippet that was highlighted and saved.',
     saved_at: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
     tags: 'tech, solidjs, webdev',
-    embedding: null, // Assume no embedding for now
   },
   {
     id: 2,
@@ -20,7 +19,6 @@ const mockBookmarks: Bookmark[] = [
     selected_text: null, // No selected text
     saved_at: new Date(Date.now() - 604800000).toISOString(), // 1 week ago
     tags: 'research, data',
-    embedding: null,
   },
   {
     id: 3,
@@ -29,7 +27,6 @@ const mockBookmarks: Bookmark[] = [
     selected_text: 'JavaScript (JS) is a lightweight, interpreted, or just-in-time compiled programming language with first-class functions.',
     saved_at: new Date(Date.now() - 1209600000).toISOString(), // 2 weeks ago
     tags: 'javascript, documentation, mdn',
-    embedding: null,
   },
   {
     id: 4,
@@ -38,7 +35,6 @@ const mockBookmarks: Bookmark[] = [
     selected_text: 'A very long piece of selected text that might wrap or need to be handled appropriately within the card layout to avoid breaking the UI design and ensure readability for the user when they are browsing their saved bookmarks.',
     saved_at: new Date().toISOString(), // Now
     tags: 'testing, layout',
-    embedding: null,
   }
 ];
 

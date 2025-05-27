@@ -2,7 +2,8 @@ import { defineExtensionMessaging } from '@webext-core/messaging';
 import type {
     GetDueItemsRequest,
     BackgroundProtocolMap,
-    DeckInfoForFiltering
+    DeckInfoForFiltering,
+    EmbeddingItem
 } from '../../shared/messaging-types';
 import { Grade } from 'ts-fsrs';
 import {
@@ -11,7 +12,7 @@ import {
     updateSRSState,
     getStudySummaryCounts
 } from '../../services/srs/scheduler';
-import { getActiveLearningWordsFromDb, updateCachedDistractors } from '../../services/db/learning';
+import { getActiveLearningWordsFromDb, updateCachedDistractors, getBookmarksNeedingEmbedding, finalizeBookmarkEmbedding } from '../../services/db/learning';
 import { getDbInstance } from '../../services/db/init';
 import { ollamaChat } from '../../services/llm/providers/ollama/chat';
 import type { LLMConfig, LLMChatResponse, LLMProviderId, ChatMessage } from '../../services/llm/types';
@@ -29,7 +30,8 @@ import {
     finalizePageVersionEmbedding, 
     deletePageVersion, 
     incrementPageVersionVisitCount,
-    countPagesNeedingEmbedding, 
+    countPagesNeedingEmbedding,
+    countAllItemsNeedingEmbedding,
     calculateHash,
     updatePageVersionSummaryAndCleanup,
     getSummaryEmbeddingForVersion as _getSummaryEmbeddingForVersion
@@ -537,9 +539,50 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
             url: p.url,
             markdownContent: p.markdown_content,
             description: p.description ?? null,
-            markdownHash: p.markdown_hash
+            markdownHash: p.markdown_hash || '' // Fix null issue
         }));
         return { success: true, pages };
+    });
+
+    // Add unified embedding endpoints for pages + bookmarks
+    messaging.onMessage('getItemsNeedingEmbedding', async () => {
+        console.log('[Message Handlers] Received getItemsNeedingEmbedding request.');
+        try {
+            // Fetch both pages and bookmarks needing embedding
+            const dbPages = await getPagesNeedingEmbedding();
+            const dbBookmarks = await getBookmarksNeedingEmbedding();
+            
+            const items: EmbeddingItem[] = [
+                // Map pages to unified format
+                ...dbPages.map(p => ({
+                    type: 'page' as const,
+                    id: p.version_id,
+                    url: p.url,
+                    content: p.markdown_content,
+                    metadata: {
+                        description: p.description ?? null,
+                        markdownHash: p.markdown_hash || ''
+                    }
+                })),
+                // Map bookmarks to unified format
+                ...dbBookmarks.map(b => ({
+                    type: 'bookmark' as const,
+                    id: b.id,
+                    url: b.url,
+                    content: b.content,
+                    metadata: {
+                        title: b.title,
+                        selectedText: b.selected_text
+                    }
+                }))
+            ];
+            
+            console.log(`[Message Handlers] Found ${items.length} items needing embedding (${dbPages.length} pages, ${dbBookmarks.length} bookmarks)`);
+            return { success: true, items };
+        } catch (error) {
+            console.error('[Message Handlers] Error in getItemsNeedingEmbedding:', error);
+            return { success: false, items: [] };
+        }
     });
 
     messaging.onMessage('finalizePageVersionEmbedding', async ({ data }) => {
@@ -559,6 +602,35 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
             return { success: true };
         } catch (error) {
             console.error('[Message Handlers] Error in finalizePageVersionEmbedding:', error);
+            return { success: false, error: (error as Error).message };
+        }
+    });
+
+    // Add unified finalization handler
+    messaging.onMessage('finalizeItemEmbedding', async ({ data }) => {
+        console.log('[Message Handlers] Received finalizeItemEmbedding:', data);
+        const { type, id, embeddingInfo, summaryContent, summaryHash } = data;
+        try {
+            if (type === 'page') {
+                if (summaryContent && summaryHash) {
+                    await updatePageVersionSummaryAndCleanup({
+                        version_id: id,
+                        summary_content: summaryContent,
+                        summary_hash: summaryHash
+                    });
+                    console.log('[Message Handlers] Updated summary for page version:', id);
+                }
+                await finalizePageVersionEmbedding({ version_id: id, embeddingInfo });
+                console.log('[Message Handlers] Finalized embedding for page version:', id);
+            } else if (type === 'bookmark') {
+                await finalizeBookmarkEmbedding(id, embeddingInfo);
+                console.log('[Message Handlers] Finalized embedding for bookmark:', id);
+            } else {
+                throw new Error(`Unsupported item type: ${type}`);
+            }
+            return { success: true };
+        } catch (error) {
+            console.error('[Message Handlers] Error in finalizeItemEmbedding:', error);
             return { success: false, error: (error as Error).message };
         }
     });
@@ -740,7 +812,7 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
     messaging.onMessage('getPendingEmbeddingCount', async () => {
         console.log('[Message Handlers] Received getPendingEmbeddingCount request.');
         try {
-            const count = await countPagesNeedingEmbedding();
+            const count = await countAllItemsNeedingEmbedding();
             return { count };
         } catch (error: any) {
             console.error('[Message Handlers getPendingEmbeddingCount] Error:', error);

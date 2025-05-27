@@ -150,10 +150,10 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
     setIsEmbedding(true);
     setEmbedStatusMessage(i18n().get('newTabPageEmbeddingStarting', 'Starting embedding process...'));
     try {
-      // Fetch pages needing embedding
-      const res = await messaging.sendMessage('getPagesNeedingEmbedding', undefined);
-      const pages = res.pages ?? [];
-      const total = pages.length;
+      // Fetch items (pages + bookmarks) needing embedding
+      const res = await messaging.sendMessage('getItemsNeedingEmbedding', undefined);
+      const items = res.items ?? [];
+      const total = items.length;
       setTotalCount(total);
       setProcessedCount(0);
       // Ensure in-browser embedding config is available
@@ -164,9 +164,10 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
         setIsEmbedding(false);
         return;
       }
-      for (const [idx, page] of pages.entries()) {
+      for (const [idx, item] of items.entries()) {
         const current = idx + 1;
         setProcessedCount(current);
+        const itemType = item.type === 'page' ? 'page' : 'bookmark';
         setEmbedStatusMessage(
           i18n().get('newTabPageEmbeddingProgress', 'Embedding {current} of {total}...')
             .replace('{current}', current.toString())
@@ -174,19 +175,21 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
         );
         try {
           const embeddingResult: EmbeddingResult | null = await getEmbedding(
-            page.markdownContent,
+            item.content,
             embedCfg
           );
           if (embeddingResult) {
-            await messaging.sendMessage('finalizePageVersionEmbedding', {
-              versionId: page.versionId,
+            await messaging.sendMessage('finalizeItemEmbedding', {
+              type: item.type,
+              id: item.id,
               embeddingInfo: embeddingResult
             });
+            console.log(`[NewTabPage] Successfully embedded ${itemType} ${item.id}`);
           } else {
-            console.error('[NewTabPage] Embedding returned null for version:', page.versionId);
+            console.error(`[NewTabPage] Embedding returned null for ${itemType}:`, item.id);
           }
         } catch (e) {
-          console.error('[NewTabPage] Error during embedding for version:', page.versionId, e);
+          console.error(`[NewTabPage] Error during embedding for ${itemType}:`, item.id, e);
         }
       }
       setEmbedStatusMessage(i18n().get('newTabPageEmbeddingComplete', 'Embedding complete.'));

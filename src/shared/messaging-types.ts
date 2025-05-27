@@ -317,15 +317,48 @@ export interface PageVersionToEmbed {
   url: string;
   markdownContent: string;
   description?: string | null;
-  markdownHash?: string | null;
+  markdownHash: string;
+}
+
+// Add bookmark embedding types
+export interface BookmarkToEmbed {
+  bookmarkId: number;
+  url: string;
+  content: string; // Combined title + selected_text
+  title?: string | null;
+  selectedText?: string | null;
+}
+
+// Unified embedding item type
+export interface EmbeddingItem {
+  type: 'page' | 'bookmark';
+  id: number; // versionId for pages, bookmarkId for bookmarks
+  url: string;
+  content: string; // markdownContent for pages, combined content for bookmarks
+  metadata?: {
+    title?: string | null;
+    selectedText?: string | null;
+    description?: string | null;
+    markdownHash?: string;
+  };
 }
 
 export interface BackgroundProtocolMap {
     /** Return pages needing embedding for UI-driven in-browser pipeline */
     getPagesNeedingEmbedding(): Promise<{ success: boolean; pages: PageVersionToEmbed[] }>;
+    /** Return items (pages + bookmarks) needing embedding for unified pipeline */
+    getItemsNeedingEmbedding(): Promise<{ success: boolean; items: EmbeddingItem[] }>;
     /** Finalize a single page version embedding from UI-driven pipeline */
     finalizePageVersionEmbedding(data: {
       versionId: number;
+      embeddingInfo: EmbeddingResult;
+      summaryContent?: string;
+      summaryHash?: string;
+    }): Promise<{ success: boolean; error?: string }>;
+    /** Finalize embedding for any item (page or bookmark) */
+    finalizeItemEmbedding(data: {
+      type: 'page' | 'bookmark';
+      id: number;
       embeddingInfo: EmbeddingResult;
       summaryContent?: string;
       summaryHash?: string;
@@ -438,9 +471,19 @@ export interface NewChatMessageDataForRpc {
 export interface BackgroundProtocolMap {
     /** Return pages needing embedding for UI-driven in-browser pipeline */
     getPagesNeedingEmbedding(): Promise<{ success: boolean; pages: PageVersionToEmbed[] }>;
+    /** Return items (pages + bookmarks) needing embedding for unified pipeline */
+    getItemsNeedingEmbedding(): Promise<{ success: boolean; items: EmbeddingItem[] }>;
     /** Finalize a single page version embedding from UI-driven pipeline */
     finalizePageVersionEmbedding(data: {
       versionId: number;
+      embeddingInfo: EmbeddingResult;
+      summaryContent?: string;
+      summaryHash?: string;
+    }): Promise<{ success: boolean; error?: string }>;
+    /** Finalize embedding for any item (page or bookmark) */
+    finalizeItemEmbedding(data: {
+      type: 'page' | 'bookmark';
+      id: number;
       embeddingInfo: EmbeddingResult;
       summaryContent?: string;
       summaryHash?: string;
@@ -468,8 +511,8 @@ export interface BackgroundProtocolMap {
         error?: string;
     }>;
     getPendingEmbeddingCount(): Promise<{ count: number }>;
-    generateTTS(data: GenerateTTSPayload): Promise<void>; 
-    extractMarkdownFromHtml(data: ExtractMarkdownRequest): Promise<ExtractMarkdownResponse>; 
+    generateTTS(data: GenerateTTSPayload): Promise<void>;
+    extractMarkdownFromHtml(data: ExtractMarkdownRequest): Promise<ExtractMarkdownResponse>;
     REQUEST_TTS_FROM_WIDGET(data: { text: string; lang: string; speed?: number }): 
         Promise<{ success: boolean; audioDataUrl?: string; error?: string }>;
     REQUEST_ACTIVE_LEARNING_WORDS(data: RequestActiveLearningWordsPayload): Promise<RequestActiveLearningWordsResponse>;

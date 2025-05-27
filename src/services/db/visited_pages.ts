@@ -471,6 +471,30 @@ export async function countPagesNeedingEmbedding(): Promise<number> {
     }
 }
 
+/**
+ * Counts the total number of items (pages + bookmarks) that need embedding.
+ * @returns A promise resolving to the combined count.
+ */
+export async function countAllItemsNeedingEmbedding(): Promise<number> {
+    console.log(`[DB VisitedPages] Counting all items (pages + bookmarks) needing embedding...`);
+    let db: PGlite | null = null;
+    try {
+        db = await getDbInstance();
+        const sql = `
+            SELECT 
+                (SELECT COUNT(*) FROM page_versions WHERE last_embedded_at IS NULL) +
+                (SELECT COUNT(*) FROM bookmarks WHERE last_embedded_at IS NULL) as total_count;
+        `;
+        const results = await db.query<{ total_count: string }>(sql);
+        const count = parseInt(results.rows[0]?.total_count || '0', 10);
+        console.log(`[DB VisitedPages] Found ${count} total items needing embedding.`);
+        return count;
+    } catch (error: any) {
+        console.error('[DB VisitedPages] Error counting all items needing embedding:', error);
+        throw error; 
+    }
+}
+
 // --- NEW FUNCTION for fetching recent visited pages for context ---
 export async function getRecentVisitedPages(limit: number = 5): Promise<{ title: string | null, url: string }[]> {
   console.log(`[DB VisitedPages] Fetching ${limit} recent visited pages.`);

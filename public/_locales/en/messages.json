@@ -180,7 +180,7 @@
     "message": "Embedding..."
   },
   "embeddingPanelButtonEmbed": {
-    "message": "Embed"
+    "message": "Update Memory"
   },
   "studyPageCompletedMessage": {
     "message": "Completed!"

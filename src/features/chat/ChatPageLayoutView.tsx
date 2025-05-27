@@ -81,9 +81,9 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
     setIsEmbedding(true);
     setEmbedStatusMessage('Starting embedding process...');
     try {
-      const res = await messaging.sendMessage('getPagesNeedingEmbedding', undefined);
-      const pages = res.pages ?? [];
-      const total = pages.length;
+      const res = await messaging.sendMessage('getItemsNeedingEmbedding', undefined);
+      const items = res.items ?? [];
+      const total = items.length;
       setTotalCount(total);
       setProcessedCount(0);
       const embedCfg = settings.config.embeddingConfig;
@@ -93,25 +93,28 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
         setIsEmbedding(false);
         return;
       }
-      for (const [idx, page] of pages.entries()) {
+      for (const [idx, item] of items.entries()) {
         const current = idx + 1;
         setProcessedCount(current);
+        const itemType = item.type === 'page' ? 'page' : 'bookmark';
         setEmbedStatusMessage(`Embedding ${current} of ${total}...`);
         try {
           const result: EmbeddingResult | null = await getEmbedding(
-            page.markdownContent,
+            item.content,
             embedCfg
           );
           if (result) {
-            await messaging.sendMessage('finalizePageVersionEmbedding', {
-              versionId: page.versionId,
+            await messaging.sendMessage('finalizeItemEmbedding', {
+              type: item.type,
+              id: item.id,
               embeddingInfo: result
             });
+            console.log(`[Chat] Successfully embedded ${itemType} ${item.id}`);
           } else {
-            console.error('[Chat] Embedding returned null for version:', page.versionId);
+            console.error(`[Chat] Embedding returned null for ${itemType}:`, item.id);
           }
         } catch (e) {
-          console.error('[Chat] Error during embedding for version:', page.versionId, e);
+          console.error(`[Chat] Error during embedding for ${itemType}:`, item.id, e);
         }
       }
       setEmbedStatusMessage('Embedding complete.');

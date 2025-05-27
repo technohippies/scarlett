@@ -242,14 +242,13 @@ export async function createBookmark(bookmarkData: CreateBookmarkInput): Promise
   const db = await getDbInstance();
   try {
     const result = await db.query<Bookmark>( 
-      // Added selected_text to INSERT statement
-      'INSERT INTO bookmarks (url, title, tags, embedding, selected_text) VALUES ($1, $2, $3, $4, $5) RETURNING *', 
+      // Removed embedding column as it no longer exists in the schema
+      'INSERT INTO bookmarks (url, title, tags, selected_text) VALUES ($1, $2, $3, $4) RETURNING *', 
       [
         bookmarkData.url,
         bookmarkData.title || null,
         bookmarkData.tags || null,
-        bookmarkData.embedding || null, 
-        bookmarkData.selectedText || null // Added selectedText parameter
+        bookmarkData.selectedText || null
       ]
     );
     if (result.rows && result.rows.length > 0) {
@@ -287,6 +286,141 @@ export async function getAllBookmarks(): Promise<Bookmark[]> {
   const result = await db.query<Bookmark>('SELECT * FROM bookmarks ORDER BY saved_at DESC');
   console.log(`[DB bookmarks] Found ${result.rows.length} bookmarks.`);
   return result.rows;
+}
+
+// --- Bookmark Embedding Functions ---
+
+/**
+ * Interface for bookmark items that need embedding
+ */
+export interface BookmarkToEmbed {
+  id: number;
+  url: string;
+  title?: string | null;
+  selected_text?: string | null;
+  content: string; // Combined content for embedding
+}
+
+/**
+ * Retrieves bookmarks that need embedding.
+ * @param limit Optional limit on the number of bookmarks to fetch.
+ * @returns A promise resolving to an array of BookmarkToEmbed objects.
+ */
+export async function getBookmarksNeedingEmbedding(limit: number = 50): Promise<BookmarkToEmbed[]> {
+  console.log(`[DB bookmarks] Fetching bookmarks needing embedding (limit: ${limit})...`);
+  const db = await getDbInstance();
+  try {
+    const sql = `
+      SELECT id, url, title, selected_text
+      FROM bookmarks 
+      WHERE last_embedded_at IS NULL 
+      ORDER BY saved_at ASC
+      LIMIT $1;
+    `;
+    const results = await db.query<{id: number, url: string, title: string | null, selected_text: string | null}>(sql, [limit]);
+    
+    // Transform results to include combined content
+    const bookmarksToEmbed: BookmarkToEmbed[] = results.rows.map(row => {
+      // Combine title and selected text for embedding content
+      const contentParts = [
+        row.title || '',
+        row.selected_text || ''
+      ].filter(Boolean);
+      
+      const content = contentParts.join(' ').trim() || row.url; // Fallback to URL if no content
+      
+      return {
+        id: row.id,
+        url: row.url,
+        title: row.title,
+        selected_text: row.selected_text,
+        content
+      };
+    });
+    
+    console.log(`[DB bookmarks] Found ${bookmarksToEmbed.length} bookmarks needing embedding.`);
+    return bookmarksToEmbed;
+  } catch (error: any) {
+    console.error('[DB bookmarks] Error fetching bookmarks needing embedding:', error);
+    throw error; 
+  }
+}
+
+/**
+ * Counts the number of bookmarks that need embedding.
+ * @returns A promise resolving to the count.
+ */
+export async function countBookmarksNeedingEmbedding(): Promise<number> {
+  console.log(`[DB bookmarks] Counting bookmarks needing embedding...`);
+  const db = await getDbInstance();
+  try {
+    const sql = `
+      SELECT COUNT(*) as count
+      FROM bookmarks 
+      WHERE last_embedded_at IS NULL;
+    `;
+    const results = await db.query<{ count: string }>(sql);
+    const count = parseInt(results.rows[0]?.count || '0', 10);
+    console.log(`[DB bookmarks] Found ${count} bookmarks needing embedding.`);
+    return count;
+  } catch (error: any) {
+    console.error('[DB bookmarks] Error counting bookmarks needing embedding:', error);
+    throw error; 
+  }
+}
+
+/**
+ * Updates a bookmark with embedding information.
+ * @param bookmarkId The ID of the bookmark to update
+ * @param embeddingInfo The embedding result containing vector and metadata
+ */
+export async function finalizeBookmarkEmbedding(bookmarkId: number, embeddingInfo: any): Promise<void> {
+  console.log(`[DB bookmarks] finalizeEmbedding for bookmark_id: ${bookmarkId}`);
+  
+  if (!bookmarkId || !embeddingInfo) {
+    console.error('[DB bookmarks] bookmarkId and embeddingInfo are required for finalizeEmbedding.');
+    throw new Error('bookmarkId and embeddingInfo are required.');
+  }
+
+  const db = await getDbInstance();
+  try {
+    console.log('[DB bookmarks] Got DB instance for finalizeEmbedding.');
+
+    let embeddingCol: string;
+    // Explicitly convert embedding array to PostgreSQL array string format
+    let embeddingVal: string | null = embeddingInfo.embedding 
+      ? `[${embeddingInfo.embedding.join(',')}]`
+      : null;
+    const dimension = embeddingInfo.dimension;
+
+    switch(dimension) {
+      case 384: embeddingCol = 'embedding_384'; break;
+      case 512: embeddingCol = 'embedding_512'; break;
+      case 768: embeddingCol = 'embedding_768'; break;
+      case 1024: embeddingCol = 'embedding_1024'; break;
+      default:
+        console.warn(`[DB bookmarks] Unsupported dimension ${dimension} for finalizeEmbedding. Aborting.`);
+        throw new Error(`Unsupported embedding dimension: ${dimension}`);
+    }
+    
+    // Use explicit parameters to avoid SQL injection risks with column names
+    const sql = `
+      UPDATE bookmarks
+      SET 
+        ${embeddingCol} = $1::vector, -- Explicit cast to vector type
+        active_embedding_dimension = $2,
+        embedding_model_id = $3,
+        last_embedded_at = CURRENT_TIMESTAMP 
+      WHERE id = $4;
+    `;
+    
+    console.log(`[DB bookmarks] Executing UPDATE Embedding (Dim: ${dimension}) for bookmark_id: ${bookmarkId}`);
+    await db.query(sql, [embeddingVal, dimension, embeddingInfo.modelName || null, bookmarkId]);
+    console.log(`[DB bookmarks] Successfully updated embedding for bookmark_id: ${bookmarkId}`);
+  } catch (error: any) {
+    console.error(`[DB bookmarks] Error updating embedding for bookmark_id ${bookmarkId}:`, error);
+    throw error;
+  }
 }
 
 // --- Flashcard Functions (New) ---

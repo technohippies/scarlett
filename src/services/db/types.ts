@@ -18,15 +18,20 @@ export interface Bookmark {
   selected_text?: string | null;
   saved_at: string; // Assuming TIMESTAMP comes back as string
   tags?: string | null; // Comma-separated string as per schema
-  embedding?: string | null; // TEXT for now
+  embedding_384?: number[] | null; // Vector embedding for MiniLM-L6-v2
+  embedding_512?: number[] | null; // Vector embedding 512 dimensions
+  embedding_768?: number[] | null; // Vector embedding 768 dimensions
+  embedding_1024?: number[] | null; // Vector embedding 1024 dimensions
+  active_embedding_dimension?: number | null; // Which dimension is currently populated
+  embedding_model_id?: string | null; // Model used for embedding
+  last_embedded_at?: string | null; // When embedding was last updated
 }
 
-// Input type for creating bookmarks (omits id, saved_at)
+// Input type for creating bookmarks (omits id, saved_at, and embedding fields)
 export interface CreateBookmarkInput {
   url: string;
   title?: string | null;
   tags?: string | null;
-  embedding?: string | null; 
   selectedText?: string | null;
 }
 
