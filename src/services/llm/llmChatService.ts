@@ -7,7 +7,8 @@ import { janChat } from './providers/jan/chat';
 // import { lmStudioChat } from './providers/lmstudio/chat';
 
 // Import the personality
-import personality from './prompts/personality.json';
+import personality from './prompts/personality-core.json';
+import { getPersonalityContext } from './personalityService';
 
 // --- Import DB functions for context --- 
 import { getRecentVisitedPages, getTopVisitedPages } from '../db/visited_pages';
@@ -222,6 +223,27 @@ async function prepareLLMMessages(
     userActivityContext = await fetchAndFormatUserContext(); 
   }
   
+  // Add personality context based on the current user query
+  let personalityContext = "";
+  try {
+    const userConfig = await userConfigurationStorage.getValue();
+    const embeddingConfig = userConfig?.embeddingConfig;
+    
+    if (embeddingConfig) {
+      console.log('[llmChatService] Fetching personality context for query:', latestUserMessageContent);
+      const personalityChunks = await getPersonalityContext(latestUserMessageContent, embeddingConfig, 2);
+      
+      if (personalityChunks.length > 0) {
+        personalityContext = `[Personality Context]\n${personalityChunks.join('\n\n')}\n[/Personality Context]`;
+        console.log(`[llmChatService] Added personality context: ${personalityChunks.length} chunks`);
+      }
+    } else {
+      console.log('[llmChatService] No embedding config available for personality context');
+    }
+  } catch (error) {
+    console.warn('[llmChatService] Failed to fetch personality context:', error);
+  }
+  
   // Add dynamic RAG context based on the current user query
   let ragContext = "";
   try {
@@ -256,6 +278,9 @@ async function prepareLLMMessages(
     fullSystemPrompt = effectiveBaseSystem;
     if (userActivityContext) {
       fullSystemPrompt += "\n\n" + userActivityContext;
+    }
+    if (personalityContext) {
+      fullSystemPrompt += "\n\n" + personalityContext;
     }
     if (ragContext) {
       fullSystemPrompt += "\n\n" + ragContext;

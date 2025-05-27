@@ -16,6 +16,7 @@ import { LMStudioProvider } from '../services/llm/providers/lmstudio';
 // --- Import ElevenLabs Service and Constants ---
 import { generateElevenLabsSpeechStream } from '../services/tts/elevenLabsService';
 import { DEFAULT_ELEVENLABS_VOICE_ID } from '../shared/constants';
+import { embedPersonalityChunks } from '../services/llm/personalityService';
 
 // --- Helper Types (Local to context or shared) ---
 export type FetchStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -709,10 +710,18 @@ export const SettingsProvider: ParentComponent = (props) => {
 
         try {
             let success = false;
-            if (functionName === 'LLM' || functionName === 'Embedding') {
-                console.warn(`[SettingsContext] Actual test logic for ${functionName} provider ${currentFunctionConfig.providerId} needs implementation.`);
-                await new Promise(resolve => setTimeout(resolve, 1000)); 
-                success = true; 
+            if (functionName === 'LLM') {
+                console.warn(`[SettingsContext] Actual test logic for LLM provider ${currentFunctionConfig.providerId} needs implementation.`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                success = true;
+            } else if (functionName === 'Embedding') {
+                console.log(`[SettingsContext] Testing embedding and seeding personality for provider ${currentFunctionConfig.providerId}`);
+                const result = await embedPersonalityChunks(currentFunctionConfig);
+                if (result.success) {
+                    success = true;
+                } else {
+                    throw new Error(result.error || 'Personality embedding failed');
+                }
             } else if (functionName === 'TTS') {
                 if (currentFunctionConfig.providerId === 'elevenlabs') {
                     if (!currentFunctionConfig.apiKey) {

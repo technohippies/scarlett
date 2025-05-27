@@ -40,6 +40,8 @@ import type { BackgroundProtocolMap, DeckInfoForFiltering } from '../../src/shar
 // --- Import analytics ---
 import { analytics } from '../../src/utils/analytics';
 
+// --- Import personality service ---
+
 // --- Define messaging for the frontend context ---
 // Use the same protocol map as the background
 const { sendMessage: sendBackgroundMessage } = defineExtensionMessaging<BackgroundProtocolMap>();
@@ -510,16 +512,15 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   
   const handleEmbeddingComplete = async (config: FunctionConfig) => {
     console.log('[App] Embedding Setup Complete:', config);
-    
     if (!config.providerId || !config.modelId) {
-        console.warn('[App] Embedding setup skipped or incomplete.');
+      console.warn('[App] Embedding setup skipped or incomplete.');
     } else {
-        const currentConfig = await userConfigurationStorage.getValue() || {};
-        const updatedConfig = { ...currentConfig, embeddingConfig: { ...config } }; // Spread to clone
-        await userConfigurationStorage.setValue(updatedConfig);
-        console.log('[App] Config after saving Embedding setup:', updatedConfig);
+      const currentConfig = await userConfigurationStorage.getValue() || {};
+      const updatedConfig = { ...currentConfig, embeddingConfig: { ...config } };
+      await userConfigurationStorage.setValue(updatedConfig);
+      console.log('[App] Config after saving Embedding setup:', updatedConfig);
     }
-    setCurrentStep('setupTTS'); // Proceed to TTS setup
+    setCurrentStep('setupTTS');
   };
 
   // --- Add TTS Handler --- (Update to remove Kokoro case)
@@ -847,56 +848,54 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     if (step === 'language' || step === 'learningGoal') {
       return i18n().get('onboardingContinue', 'Continue');
     }
-    // Add case for deckSelection
     if (step === 'deckSelection') {
       return i18n().get('onboardingContinue', 'Continue');
     }
-    if (step === 'setupLLM' || step === 'setupEmbedding') { 
-      const llmOrEmbeddingConfig = step === 'setupLLM' ? settingsContext.config.llmConfig : settingsContext.config.embeddingConfig;
-      if (!llmOrEmbeddingConfig?.providerId) return i18n().get('onboardingContinue', 'Continue'); 
-      if (state?.fetchStatus() === 'success' && llmOrEmbeddingConfig?.modelId) {
-        if (state?.testStatus() === 'idle' || state?.testStatus() === 'error') {
-          return i18n().get('onboardingTest', 'Test');
-        } else if (state?.testStatus() === 'testing') {
-          return i18n().get('onboardingConnecting', 'Connecting...');
-        } else { // testStatus === 'success'
-          return i18n().get('onboardingContinue', 'Continue');
-        }
+    if (step === 'setupLLM' || step === 'setupEmbedding') {
+      const llmOrEmbeddingConfig = step === 'setupLLM'
+        ? settingsContext.config.llmConfig
+        : settingsContext.config.embeddingConfig;
+      if (!llmOrEmbeddingConfig?.providerId) {
+        return i18n().get('onboardingContinue', 'Continue');
       }
+      if (state?.fetchStatus() === 'loading') {
+        return i18n().get('onboardingFetchingModels', 'Fetching models...');
+      }
+      if (state?.fetchStatus() === 'success' && !llmOrEmbeddingConfig?.modelId) {
+        return i18n().get('onboardingContinue', 'Continue');
+      }
+      if (state?.testStatus() === 'idle' || state?.testStatus() === 'error') {
+        return i18n().get('onboardingTest', 'Test Connection');
+      }
+      if (state?.testStatus() === 'testing') {
+        return i18n().get('onboardingConnecting', 'Connecting...');
+      }
+      return i18n().get('onboardingContinue', 'Continue');
     }
-    // --- Updated TTS Logic for footerButtonLabel ---
     if (step === 'setupTTS') {
       const provider = selectedTtsProviderIdOnboarding();
       if (provider === 'elevenlabs') {
-        if (elevenLabsApiKeyOnboarding().length > 0) {
-          if (isTtsTestingOnboarding()) {
-            return i18n().get('onboardingConnecting', 'Testing...');
-          }
-          if (ttsTestAudio()) { // Test was successful
-            return i18n().get('onboardingContinue', 'Continue');
-          }
-          // API key entered, but no successful test yet or test failed
-          return i18n().get('onboardingTest', 'Test Connection'); 
+        if (isTtsTestingOnboarding()) {
+          return i18n().get('onboardingConnecting', 'Testing...');
         }
+        if (ttsTestAudio()) {
+          return i18n().get('onboardingContinue', 'Continue');
+        }
+        return i18n().get('onboardingTest', 'Test Connection');
       }
-      // Default for TTS (no provider selected, or no API key for EL)
       return i18n().get('onboardingContinue', 'Continue');
     }
-    // --- VAD Step Footer Button Logic ---
     if (step === 'setupVAD') {
-        if (isVadLoadingOnboarding()) return i18n().get('onboardingInitializing', 'Initializing...');
-        if (isVadTestingOnboarding()) return i18n().get('onboardingStopTest', 'Stop Test');
-        if (lastRecordedAudioUrlOnboarding() && isTranscribingOnboarding()) return i18n().get('onboardingTranscribing', 'Transcribing...');
-        // If VAD is initialized and not testing, or if there's audio, allow "Test" or "Continue"
-        if (vadInstanceOnboarding() && !isVadTestingOnboarding() || lastRecordedAudioUrlOnboarding()) {
-             // If there's a recording or transcription, prioritize Continue
-            if (lastRecordedAudioUrlOnboarding() || transcribedTextOnboarding() || sttErrorOnboarding()) {
-                return i18n().get('onboardingContinue', 'Continue');
-            }
-            return i18n().get('onboardingTest', 'Test');
+      if (isVadLoadingOnboarding()) return i18n().get('onboardingInitializing', 'Initializing...');
+      if (isVadTestingOnboarding()) return i18n().get('onboardingStopTest', 'Stop Test');
+      if (lastRecordedAudioUrlOnboarding() && isTranscribingOnboarding()) return i18n().get('onboardingTranscribing', 'Transcribing...');
+      if ((vadInstanceOnboarding() && !isVadTestingOnboarding()) || lastRecordedAudioUrlOnboarding()) {
+        if (lastRecordedAudioUrlOnboarding() || transcribedTextOnboarding() || sttErrorOnboarding()) {
+          return i18n().get('onboardingContinue', 'Continue');
         }
-        // Default for VAD before initialization or if an error occurred preventing test
         return i18n().get('onboardingTest', 'Test');
+      }
+      return i18n().get('onboardingTest', 'Test');
     }
     if (step === 'redirects') return i18n().get('onboardingFinishSetup', 'Finish Setup');
     return i18n().get('onboardingContinue', 'Continue');

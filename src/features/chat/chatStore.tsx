@@ -15,6 +15,7 @@ import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttServi
 import { generateRoleplayScenariosLLM } from '../../services/llm/llmChatService';
 import { getEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
 import { trackMilestone } from '../../utils/analytics';
+import { isPersonalityEmbedded } from '../../services/llm/personalityService';
 
 // RPC client for background storage
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
@@ -56,6 +57,8 @@ export interface ChatState {
   animationFrameId: number | null;
   pendingThreadId: string | null;
   audioLevel: number;
+  personalityEmbedded: boolean | null; // null = checking, true/false = result
+  showPersonalityWarning: boolean;
 }
 
 export interface ChatActions {
@@ -70,6 +73,8 @@ export interface ChatActions {
   createNewThread: () => Promise<void>;
   generateRoleplay: (topicHint?: string) => Promise<void>;
   deleteThread: (threadId: string) => Promise<void>;
+  checkPersonalityEmbedding: () => Promise<void>;
+  dismissPersonalityWarning: () => void;
 }
 
 // Props for ChatProvider now include userConfig
@@ -92,6 +97,8 @@ const defaultState: ChatState = {
   animationFrameId: null,
   pendingThreadId: null,
   audioLevel: 0,
+  personalityEmbedded: null,
+  showPersonalityWarning: false,
 };
 const defaultActions: ChatActions = {
   loadThreads: async () => {},
@@ -105,6 +112,8 @@ const defaultActions: ChatActions = {
   createNewThread: async () => {},
   generateRoleplay: async (_topicHint) => {},
   deleteThread: async (_threadId) => {},
+  checkPersonalityEmbedding: async () => {},
+  dismissPersonalityWarning: () => {},
 };
 // @ts-ignore: suppress createContext overload mismatch
 const ChatContext = createContext<[ChatState, ChatActions]>([defaultState, defaultActions]);
@@ -126,6 +135,8 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     animationFrameId: null,
     pendingThreadId: null,
     audioLevel: 0,
+    personalityEmbedded: null,
+    showPersonalityWarning: false,
   });
 
   // VAD recorder, stream and buffer
@@ -716,11 +727,36 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       } finally {
         setState('isLoading', false);
       }
+    },
+
+    async checkPersonalityEmbedding() {
+      console.log('[chatStore] Checking personality embedding status...');
+      try {
+        const isEmbedded = await isPersonalityEmbedded();
+        setState('personalityEmbedded', isEmbedded);
+        
+        // Show warning if personality is not embedded and user has embedding config
+        if (!isEmbedded && props.initialUserConfig.embeddingConfig) {
+          setState('showPersonalityWarning', true);
+          console.log('[chatStore] Personality not embedded - showing warning');
+        } else {
+          setState('showPersonalityWarning', false);
+        }
+      } catch (error) {
+        console.error('[chatStore] Failed to check personality embedding:', error);
+        setState('personalityEmbedded', false);
+        setState('showPersonalityWarning', false);
+      }
+    },
+
+    dismissPersonalityWarning() {
+      setState('showPersonalityWarning', false);
     }
   };
 
   onMount(() => {
     actions.loadThreads();
+    actions.checkPersonalityEmbedding(); // Check personality embedding status on mount
   });
 
   return (
