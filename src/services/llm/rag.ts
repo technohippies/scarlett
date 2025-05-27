@@ -147,7 +147,7 @@ export async function performRAGSearch(
     timeWindow
   } = options;
 
-  console.log(`[RAG] Performing hybrid search for: "${query.substring(0, 50)}..."`);
+  console.log(`[RAG] 📚 GENERAL RAG: Performing hybrid search for: "${query.substring(0, 50)}..."`);
   
   const db = await getDbInstance();
   const results: RAGResult[] = [];
@@ -158,19 +158,21 @@ export async function performRAGSearch(
     const embeddingConfig = userConfig?.embeddingConfig;
     
     if (!embeddingConfig) {
-      console.warn('[RAG] No embedding configuration found, falling back to keyword search');
+      console.warn('[RAG] 📚 GENERAL RAG: No embedding configuration found, falling back to keyword search');
       return await performKeywordSearch(query, options);
     }
 
     // Get embedding for the query
+    console.log('[RAG] 📚 GENERAL RAG: Generating embedding for content search...');
     const queryEmbedding = await getEmbedding(query, embeddingConfig);
     if (!queryEmbedding || !queryEmbedding.embedding) {
-      console.warn('[RAG] Failed to generate query embedding, falling back to keyword search');
+      console.warn('[RAG] 📚 GENERAL RAG: Failed to generate query embedding, falling back to keyword search');
       return await performKeywordSearch(query, options);
     }
 
     const embedding = queryEmbedding.embedding;
     const dimension = queryEmbedding.dimension;
+    console.log('[RAG] 📚 GENERAL RAG: Using embedding dimension:', dimension);
 
     // Build time filter clause
     const timeFilter = timeWindow ? 
@@ -178,6 +180,7 @@ export async function performRAGSearch(
 
     // 1. Search chat messages
     if (sources.includes('chat')) {
+      console.log('[RAG] 📚 GENERAL RAG: Searching chat messages...');
       const chatQuery = `
         SELECT 
           id, thread_id, sender, text_content, timestamp,
@@ -200,6 +203,7 @@ export async function performRAGSearch(
       ]);
 
       if (chatResults.rows) {
+        console.log('[RAG] 📚 GENERAL RAG: Found', chatResults.rows.length, 'chat message results');
         for (const row of chatResults.rows) {
           const chatRow = row as ChatMessageRow;
           results.push({
@@ -218,6 +222,7 @@ export async function performRAGSearch(
 
     // 2. Search bookmarks
     if (sources.includes('bookmark')) {
+      console.log('[RAG] 📚 GENERAL RAG: Searching bookmarks...');
       const bookmarkQuery = `
         SELECT 
           url, title, selected_text, saved_at,
@@ -241,6 +246,7 @@ export async function performRAGSearch(
       ]);
 
       if (bookmarkResults.rows) {
+        console.log('[RAG] 📚 GENERAL RAG: Found', bookmarkResults.rows.length, 'bookmark results');
         for (const row of bookmarkResults.rows) {
           const bookmarkRow = row as BookmarkRow;
           results.push({
@@ -259,6 +265,7 @@ export async function performRAGSearch(
 
     // 3. Search page content
     if (sources.includes('page')) {
+      console.log('[RAG] 📚 GENERAL RAG: Searching page content...');
       const pageQuery = `
         SELECT 
           url, summary_content, captured_at,
@@ -282,6 +289,7 @@ export async function performRAGSearch(
       ]);
 
       if (pageResults.rows) {
+        console.log('[RAG] 📚 GENERAL RAG: Found', pageResults.rows.length, 'page content results');
         for (const row of pageResults.rows) {
           const pageRow = row as PageRow;
           results.push({
@@ -299,6 +307,7 @@ export async function performRAGSearch(
 
     // 4. Search learning content (lexemes + definitions) - using keyword search instead of similarity
     if (sources.includes('learning')) {
+      console.log('[RAG] 📚 GENERAL RAG: Searching learning content...');
       try {
         const keywords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
         if (keywords.length > 0) {
@@ -319,6 +328,7 @@ export async function performRAGSearch(
           ]);
 
           if (learningResults.rows) {
+            console.log('[RAG] 📚 GENERAL RAG: Found', learningResults.rows.length, 'learning content results');
             for (const row of learningResults.rows) {
               const learningRow = row as LearningRow;
               results.push({
@@ -333,12 +343,12 @@ export async function performRAGSearch(
           }
         }
       } catch (error) {
-        console.warn('[RAG] Learning content search failed, skipping:', error);
+        console.warn('[RAG] 📚 GENERAL RAG: Learning content search failed, skipping:', error);
       }
     }
 
   } catch (error) {
-    console.error('[RAG] Vector search failed:', error);
+    console.error('[RAG] 📚 GENERAL RAG: Vector search failed:', error);
     // Fallback to keyword search
     return await performKeywordSearch(query, options);
   }
@@ -346,7 +356,11 @@ export async function performRAGSearch(
   // Sort all results by relevance score
   results.sort((a, b) => b.relevanceScore - a.relevanceScore);
   
-  console.log(`[RAG] Found ${results.length} results with vector search`);
+  console.log(`[RAG] 📚 GENERAL RAG: Found ${results.length} total results, returning top ${Math.min(results.length, maxResults)}`);
+  if (results.length > 0) {
+    console.log('[RAG] 📚 GENERAL RAG: Top result relevance score:', results[0].relevanceScore.toFixed(3));
+  }
+  
   return results.slice(0, maxResults);
 }
 

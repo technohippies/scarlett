@@ -196,7 +196,8 @@ export async function embedPersonalityChunks(embeddingConfig: FunctionConfig): P
  * Retrieves relevant personality chunks based on a query
  */
 export async function getPersonalityContext(query: string, embeddingConfig: FunctionConfig, limit = 3): Promise<string[]> {
-  console.log('[PersonalityService] Hybrid search for personality context:', query);
+  console.log('[PersonalityService] 🎭 PERSONALITY RAG: Searching for personality context for query:', query);
+  
   try {
     const db = await getDbInstance();
     
@@ -209,63 +210,66 @@ export async function getPersonalityContext(query: string, embeddingConfig: Func
       );
     `);
     const tableExists = (tableExistsResult.rows[0] as any)?.exists;
-    console.log(`[PersonalityService DEBUG] ai_personality table exists: ${tableExists}`);
+    console.log(`[PersonalityService] 🎭 PERSONALITY RAG: ai_personality table exists: ${tableExists}`);
     
     if (!tableExists) {
-      console.log('[PersonalityService DEBUG] ai_personality table does not exist');
+      console.log('[PersonalityService] 🎭 PERSONALITY RAG: ai_personality table does not exist');
       return [];
     }
     
     // DEBUG: First check if we have any data at all
     const countResult = await db.query('SELECT COUNT(*) as count FROM ai_personality');
     const totalRows = (countResult.rows[0] as any)?.count || 0;
-    console.log(`[PersonalityService DEBUG] Total personality rows in database: ${totalRows}`);
+    console.log(`[PersonalityService] 🎭 PERSONALITY RAG: Total personality chunks available: ${totalRows}`);
     
     if (totalRows === 0) {
-      console.log('[PersonalityService DEBUG] No personality data found - personality needs to be embedded first');
+      console.log('[PersonalityService] 🎭 PERSONALITY RAG: No personality data found - personality needs to be embedded first');
       return [];
     }
-    
+
     // Generate query embedding
+    console.log('[PersonalityService] 🎭 PERSONALITY RAG: Generating embedding for personality search...');
     const queryEmbedding = await getEmbedding(query, embeddingConfig);
     if (!queryEmbedding) {
-      console.log('[PersonalityService DEBUG] Failed to generate query embedding');
+      console.log('[PersonalityService] 🎭 PERSONALITY RAG: Failed to generate query embedding');
       return [];
     }
     const queryVector = JSON.stringify(queryEmbedding.embedding);
     
     // Determine embedding field based on actual embedding dimension
     const embeddingField = `embedding_${queryEmbedding.dimension}`;
-    console.log(`[PersonalityService DEBUG] Using embedding field: ${embeddingField}`);
-    
+    console.log(`[PersonalityService] 🎭 PERSONALITY RAG: Using embedding field: ${embeddingField}`);
+
     // Semantic search with distance scoring
+    console.log('[PersonalityService] 🎭 PERSONALITY RAG: Performing semantic similarity search...');
     const semRows = (await db.query(
       `SELECT id, text_content, category, ${embeddingField} <-> $1 as distance
-       FROM ai_personality
-       WHERE ${embeddingField} IS NOT NULL
+      FROM ai_personality 
+      WHERE ${embeddingField} IS NOT NULL
        ORDER BY ${embeddingField} <-> $1
        LIMIT $2`,
       [queryVector, limit * 5]  // Increased pool size
     )).rows as PersonalityRowWithMeta[];
     
     // Keyword pass - FIX: More robust text matching
+    console.log('[PersonalityService] 🎭 PERSONALITY RAG: Performing keyword search...');
     const kwRows = (await db.query(
       `SELECT id, text_content, category
-       FROM ai_personality
+      FROM ai_personality 
        WHERE text_content ILIKE ANY($1)`,
       [['%beyonce%', '%beyoncé%', '%blackpink%', '%music%', '%empowerment%', '%energy%', '%classical%', '%opera%']]
     )).rows as PersonalityRowWithMeta[];
     
-    console.log(`[PersonalityService DEBUG] Semantic search found ${semRows.length} results`);
-    console.log(`[PersonalityService DEBUG] Keyword search found ${kwRows.length} results`);
+    console.log(`[PersonalityService] 🎭 PERSONALITY RAG: Semantic search found ${semRows.length} results`);
+    console.log(`[PersonalityService] 🎭 PERSONALITY RAG: Keyword search found ${kwRows.length} results`);
     
     if (semRows.length > 0) {
-      console.log(`[PersonalityService DEBUG] Top semantic result: category="${semRows[0].category}", distance=${semRows[0].distance}`);
+      console.log(`[PersonalityService] 🎭 PERSONALITY RAG: Top semantic result: category="${semRows[0].category}", distance=${semRows[0].distance}`);
     }
     if (kwRows.length > 0) {
-      console.log(`[PersonalityService DEBUG] Keyword results: ${kwRows.map(r => r.category).join(', ')}`);
+      console.log(`[PersonalityService] 🎭 PERSONALITY RAG: Keyword results: ${kwRows.map(r => r.category).join(', ')}`);
     }
-    
+
     // Combine and deduplicate by ID
     const seenIds = new Set<number>();
     const allCandidates: PersonalityRowWithMeta[] = [];
@@ -286,20 +290,20 @@ export async function getPersonalityContext(query: string, embeddingConfig: Func
       }
     }
     
-    console.log(`[PersonalityService DEBUG] Total unique candidates after fusion: ${allCandidates.length}`);
+    console.log(`[PersonalityService] 🎭 PERSONALITY RAG: Total unique candidates after fusion: ${allCandidates.length}`);
     
     // Take top results and return text content
     const finalResults = allCandidates.slice(0, limit);
     const contextTexts = finalResults.map(row => row.text_content);
     
-    console.log(`[PersonalityService DEBUG] Returning ${contextTexts.length} personality chunks`);
+    console.log(`[PersonalityService] 🎭 PERSONALITY RAG: Returning ${contextTexts.length} personality chunks`);
     if (contextTexts.length > 0) {
-      console.log(`[PersonalityService DEBUG] Sample result: "${contextTexts[0].substring(0, 100)}..."`);
+      console.log(`[PersonalityService] 🎭 PERSONALITY RAG: Sample result: "${contextTexts[0].substring(0, 100)}..."`);
     }
     
     return contextTexts;
   } catch (error) {
-    console.error('[PersonalityService] Error in getPersonalityContext:', error);
+    console.error('[PersonalityService] 🎭 PERSONALITY RAG: Error in getPersonalityContext:', error);
     return [];
   }
 }
