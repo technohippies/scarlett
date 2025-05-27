@@ -4,6 +4,8 @@ import type { DueLearningItem } from "../services/srs/types";
 import type { Bookmark, Tag } from "../services/db/types";
 import type { Thread, ChatMessage } from '../features/chat/types';
 import type { EmbeddingResult } from '../services/llm/embedding';
+import type { FunctionConfig } from '../services/storage/types';
+import type { PersonalityEmbeddingResult } from '../services/llm/personalityService';
 
 /**
  * Payload sent from the background script to the content script
@@ -409,6 +411,9 @@ export interface BackgroundProtocolMap {
     addChatMessage(data: NewChatMessageDataForRpc): Promise<ChatMessage>;
     updateChatThreadTitle(data: { threadId: string; newTitle: string }): Promise<void>;
     deleteChatThread(data: { threadId: string }): Promise<{ success: boolean; error?: string }>;
+    
+    // Personality Operations
+    embedPersonality(data: EmbedPersonalityRequest): Promise<EmbedPersonalityResponse>;
 }
 // ---- END: BackgroundProtocolMap Definition ----
 
@@ -534,5 +539,22 @@ export interface BackgroundProtocolMap {
     addChatMessage(data: NewChatMessageDataForRpc): Promise<ChatMessage>;
     updateChatThreadTitle(data: { threadId: string; newTitle: string }): Promise<void>;
     deleteChatThread(data: { threadId: string }): Promise<{ success: boolean; error?: string }>;
+    
+    // Personality Operations
+    embedPersonality(data: EmbedPersonalityRequest): Promise<EmbedPersonalityResponse>;
 }
 // --- END NEW CHAT RPC DEFINITIONS ---
+
+// --- Personality Embedding ---
+
+/** Request to embed personality chunks in background context */
+export interface EmbedPersonalityRequest {
+  embeddingConfig: FunctionConfig;
+}
+
+/** Response from personality embedding */
+export interface EmbedPersonalityResponse {
+  success: boolean;
+  chunksEmbedded?: number;
+  error?: string;
+}

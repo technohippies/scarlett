@@ -1168,6 +1168,34 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
     });
     // --- END NEW CHAT HANDLERS ---
 
+    // --- PERSONALITY EMBEDDING HANDLER ---
+    messaging.onMessage('embedPersonality', async (message) => {
+        const { embeddingConfig } = message.data;
+        console.log('[Message Handlers] Received embedPersonality request with config:', embeddingConfig);
+        try {
+            // Import the personality service function
+            const { embedPersonalityChunks } = await import('../../services/llm/personalityService');
+            
+            // Call the embedding function in background context
+            const result = await embedPersonalityChunks(embeddingConfig);
+            console.log('[Message Handlers] Personality embedding result:', result);
+            
+            return {
+                success: result.success,
+                chunksEmbedded: result.chunksEmbedded,
+                error: result.error
+            };
+        } catch (error) {
+            console.error('[Message Handlers embedPersonality] Error:', error);
+            return {
+                success: false,
+                chunksEmbedded: 0,
+                error: error instanceof Error ? error.message : String(error)
+            };
+        }
+    });
+    // --- END PERSONALITY EMBEDDING HANDLER ---
+
     console.log('[Message Handlers] Background message listeners registered using passed instance.');
 }
 
