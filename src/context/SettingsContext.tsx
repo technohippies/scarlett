@@ -716,10 +716,43 @@ export const SettingsProvider: ParentComponent = (props) => {
                 success = true;
             } else if (functionName === 'Embedding') {
                 console.log(`[SettingsContext] Testing embedding and seeding personality for provider ${currentFunctionConfig.providerId}`);
+                console.log(`[SettingsContext] EMBEDDING DEBUG: About to call embedPersonalityChunks with config:`, currentFunctionConfig);
+                console.log(`[SettingsContext] EMBEDDING DEBUG: Current timestamp before embedding:`, new Date().toISOString());
+                
+                // DEBUG: Check database state before embedding
+                try {
+                    const db = await import('../services/db/init').then(m => m.getDbInstance());
+                    const preEmbedCount = await db.query('SELECT COUNT(*) as count FROM ai_personality');
+                    const preCount = (preEmbedCount.rows[0] as any)?.count || 0;
+                    console.log(`[SettingsContext] EMBEDDING DEBUG: ai_personality rows BEFORE embedding: ${preCount}`);
+                } catch (dbError) {
+                    console.error(`[SettingsContext] EMBEDDING DEBUG: Failed to check pre-embedding state:`, dbError);
+                }
+                
                 const result = await embedPersonalityChunks(currentFunctionConfig);
+                console.log(`[SettingsContext] EMBEDDING DEBUG: embedPersonalityChunks result:`, result);
+                console.log(`[SettingsContext] EMBEDDING DEBUG: Current timestamp after embedding:`, new Date().toISOString());
+                
+                // DEBUG: Check database state after embedding
+                try {
+                    const db = await import('../services/db/init').then(m => m.getDbInstance());
+                    const postEmbedCount = await db.query('SELECT COUNT(*) as count FROM ai_personality');
+                    const postCount = (postEmbedCount.rows[0] as any)?.count || 0;
+                    console.log(`[SettingsContext] EMBEDDING DEBUG: ai_personality rows AFTER embedding: ${postCount}`);
+                    
+                    if (postCount > 0) {
+                        const sampleData = await db.query('SELECT category, text_content FROM ai_personality LIMIT 2');
+                        console.log(`[SettingsContext] EMBEDDING DEBUG: Sample data after embedding:`, sampleData.rows);
+                    }
+                } catch (dbError) {
+                    console.error(`[SettingsContext] EMBEDDING DEBUG: Failed to check post-embedding state:`, dbError);
+                }
+                
                 if (result.success) {
+                    console.log(`[SettingsContext] EMBEDDING DEBUG: Embedding reported success, chunksEmbedded: ${result.chunksEmbedded}`);
                     success = true;
                 } else {
+                    console.error(`[SettingsContext] EMBEDDING DEBUG: Embedding failed with error:`, result.error);
                     throw new Error(result.error || 'Personality embedding failed');
                 }
             } else if (functionName === 'TTS') {

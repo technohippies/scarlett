@@ -1,6 +1,19 @@
 -- Enable pgvector extension if not already enabled (optional but good practice)
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- Create personality table for RAG retrieval
+CREATE TABLE IF NOT EXISTS ai_personality (
+  id SERIAL PRIMARY KEY,
+  category TEXT NOT NULL,
+  text_content TEXT NOT NULL,
+  embedding_384 vector(384) NULL,
+  embedding_512 vector(512) NULL,
+  embedding_768 vector(768) NULL,
+  embedding_1024 vector(1024) NULL,
+  active_embedding_dimension INTEGER NULL,
+  created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Remove old tables if they exist (optional, but cleaner for dev)
 DROP TABLE IF EXISTS flashcards;
 DROP TABLE IF EXISTS webpages;
