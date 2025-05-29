@@ -5,7 +5,6 @@
 import { defineBackground } from '#imports';
 import { analytics } from '../src/utils/analytics';
 import { ensureDbInitialized } from '../src/services/db/init';
-import { seedInitialTags } from '../src/services/db/tags';
 import { registerMessageHandlers } from '../src/background/handlers/message-handlers';
 import type { BackgroundProtocolMap } from '../src/shared/messaging-types';
 import { defineExtensionMessaging, Logger } from '@webext-core/messaging';
@@ -292,11 +291,6 @@ export default defineBackground({
             console.log('[Scarlett BG Entrypoint] Checking and resetting study streak if needed...');
             await checkAndResetStreakIfNeeded();
             console.log('[Scarlett BG Entrypoint] Study streak check complete.');
-
-            // 2. Seed initial tags if necessary (idempotent)
-            console.log('[Scarlett BG Entrypoint] Seeding initial tags...');
-            await seedInitialTags();
-            console.log('[Scarlett BG Entrypoint] Initial tag seeding attempt complete.');
 
             // --- Context Menu Setup (on install/update) ---
             console.log('[Scarlett BG Entrypoint] Setting up context menu in onInstalled...');
