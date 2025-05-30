@@ -20,6 +20,8 @@ import ModelSelectionPanel from '../../src/features/models/ModelSelectionPanel';
 import ConnectionTestPanel from '../../src/features/models/ConnectionTestPanel';
 // --- Import DeckSelectionPanel ---
 import DeckSelectionPanel, { type DeckInfo } from '../../src/features/decks/DeckSelectionPanel';
+// --- Import BrowsingHistoryPanel ---
+import BrowsingHistoryPanel, { type CategoryData } from '../../src/features/oninstall/BrowsingHistoryPanel';
 // Import the constants
 import { REDIRECT_SERVICES, DEFAULT_REDIRECT_INSTANCES } from '../../src/shared/constants';
 // --- Import TtsProviderPanel and related types ---
@@ -94,8 +96,6 @@ const availableLLMProviders: ProviderOption[] = availableProviders; // Reuse the
 
 // Define available Embedding Providers
 const availableEmbeddingProviders: ProviderOption[] = [
-    // In-Browser ONNX Embedding comes first
-    { id: 'in-browser', name: 'In Browser', defaultBaseUrl: '', logoUrl: '/images/llm-providers/local.png'},
     { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
     { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/llm-providers/jan.png' },
     { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
@@ -108,10 +108,10 @@ const onboardingTtsProviderOptions: OnboardingTtsProviderOption[] = [
 ];
 
 // Simplified Step type for the new flow - remove choosePlan
-type Step = 'language' | 'learningGoal' | 'deckSelection' | 'setupLLM' | 'setupEmbedding' | 'setupTTS' | 'setupVAD' | 'redirects';
+type Step = 'language' | 'learningGoal' | 'deckSelection' | 'setupLLM' | 'setupEmbedding' | 'setupTTS' | 'setupVAD' | 'browsingHistory' | 'redirects';
 
 // Keep steps definition for progress calculation - remove choosePlan
-const onboardingSteps: Step[] = ['language', 'learningGoal', 'deckSelection', 'setupLLM', 'setupEmbedding', 'setupTTS', 'setupVAD', 'redirects'];
+const onboardingSteps: Step[] = ['language', 'learningGoal', 'deckSelection', 'setupLLM', 'setupEmbedding', 'setupTTS', 'setupVAD', 'browsingHistory', 'redirects'];
 
 const App: Component = () => {
 
@@ -280,6 +280,20 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   };
   
   // --- End VAD & STT State ---
+
+  // --- State for Browsing History Analysis ---
+  const [browsingHistoryCategories, setBrowsingHistoryCategories] = createSignal<CategoryData[]>([
+    { category: 'productive', domains: [] },
+    { category: 'neutral', domains: [] },
+    { category: 'entertaining', domains: [] },
+    { category: 'distracting', domains: [] },
+  ]);
+  const [isAnalyzingBrowsingHistory, setIsAnalyzingBrowsingHistory] = createSignal(false);
+  const [browsingHistoryAnalysisProgress, setBrowsingHistoryAnalysisProgress] = createSignal(0);
+  const [browsingHistoryAnalysisStage, setBrowsingHistoryAnalysisStage] = createSignal<string | undefined>(undefined);
+  const [browsingHistoryInsight, setBrowsingHistoryInsight] = createSignal<string | undefined>(undefined);
+  
+  // --- End Browsing History State ---
 
   // --- TTS Panel Handlers for Onboarding (Kokoro handlers removed) ---
   const handleSelectTtsProviderOnboarding = (providerId: string | undefined) => {
@@ -731,7 +745,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     // No specific VAD config to save to userConfigurationStorage for this step.
     // User has seen the panel and potentially tested it.
     console.log("[App Onboarding] VAD setup/test step complete.");
-    setCurrentStep('redirects');
+    setCurrentStep('browsingHistory');
   };
 
   // --- Handler for skipping VAD step ---
@@ -749,8 +763,165 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     setIsVadLoadingOnboarding(false);
     setTranscribedTextOnboarding(null);
     setSttErrorOnboarding(null);
+    setCurrentStep('browsingHistory');
+  };
+
+  // --- Browsing History Handlers ---
+  const startBrowsingHistoryAnalysis = async () => {
+    if (isAnalyzingBrowsingHistory()) return;
+    
+    console.log("[App Onboarding] Starting browsing history analysis...");
+    setIsAnalyzingBrowsingHistory(true);
+    setBrowsingHistoryAnalysisProgress(0);
+    setBrowsingHistoryAnalysisStage("Requesting browser history permission...");
+    
+    try {
+      // First, request history permission if not already granted
+      setBrowsingHistoryAnalysisProgress(10);
+      const permissionResponse = await sendBackgroundMessage('requestHistoryPermission', undefined);
+      
+      if (!permissionResponse || !permissionResponse.success || !permissionResponse.granted) {
+        setBrowsingHistoryAnalysisStage("History permission denied");
+        setBrowsingHistoryInsight("Unable to analyze browsing history - permission was not granted. You can continue without this step.");
+        return;
+      }
+
+      setBrowsingHistoryAnalysisStage("Fetching your browser history...");
+      setBrowsingHistoryAnalysisProgress(25);
+      
+      // Fetch actual browser history
+      const historyResponse = await sendBackgroundMessage('fetchBrowserHistory', { daysBack: 30 });
+      
+      if (!historyResponse || !historyResponse.success || !historyResponse.history) {
+        throw new Error(historyResponse?.error || 'Failed to fetch browser history');
+      }
+
+      setBrowsingHistoryAnalysisStage("Categorizing domains...");
+      setBrowsingHistoryAnalysisProgress(60);
+      await new Promise(resolve => setTimeout(resolve, 500)); // Brief pause for UX
+      
+      // Convert the response to our CategoryData format
+      const realCategories: CategoryData[] = [
+        {
+          category: 'productive',
+          domains: historyResponse.history.productive.map((h: any) => ({
+            domain: h.domain,
+            visitCount: h.visitCount,
+            category: h.category
+          }))
+        },
+        {
+          category: 'entertaining',
+          domains: historyResponse.history.entertaining.map((h: any) => ({
+            domain: h.domain,
+            visitCount: h.visitCount,
+            category: h.category
+          }))
+        },
+        {
+          category: 'neutral',
+          domains: historyResponse.history.neutral.map((h: any) => ({
+            domain: h.domain,
+            visitCount: h.visitCount,
+            category: h.category
+          }))
+        },
+        {
+          category: 'distracting',
+          domains: historyResponse.history.distracting.map((h: any) => ({
+            domain: h.domain,
+            visitCount: h.visitCount,
+            category: h.category
+          }))
+        }
+      ];
+      
+      setBrowsingHistoryCategories(realCategories);
+      setBrowsingHistoryAnalysisStage("Generating insights...");
+      setBrowsingHistoryAnalysisProgress(85);
+      await new Promise(resolve => setTimeout(resolve, 800));
+      
+      // Generate LLM-powered insight based on actual data
+      const totalSites = realCategories.reduce((sum, cat) => sum + cat.domains.length, 0);
+      
+      let insight = "";
+      if (totalSites === 0) {
+        insight = "We couldn't find much browsing history to analyze. This is normal if you're using a new browser or have recently cleared your history.";
+      } else {
+        // Prepare browsing data for LLM analysis
+        const browsingData = {
+          totalSites,
+          categories: realCategories.map(cat => ({
+            name: cat.category,
+            siteCount: cat.domains.length,
+            topSites: cat.domains.slice(0, 3).map(d => ({
+              domain: d.domain,
+              visits: d.visitCount
+            }))
+          }))
+        };
+        
+        try {
+          // Call LLM for analysis
+          const llmResponse = await sendBackgroundMessage('analyzeBrowsingPatterns', { browsingData });
+          if (llmResponse && llmResponse.success && llmResponse.analysis) {
+            insight = llmResponse.analysis;
+          } else {
+            // Fallback to rule-based analysis if LLM fails
+            insight = generateFallbackInsight(realCategories, totalSites);
+          }
+        } catch (error) {
+          console.error('[App] LLM analysis failed, using fallback:', error);
+          insight = generateFallbackInsight(realCategories, totalSites);
+        }
+      }
+      
+      setBrowsingHistoryInsight(insight);
+      setBrowsingHistoryAnalysisProgress(100);
+      setBrowsingHistoryAnalysisStage(undefined);
+      
+    } catch (error) {
+      console.error("[App Onboarding] Browsing history analysis failed:", error);
+      setBrowsingHistoryAnalysisStage("Analysis failed");
+      setBrowsingHistoryInsight("Unable to analyze browsing history. You can continue with the setup.");
+    } finally {
+      setIsAnalyzingBrowsingHistory(false);
+    }
+  };
+
+  // Fallback analysis function for when LLM is unavailable
+  const generateFallbackInsight = (categories: CategoryData[], totalSites: number): string => {
+    if (totalSites === 0) {
+      return "We couldn't analyze your browsing history. This might be because you have limited history or use private browsing.";
+    }
+    
+    const productiveSites = categories.find(c => c.category === 'productive')?.domains.length || 0;
+    const entertainingSites = categories.find(c => c.category === 'entertaining')?.domains.length || 0;
+    
+    if (productiveSites > entertainingSites) {
+      return `You seem to focus on productive activities online! You visit ${productiveSites} work-related sites regularly.`;
+    } else if (entertainingSites > 0) {
+      return `You have a good balance of work and entertainment in your browsing habits.`;
+    } else {
+      return `Your browsing patterns suggest moderate internet usage across ${totalSites} different sites.`;
+    }
+  };
+
+  const handleBrowsingHistoryComplete = async () => {
+    console.log("[App Onboarding] Browsing history analysis complete.");
+    // Here you would save the analysis results if needed
     setCurrentStep('redirects');
   };
+
+  // --- End Browsing History Handlers ---
+
+  // --- Effect to start browsing history analysis when step becomes active ---
+  createEffect(() => {
+    if (currentStep() === 'browsingHistory' && !isAnalyzingBrowsingHistory() && browsingHistoryCategories().every(cat => cat.domains.length === 0) && !browsingHistoryInsight()) {
+      // Start analysis automatically when entering the step if not already started
+      void startBrowsingHistoryAnalysis();
+    }
+  });
 
   // --- Redirects Handlers (Keep as is) ---
   const handleRedirectsComplete = async () => {
@@ -821,8 +992,11 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       case 'setupVAD': // New back navigation
         setCurrentStep('setupTTS');
         break;
-      case 'redirects': 
+      case 'browsingHistory':
         setCurrentStep('setupVAD'); // Updated from setupTTS to setupVAD
+        break;
+      case 'redirects': 
+        setCurrentStep('browsingHistory'); // Updated from setupVAD to browsingHistory
         break;
       default:
         console.warn('[App] Back requested from unhandled step:', step);
@@ -897,6 +1071,12 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       }
       return i18n().get('onboardingTest', 'Test');
     }
+    if (step === 'browsingHistory') {
+      if (isAnalyzingBrowsingHistory()) {
+        return i18n().get('onboardingAnalyzing', 'Analyzing...');
+      }
+      return i18n().get('onboardingContinue', 'Continue');
+    }
     if (step === 'redirects') return i18n().get('onboardingFinishSetup', 'Finish Setup');
     return i18n().get('onboardingContinue', 'Continue');
   };
@@ -945,6 +1125,8 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         if (vadTestErrorOnboarding() && !vadInstanceOnboarding()) return true; 
         return false;
       }
+      case 'browsingHistory':
+        return isAnalyzingBrowsingHistory();
       case 'redirects':
         return props.initialRedirectLoading();
       default:
@@ -1013,6 +1195,9 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
              handleVADComplete(); // Allow continue if there's some state to proceed from
         }
         break;
+      case 'browsingHistory':
+        handleBrowsingHistoryComplete();
+        break;
       case 'redirects':
         handleRedirectsComplete();
         break;
@@ -1042,7 +1227,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   const renderStep = () => {
     const step = currentStep();
     switch (step) {
-      case 'language':
+      case 'language': {
         return (
           <Language
             onTargetLangChange={(value, label) => { setSelectedTargetLangValue(value); setTargetLangLabel(label); }}
@@ -1062,7 +1247,8 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
             messagesLoading={messagesData.loading}
           />
         );
-      case 'learningGoal':
+      }
+      case 'learningGoal': {
         return (
           <LearningGoal
             onGoalChange={setSelectedGoalId}
@@ -1074,9 +1260,8 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
             messages={messagesData() || {}}
           />
         );
-
-      // --- Add Deck Selection Step ---
-      case 'deckSelection':
+      }
+      case 'deckSelection': {
         return (
           <div class="w-full max-w-lg">
             <p class="text-xl md:text-2xl mb-2">
@@ -1086,42 +1271,37 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
               {i18n().get('deckSelectionPanelDescription', "Like Anki web, you can create, use, and share our community's flashcards.")}
             </p>
             <DeckSelectionPanel
-              availableDecks={recommendedDecks} // Pass the filtered list
+              availableDecks={recommendedDecks}
               isLoading={isLoadingDecks}
               onDeckToggle={handleDeckToggleInOnboarding}
               initiallySelectedDeckIds={selectedDeckIdentifiers}
-              // Pass messages and necessary fallbacks to DeckSelectionPanel
               messages={messagesData() || {}}
               fallbackNoDecks={i18n().get('deckSelectionPanelNoDecks', "No recommended decks available for this learning goal.")}
             />
           </div>
         );
-
-      // --- REPLACE SetupFunction with Panels --- 
-      case 'setupLLM': { // Use block scope for constants
+      }
+      case 'setupLLM': {
         const funcType = 'LLM';
         const transientState = settingsContext.getTransientState(funcType);
         const config = settingsContext.config.llmConfig;
         return (
           <div class="w-full max-w-lg">
-             {/* Add Title and Description */}
-             <p class="text-xl md:text-2xl mb-2">
-               {i18n().get('onboardingSetupLLMTitle', 'Choose an LLM')}
-             </p>
-             <p class="text-lg text-muted-foreground mb-6">
-               {i18n().get('onboardingSetupLLMDescription', 'Cant run a 4B+ model locally like Gemma3 or Qwen3? Use Jan with an OpenRouter model, many are free!')}
-             </p>
-            {/* Provider Panel */}
-             <div class="mb-6">
-                <ProviderSelectionPanel
-                  providerOptions={availableLLMProviders}
-                  selectedProviderId={() => config?.providerId}
-                  onSelectProvider={(provider) => settingsContext.handleSelectProvider(funcType, provider)}
-                />
+            <p class="text-xl md:text-2xl mb-2">
+              {i18n().get('onboardingSetupLLMTitle', 'Choose an LLM')}
+            </p>
+            <p class="text-lg text-muted-foreground mb-6">
+              {i18n().get('onboardingSetupLLMDescription', 'Cant run a 4B+ model locally like Gemma3 or Qwen3? Use Jan with an OpenRouter model, many are free!')}
+            </p>
+            <div class="mb-6">
+              <ProviderSelectionPanel
+                providerOptions={availableLLMProviders}
+                selectedProviderId={() => config?.providerId}
+                onSelectProvider={(provider) => settingsContext.handleSelectProvider(funcType, provider)}
+              />
             </div>
-            {/* Model/Test Panels */} 
             <Show when={config?.providerId !== undefined}>
-              <div class="space-y-6"> {/* Wrap model/test panels for spacing */}
+              <div class="space-y-6">
                 <ModelSelectionPanel
                   functionName={funcType}
                   selectedProvider={() => availableLLMProviders.find(p => p.id === config?.providerId)}
@@ -1146,20 +1326,19 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
           </div>
         );
       }
-      
       case 'setupEmbedding': {
         const funcType = 'Embedding';
         const transientState = settingsContext.getTransientState(funcType);
         const config = settingsContext.config.embeddingConfig;
         return (
-          <div class="w-full max-w-lg"> {/* Changed from max-w-screen-xl mx-auto px-4 */}
+          <div class="w-full max-w-lg">
             <p class="text-xl md:text-2xl mb-2">
               {i18n().get('onboardingSetupEmbeddingTitle', 'Choose Embedding')}
             </p>
-             <p class="text-lg text-muted-foreground mb-6">
-               {i18n().get('onboardingSetupEmbeddingDescription', 'Bge-m3 or bge-large are best due to multi-language support.')}
-             </p>
-            <div class="mb-6"> {/* Removed flex justify-center */}
+            <p class="text-lg text-muted-foreground mb-6">
+              {i18n().get('onboardingSetupEmbeddingDescription', 'Bge-m3 or bge-large are best due to multi-language support.')}
+            </p>
+            <div class="mb-6">
               <ProviderSelectionPanel
                 providerOptions={availableEmbeddingProviders}
                 selectedProviderId={() => config?.providerId}
@@ -1192,49 +1371,31 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
           </div>
         );
       }
-
       case 'setupTTS': {
         return (
           <div class="w-full max-w-lg">
             <p class="text-xl md:text-2xl mb-2">
               {i18n().get('onboardingSetupTTSTitle', 'Choose TTS (Optional)')}
             </p>
-             <p class="text-lg text-muted-foreground mb-6">
-               {/* Update description slightly */}
-               {i18n().get('onboardingSetupTTSDescription', 'Configure ElevenLabs Text-to-Speech.')}
-             </p>
+            <p class="text-lg text-muted-foreground mb-6">
+              {i18n().get('onboardingSetupTTSDescription', 'Configure ElevenLabs Text-to-Speech.')}
+            </p>
             <TtsProviderPanel
-                availableProviders={onboardingTtsProviderOptions} // Will only contain EL now
-                selectedProviderId={selectedTtsProviderIdOnboarding}
-                onSelectProvider={handleSelectTtsProviderOnboarding}
-                
-                // Pass ElevenLabs props 
-                elevenLabsApiKey={elevenLabsApiKeyOnboarding}
-                onElevenLabsApiKeyChange={handleElevenLabsApiKeyChangeOnboarding}
-                isElevenLabsTesting={isTtsTestingOnboarding} 
-                onTestElevenLabs={handleTestElevenLabsOnboarding}
-
-                // REMOVE Kokoro props
-                // kokoroDownloadStatus={...}
-                // kokoroDownloadProgress={...}
-                // onDownloadKokoroModel={...}
-                // kokoroDevicePreference={...}
-                // onKokoroDevicePreferenceChange={...}
-                // isKokoroTesting={...} 
-                // onTestKokoro={...}
-                // isWebGPUSupported={...}
-                
-                // Pass General Test/Audio props
-                testAudioData={ttsTestAudio} 
-                onPlayTestAudio={() => playAudioBlob(ttsTestAudio())}
-                testError={ttsErrorOnboarding}
+              availableProviders={onboardingTtsProviderOptions}
+              selectedProviderId={selectedTtsProviderIdOnboarding}
+              onSelectProvider={handleSelectTtsProviderOnboarding}
+              elevenLabsApiKey={elevenLabsApiKeyOnboarding}
+              onElevenLabsApiKeyChange={handleElevenLabsApiKeyChangeOnboarding}
+              isElevenLabsTesting={isTtsTestingOnboarding}
+              onTestElevenLabs={handleTestElevenLabsOnboarding}
+              testAudioData={ttsTestAudio}
+              onPlayTestAudio={() => playAudioBlob(ttsTestAudio())}
+              testError={ttsErrorOnboarding}
             />
           </div>
         );
       }
-
       case 'setupVAD': {
-        // Ensure API key is passed for STT functionality within VadPanel
         const sttEnabled = () => elevenLabsApiKeyOnboarding().length > 0;
         return (
           <div class="w-full max-w-lg">
@@ -1244,13 +1405,15 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
             <p class="text-lg text-muted-foreground mb-6">
               {i18n().get('onboardingSetupVADDescription', 'Test your microphone and ElevenLabs speech to text.')}
               <Show when={!sttEnabled()}>
-                <span class="block mt-1 text-sm text-amber-500">{i18n().get('onboardingVADNoApiKeyForSTT', 'ElevenLabs API key not provided in TTS step; transcription will be disabled.')}</span>
+                <span class="block mt-1 text-sm text-amber-500">
+                  {i18n().get('onboardingVADNoApiKeyForSTT', 'ElevenLabs API key not provided in TTS step; transcription will be disabled.')}
+                </span>
               </Show>
             </p>
             <VadPanel
               availableVadOptions={availableVadOptionsOnboarding}
               selectedVadId={selectedVadIdOnboarding}
-              onSelectVad={(id) => { /* Silero is only option for now */ setSelectedVadIdOnboarding(id); }}
+              onSelectVad={(id) => { setSelectedVadIdOnboarding(id); }}
               isVadTesting={isVadTestingOnboarding}
               onTestVad={handleTestVadOnboarding}
               onStopVadTest={handleStopVadTestOnboarding}
@@ -1258,9 +1421,8 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
               vadTestError={vadTestErrorOnboarding}
               isVadLoading={isVadLoadingOnboarding}
               lastRecordedAudioUrl={lastRecordedAudioUrlOnboarding}
-              onPlayLastRecording={() => { /* Playback is via HTML5 controls */ }}
-              // STT Props for Onboarding
-              onTranscribe={async () => {if(sttEnabled()) await handleTranscriptionOnboarding(); }} // Manual call not used due to auto-transcribe
+              onPlayLastRecording={() => {}}
+              onTranscribe={async () => {if(sttEnabled()) await handleTranscriptionOnboarding();}}
               transcribedText={transcribedTextOnboarding}
               isTranscribing={isTranscribingOnboarding}
               sttError={sttErrorOnboarding}
@@ -1268,13 +1430,33 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
           </div>
         );
       }
-
-      case 'redirects':
+      case 'browsingHistory': {
+        return (
+          <div class="w-full max-w-lg">
+            <p class="text-xl md:text-2xl mb-2">
+              {i18n().get('onboardingBrowsingHistoryTitle', 'Your browsing patterns')}
+            </p>
+            <p class="text-lg text-muted-foreground mb-6">
+              {i18n().get('onboardingBrowsingHistoryDescription', 'Privately, I will analyse your browser history to better understand you')}
+            </p>
+            <BrowsingHistoryPanel
+              categories={browsingHistoryCategories()}
+              overallInsight={browsingHistoryInsight()}
+              overallInsightProgress={browsingHistoryAnalysisProgress()}
+              isGeneratingOverallInsight={isAnalyzingBrowsingHistory()}
+              analysisStage={browsingHistoryAnalysisStage()}
+              messages={() => messagesData() || {}}
+              onAnalysisComplete={() => {}}
+            />
+          </div>
+        );
+      }
+      case 'redirects': {
         return (
           <div class="w-full max-w-lg">
             <Redirects
-              allRedirectSettings={props.redirectSettings} // Pass signal accessor from props
-              isLoading={props.initialRedirectLoading} // Pass loading state from props
+              allRedirectSettings={props.redirectSettings}
+              isLoading={props.initialRedirectLoading}
               onSettingChange={handleRedirectSettingChange}
               onBack={handleBack}
               title={i18n().get('onboardingRedirectsTitle', 'Bypass Censorship & Paywalls')}
@@ -1282,8 +1464,10 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
             />
           </div>
         );
-      default:
+      }
+      default: {
         return <div>{i18n().get('onboardingUnknownStep', 'Unknown step')}</div>;
+      }
     }
   };
 

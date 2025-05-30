@@ -15,6 +15,7 @@ import {
 import { getActiveLearningWordsFromDb, updateCachedDistractors, getBookmarksNeedingEmbedding, finalizeBookmarkEmbedding } from '../../services/db/learning';
 import { getDbInstance } from '../../services/db/init';
 import { ollamaChat } from '../../services/llm/providers/ollama/chat';
+import { janChat } from '../../services/llm/providers/jan/chat';
 import type { LLMConfig, LLMChatResponse, LLMProviderId, ChatMessage } from '../../services/llm/types';
 import { handleSaveBookmark, handleLoadBookmarks } from './bookmark-handlers';
 import { handleTagList } from './tag-handlers';
@@ -30,7 +31,6 @@ import {
     finalizePageVersionEmbedding, 
     deletePageVersion, 
     incrementPageVersionVisitCount,
-    countPagesNeedingEmbedding,
     countAllItemsNeedingEmbedding,
     calculateHash,
     updatePageVersionSummaryAndCleanup,
@@ -40,6 +40,7 @@ import type { PageVersionToEmbed } from '../../services/db/visited_pages';
 import { pageInfoProcessingTimestamps } from '../../services/storage/storage';
 import type { PGlite, Transaction } from '@electric-sql/pglite';
 import { getSummarizationPrompt } from '../../services/llm/prompts/analysis';
+import { getBrowsingPatternAnalysisPrompt } from '../../services/llm/prompts/browsing-analysis';
 import { userConfigurationStorage } from '../../services/storage/storage';
 import type { FunctionConfig } from '../../services/storage/types';
 import { 
@@ -75,6 +76,9 @@ import type {
     NewChatMessageDataForRpc,
 } from '../../shared/messaging-types';
 
+// Add import for browser history handler
+import { fetchBrowserHistory as fetchBrowserHistoryHandler, requestHistoryPermission as requestHistoryPermissionHandler } from './browser-history-handler';
+
 // Define the threshold for reprocessing (e.g., 1 hour in milliseconds)
 const REPROCESS_INFO_THRESHOLD_MS = 1000;
 
@@ -107,6 +111,8 @@ async function dynamicChat(messages: ChatMessage[], config: FunctionConfig): Pro
     switch (providerId) {
         case 'ollama':
             return ollamaChat(messages, chatConfig);
+        case 'jan':
+            return janChat(messages, chatConfig) as Promise<LLMChatResponse>;
         default:
             console.error(`[dynamicChat] Unsupported or unverified non-streaming chat provider: ${providerId}`);
             throw new Error(`Unsupported or unverified non-streaming chat provider: ${providerId}`);
@@ -492,7 +498,6 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
              console.error(`[Message Handlers processPageVisit] Missing sender information for URL: ${url}. Cannot request markdown.`);
              return;
         }
-        const senderTabId = sender.tab.id;
         try {
             const timestamps = await pageInfoProcessingTimestamps.getValue();
             const lastProcessed = timestamps[url];
@@ -653,45 +658,18 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
                 return { success: false, message: 'User settings not found.', pagesProcessed: 0, errors: 1 };
             }
 
-            // Support in-browser ONNX embedding (no baseUrl) or require baseUrl for other providers
+            // Require baseUrl for all providers
             if (
               settings.embeddingConfig &&
               settings.embeddingConfig.providerId &&
               settings.embeddingConfig.modelId &&
-              (settings.embeddingConfig.providerId === 'in-browser' || settings.embeddingConfig.baseUrl)
+              settings.embeddingConfig.baseUrl
             ) {
                 preliminaryEmbeddingConfig = settings.embeddingConfig;
                 console.log('[Message Handlers triggerBatchEmbedding] Preliminary check: Using settings.embeddingConfig.');
             } else {
                 console.log('[Message Handlers triggerBatchEmbedding] Preliminary check: settings.embeddingConfig not found or incomplete. Trying fallback.');
-                if (settings.embeddingModelProvider && settings.embeddingModelProvider !== 'none') {
-                    let modelId: string | null = null;
-                    let baseUrl: string | null = null;
-                    switch (settings.embeddingModelProvider) {
-                        case 'ollama':
-                            modelId = settings.ollamaEmbeddingModel || null;
-                            baseUrl = settings.ollamaBaseUrl || null;
-                            break;
-                        case 'lmstudio':
-                            modelId = settings.lmStudioEmbeddingModel || null;
-                            baseUrl = settings.lmStudioBaseUrl || null;
-                            break;
-                        case 'jan':
-                            modelId = settings.janEmbeddingModel || null;
-                            baseUrl = settings.janBaseUrl || null;
-                            break;
-                        default:
-                            console.error(`[Message Handlers triggerBatchEmbedding] Unsupported embedding provider for fallback: ${settings.embeddingModelProvider}`);
-                    }
-                    if (modelId && baseUrl) {
-                        preliminaryEmbeddingConfig = {
-                            providerId: settings.embeddingModelProvider,
-                            modelId: modelId,
-                            baseUrl: baseUrl,
-                        };
-                        console.log('[Message Handlers triggerBatchEmbedding] Preliminary check: Using flat properties for fallback.');
-                    }
-                }
+                // No fallback logic needed - require complete embeddingConfig
             }
             
             if (!preliminaryEmbeddingConfig) {
@@ -1195,6 +1173,137 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         }
     });
     // --- END PERSONALITY EMBEDDING HANDLER ---
+
+    // Browser History Handlers
+    messaging.onMessage('fetchBrowserHistory', async (message) => {
+        try {
+            console.log('[Background] Fetching browser history...', { daysBack: message.data?.daysBack });
+            const history = await fetchBrowserHistoryHandler(message.data?.daysBack || 30);
+            
+            // Convert to the expected format
+            return {
+                success: true,
+                history: {
+                    productive: history.productive.map((h: any) => ({ domain: h.domain, visitCount: h.visitCount, category: h.category })),
+                    entertaining: history.entertaining.map((h: any) => ({ domain: h.domain, visitCount: h.visitCount, category: h.category })),
+                    neutral: history.neutral.map((h: any) => ({ domain: h.domain, visitCount: h.visitCount, category: h.category })),
+                    distracting: history.distracting.map((h: any) => ({ domain: h.domain, visitCount: h.visitCount, category: h.category })),
+                }
+            };
+        } catch (error) {
+            console.error('[Background] Failed to fetch browser history:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Failed to fetch browser history'
+            };
+        }
+    });
+
+    messaging.onMessage('requestHistoryPermission', async (message) => {
+        try {
+            console.log('[Background] Requesting history permission...');
+            const granted: boolean = await requestHistoryPermissionHandler();
+            
+            return {
+                success: true,
+                granted
+            };
+        } catch (error) {
+            console.error('[Background] Failed to request history permission:', error);
+            return {
+                success: false,
+                granted: false,
+                error: error instanceof Error ? error.message : 'Failed to request permission'
+            };
+        }
+    });
+
+    messaging.onMessage('analyzeBrowsingPatterns', async (message) => {
+        try {
+            console.log('[Background] Analyzing browsing patterns with LLM...');
+            const { browsingData } = message.data;
+            
+            // Get user LLM configuration
+            const settings = await userConfigurationStorage.getValue();
+            if (!settings?.llmConfig?.providerId || !settings?.llmConfig?.modelId) {
+                console.warn('[Background] No LLM configured, using fallback analysis');
+                return {
+                    success: false,
+                    error: 'No LLM configured'
+                };
+            }
+
+            // Create analysis prompt
+            const prompt = getBrowsingPatternAnalysisPrompt(browsingData);
+
+            console.log('[Background] Calling LLM for browsing pattern analysis...');
+            
+            // First attempt
+            try {
+                const response = await dynamicChat([{ role: 'user', content: prompt }], settings.llmConfig);
+                
+                const analysis = response?.choices?.[0]?.message?.content?.trim();
+                if (!analysis) {
+                    return {
+                        success: false,
+                        error: 'LLM returned empty analysis'
+                    };
+                }
+
+                console.log('[Background] LLM analysis completed successfully');
+                return {
+                    success: true,
+                    analysis
+                };
+                
+            } catch (llmError) {
+                // If it's a 500 error from Jan, try to start the model and retry once
+                if (llmError instanceof Error && llmError.message.includes('500 Internal Server Error') && 
+                    settings.llmConfig?.providerId === 'jan') {
+                    
+                    console.log('[Background] Attempting to start Jan model and retry...');
+                    try {
+                        // Try to start the model
+                        const startResponse = await fetch(`${settings.llmConfig.baseUrl}/models/start`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ model: settings.llmConfig.modelId })
+                        });
+                        
+                        if (startResponse.ok) {
+                            console.log('[Background] Model started successfully, retrying analysis...');
+                            // Wait a moment for the model to fully load
+                            await new Promise(resolve => setTimeout(resolve, 2000));
+                            
+                            // Retry the analysis
+                            const retryResponse = await dynamicChat([{ role: 'user', content: prompt }], settings.llmConfig);
+                            const retryAnalysis = retryResponse?.choices?.[0]?.message?.content?.trim();
+                            
+                            if (retryAnalysis) {
+                                console.log('[Background] LLM analysis completed successfully after retry');
+                                return {
+                                    success: true,
+                                    analysis: retryAnalysis
+                                };
+                            }
+                        }
+                    } catch (retryError) {
+                        console.error('[Background] Failed to start model or retry analysis:', retryError);
+                    }
+                }
+                
+                // If retry failed or it wasn't a Jan 500 error, throw the original error
+                throw llmError;
+            }
+
+        } catch (error) {
+            console.error('[Background] Failed to analyze browsing patterns:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Failed to analyze browsing patterns'
+            };
+        }
+    });
 
     console.log('[Message Handlers] Background message listeners registered using passed instance.');
 }

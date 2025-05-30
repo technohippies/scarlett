@@ -95,13 +95,6 @@ export default defineConfig({
             "vad-assets/ort-wasm-threaded.js",
             "vad-assets/ort-wasm-simd-threaded.js"
         ]
-      },
-      // Expose in-browser ONNX embedding model files (using correct directory name)
-      {
-        matches: ["<all_urls>"],
-        resources: [
-          "models/all-MiniLM-L6-v2/*"
-        ]
       }
     ],
     // Add back other manifest sections like side_panel, action, commands if needed

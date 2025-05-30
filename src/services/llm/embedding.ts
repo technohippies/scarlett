@@ -1,5 +1,5 @@
 import type { FunctionConfig } from '../storage/types'; // Import FunctionConfig
-import { browser } from 'wxt/browser'; // For runtime.getURL in in-browser embedding
+import { loadJanModel } from './providers/jan'; // Import the Jan model loading function
 // import type { LLMProviderId } from './types'; // Keep this for casting if needed -- Removed as unused
 
 // REMOVED hardcoded config
@@ -9,6 +9,21 @@ import { browser } from 'wxt/browser'; // For runtime.getURL in in-browser embed
 
 interface OllamaEmbeddingResponse {
   embedding?: number[];
+}
+
+// Add interface for Jan/OpenAI-compatible embedding response
+interface JanEmbeddingResponse {
+  object: string;
+  data: Array<{
+    object: string;
+    embedding: number[];
+    index: number;
+  }>;
+  model: string;
+  usage?: {
+    prompt_tokens: number;
+    total_tokens: number;
+  };
 }
 
 // Define the return type for the embedding function
@@ -35,8 +50,8 @@ export async function getEmbedding(text: string, config: FunctionConfig): Promis
   // Destructure needed info from config
   const { providerId, modelId, baseUrl, /*apiKey*/ } = config; // apiKey removed as it's not used in the current supported providers (Ollama)
 
-  // Allow in-browser provider (no baseUrl needed) or require baseUrl for others
-  if (!providerId || !modelId || (providerId !== 'in-browser' && !baseUrl)) {
+  // Require baseUrl for all providers
+  if (!providerId || !modelId || !baseUrl) {
     console.error('[getEmbedding] Incomplete embedding configuration provided:', config);
     throw new Error('Incomplete embedding configuration.');
   }
@@ -45,54 +60,6 @@ export async function getEmbedding(text: string, config: FunctionConfig): Promis
 
   try {
     switch (providerId) {
-      case 'in-browser': {
-        console.log(`[getEmbedding] Running in-browser ONNX embedding for model: ${modelId}`);
-        const tf = await import('@huggingface/transformers');
-        const { pipeline, env } = tf;
-        // Configure local model path and disable remote
-        const getUrl = (browser.runtime.getURL as any);
-        env.localModelPath = getUrl('models/');
-        env.allowLocalModels = true;
-        env.allowRemoteModels = false;
-        const onnxBackend = (env.backends as any).onnx;
-        if (onnxBackend?.wasm) {
-          onnxBackend.wasm.wasmPaths = getUrl('transformers-wasm/');
-        }
-        // Initialize feature-extraction pipeline
-        const extractor = await pipeline('feature-extraction', modelId);
-        const output = await extractor(text, { pooling: 'mean', normalize: true });
-        // Extract vector from output
-        let vector: number[];
-        if (Array.isArray(output) && output.length > 0 && typeof output[0] === 'number') {
-          // output is a pooled 1D numeric array
-          vector = output as number[];
-        } else if (Array.isArray(output) && Array.isArray(output[0])) {
-          // output is array of token vectors, take the pooled first element
-          vector = output[0] as number[];
-        } else if (ArrayBuffer.isView(output)) {
-          // output is a TypedArray
-          vector = Array.from(output as any);
-        } else if ((output as any).data) {
-          const data = (output as any).data;
-          if (Array.isArray(data) && typeof data[0] === 'number') {
-            // data is a pooled 1D numeric array
-            vector = data as number[];
-          } else if (Array.isArray(data) && Array.isArray(data[0])) {
-            // data is array of token vectors, take the first
-            vector = data[0] as number[];
-          } else if (ArrayBuffer.isView(data)) {
-            // data is a TypedArray
-            vector = Array.from(data as any);
-          } else {
-            throw new Error('Unexpected extractor output.data format');
-          }
-        } else {
-          throw new Error('Unexpected extractor output format');
-        }
-        const dimension = vector.length;
-        console.log(`[getEmbedding] In-browser embedding dimension: ${dimension}`);
-        return { embedding: vector, modelName: modelId, dimension };
-      }
       case 'ollama': { // Explicitly handle ollama
         const url = `${baseUrl!.replace(/\/$/, '')}/api/embeddings`;
         const response = await fetch(url, {
@@ -128,10 +95,53 @@ export async function getEmbedding(text: string, config: FunctionConfig): Promis
           throw new Error('Invalid response format from Ollama embedding API.');
         }
       }
-      case 'jan':
-        // TODO: Implement Jan embedding logic
-        console.error(`[getEmbedding] Jan embedding provider not yet implemented.`);
-        throw new Error('Jan embedding provider not yet implemented.');
+      case 'jan': {
+        // First, load the embedding model in Jan
+        console.log(`[getEmbedding Jan] Loading embedding model ${modelId}...`);
+        try {
+          await loadJanModel({ baseUrl }, modelId, 'embedding');
+          console.log(`[getEmbedding Jan] Model ${modelId} loaded successfully.`);
+        } catch (loadError) {
+          console.error(`[getEmbedding Jan] Failed to load model ${modelId}:`, loadError);
+          throw new Error(`Failed to load Jan embedding model: ${loadError instanceof Error ? loadError.message : String(loadError)}`);
+        }
+
+        // Now make the embedding request
+        const url = `${baseUrl!.replace(/\/$/, '')}/v1/embeddings`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            // Add API key header if needed for Jan in the future
+          },
+          body: JSON.stringify({
+            model: modelId,
+            input: text,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorBody = await response.text();
+          console.error(`[getEmbedding Jan] API request failed with status ${response.status}:`, errorBody);
+          throw new Error(`Jan Embedding API Error (${response.status}): ${errorBody || response.statusText}`);
+        }
+
+        const data: JanEmbeddingResponse = await response.json();
+
+        if (data.data && Array.isArray(data.data) && data.data.length > 0 && data.data[0].embedding && Array.isArray(data.data[0].embedding)) {
+          const embedding = data.data[0].embedding;
+          const dimension = embedding.length;
+          console.log(`[getEmbedding Jan] Successfully received embedding vector (model: ${modelId}, dimension: ${dimension}).`);
+          return {
+              embedding: embedding,
+              modelName: modelId,
+              dimension: dimension
+          };
+        } else {
+          console.warn('[getEmbedding Jan] Invalid response format from Jan embedding API:', data);
+          throw new Error('Invalid response format from Jan embedding API.');
+        }
+      }
       case 'lmstudio':
         // TODO: Implement LMStudio embedding logic
         console.error(`[getEmbedding] LMStudio embedding provider not yet implemented.`);
@@ -143,6 +153,7 @@ export async function getEmbedding(text: string, config: FunctionConfig): Promis
 
   } catch (error: any) {
     console.error(`[getEmbedding] Error calling ${providerId} embedding API:`, error);
+    
     // Re-throw the error for the caller to handle
     throw error;
   }

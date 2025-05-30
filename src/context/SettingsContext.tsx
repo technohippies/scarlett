@@ -15,10 +15,12 @@ import { OllamaProvider } from '../services/llm/providers/ollama';
 import { JanProvider } from '../services/llm/providers/jan'; 
 import { LMStudioProvider } from '../services/llm/providers/lmstudio';
 
+// Import LLMProviderId and LLMConfig types
+import type { LLMProviderId, LLMConfig } from '../services/llm/types';
+
 // --- Import ElevenLabs Service and Constants ---
 import { generateElevenLabsSpeechStream } from '../services/tts/elevenLabsService';
 import { DEFAULT_ELEVENLABS_VOICE_ID } from '../shared/constants';
-import { embedPersonalityChunks } from '../services/llm/personalityService';
 
 // --- Helper Types (Local to context or shared) ---
 export type FetchStatus = 'idle' | 'loading' | 'success' | 'error';
@@ -526,12 +528,6 @@ export const SettingsProvider: ParentComponent = (props) => {
 
     // Helper function to fetch raw models (extracted logic)
     const fetchRawModelsForProvider = async (provider: ProviderOption, currentConfig: UserConfiguration): Promise<ModelOption[]> => {
-        // In-Browser ONNX embedding: return the single all-MiniLM-L6-v2 model
-        if (provider.id === 'in-browser') {
-            console.log(`[SettingsContext fetchRawModelsForProvider] Providing in-browser ONNX model for provider: ${provider.id}`);
-            // Use the exact folder name to allow local ONNX model loading
-            return [{ id: 'all-MiniLM-L6-v2', name: 'all-MiniLM-L6-v2 (ONNX)' }];
-        }
         const providerImpl = providerImplementations[provider.id as keyof typeof providerImplementations];
         if (!providerImpl || !providerImpl.listModels) {
             console.warn(`[SettingsContext] listModels implementation not found for provider: ${provider.id}`);
@@ -650,54 +646,9 @@ export const SettingsProvider: ParentComponent = (props) => {
             currentFunctionConfig = null; // or undefined, if storeValue is not a FunctionConfig-like object
         }
         
-        const setters = getTransientSignalSetters(functionName);
+        // Get test status setters for the appropriate function type
+        const setters = getTransientStateSetters(functionName);
 
-        // In-browser ONNX embedding: real inference test using transformers.js
-        if (currentFunctionConfig?.providerId === 'in-browser') {
-            console.log(`[SettingsContext] Testing in-browser ONNX embedding for ${functionName}`);
-            const ts = setters;
-            ts.setTestStatus('testing');
-            ts.setTestError(null);
-            try {
-                // Dynamically import transformers.js
-                const tf = await import('@huggingface/transformers');
-                const { pipeline, env } = tf;
-                // Configure to load local models from extension assets
-                const getUrl = (browser.runtime.getURL as any);
-                const base = getUrl('models/');
-                env.localModelPath = base;
-                env.allowRemoteModels = false;
-                env.allowLocalModels = true;
-                // Set WASM runtime paths on local onnx backend if present
-                const onnxBackend = (env.backends as any).onnx;
-                if (onnxBackend?.wasm) {
-                    // @ts-ignore: override readonly property to set local WASM paths
-                    onnxBackend.wasm.wasmPaths = getUrl('transformers-wasm/');
-                }
-                console.log('[SettingsContext] transformers.js env config:', {
-                    localModelPath: env.localModelPath,
-                    allowLocalModels: env.allowLocalModels,
-                    allowRemoteModels: env.allowRemoteModels,
-                    wasmPaths: (env.backends as any).onnx?.wasm?.wasmPaths
-                });
-                // Initialize feature-extraction pipeline for our ONNX model
-                const extractor = await pipeline('feature-extraction', 'all-MiniLM-L6-v2');
-                console.log('[SettingsContext] extractor initialized, running inference');
-                // Run on sample input
-                const output = await extractor('test input', { pooling: 'mean', normalize: true });
-                console.log('[SettingsContext] embedding output:', output);
-                // Validate embedding dimension
-                const dims = (output as any).dims;
-                if (!dims || dims[1] !== 384) throw new Error(`Unexpected embedding dimension: ${dims}`);
-                ts.setTestStatus('success');
-            } catch (err: any) {
-                console.error('[SettingsContext] In-browser embedding test failed:', err);
-                ts.setTestError(err instanceof Error ? err : new Error(String(err)));
-                ts.setTestStatus('error');
-            }
-            return;
-        }
-        
         if (!currentFunctionConfig || !currentFunctionConfig.providerId || !currentFunctionConfig.modelId) {
             console.warn(`[SettingsContext] Test connection called for ${functionName} but config is incomplete. Received:`, currentFunctionConfig);
             setters.setTestError(new Error('Configuration incomplete or invalid.'));
@@ -708,13 +659,29 @@ export const SettingsProvider: ParentComponent = (props) => {
         console.log(`[SettingsContext] Testing connection for ${functionName}...`, currentFunctionConfig);
         setters.setTestStatus('testing');
         setters.setTestError(null);
-        setTtsTestAudio(null); 
+        setTtsTestAudio(null);
 
         try {
             let success = false;
             if (functionName === 'LLM') {
-                console.warn(`[SettingsContext] Actual test logic for LLM provider ${currentFunctionConfig.providerId} needs implementation.`);
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Use the actual provider's testConnection method instead of stub
+                const providerImpl = providerImplementations[currentFunctionConfig.providerId as keyof typeof providerImplementations];
+                if (!providerImpl || !providerImpl.testConnection) {
+                    throw new Error(`LLM provider ${currentFunctionConfig.providerId} does not support connection testing`);
+                }
+                
+                console.log(`[SettingsContext] Testing LLM connection for provider ${currentFunctionConfig.providerId} with model ${currentFunctionConfig.modelId}`);
+                
+                // Convert FunctionConfig to LLMConfig for the provider test
+                const llmConfig: LLMConfig = {
+                    provider: currentFunctionConfig.providerId as LLMProviderId,
+                    model: currentFunctionConfig.modelId,
+                    baseUrl: currentFunctionConfig.baseUrl || 'http://localhost:1337', // Default or configured
+                    apiKey: currentFunctionConfig.apiKey ?? undefined, // Convert null to undefined
+                    stream: false
+                };
+                
+                await providerImpl.testConnection(llmConfig, functionName);
                 success = true;
             } else if (functionName === 'Embedding') {
                 console.log(`[SettingsContext] Testing embedding and seeding personality for provider ${currentFunctionConfig.providerId}`);
@@ -784,6 +751,21 @@ export const SettingsProvider: ParentComponent = (props) => {
          };
     };
 
+    // Helper for transient state setters
+    const getTransientStateSetters = (funcType: FunctionName) => {
+        ensureTransientState(funcType);
+        return {
+            setLocalModels: (models: ModelOption[]) => setTransientState(funcType, 'localModels', models),
+            setRemoteModels: (models: ModelOption[]) => setTransientState(funcType, 'remoteModels', models),
+            setFetchStatus: (status: FetchStatus) => setTransientState(funcType, 'fetchStatus', status),
+            setFetchError: (error: Error | null) => setTransientState(funcType, 'fetchError', error),
+            setTestStatus: (status: TestStatus) => setTransientState(funcType, 'testStatus', status),
+            setTestError: (error: Error | null) => setTransientState(funcType, 'testError', error),
+            setShowSpinner: (show: boolean) => setTransientState(funcType, 'showSpinner', show),
+            setSpinnerTimeoutId: (id: ReturnType<typeof setTimeout> | undefined) => setTransientState(funcType, 'spinnerTimeoutId', id),
+        };
+    };
+
     // --- NEW: Handler for Redirect Setting Change ---
     const handleRedirectSettingChange = async (serviceName: string, update: Pick<RedirectServiceSetting, 'isEnabled'>) => {
         console.log(`[SettingsContext] Updating redirect for "${serviceName}":`, update);
@@ -822,21 +804,6 @@ export const SettingsProvider: ParentComponent = (props) => {
         if (functionName === 'Embedding') return 'embeddingConfig';
         if (functionName === 'TTS') return 'ttsConfig';
         throw new Error(`Invalid function name: ${functionName}`);
-    };
-
-    // Helper for transient state setters
-    const getTransientSignalSetters = (funcType: FunctionName) => {
-        ensureTransientState(funcType);
-        return {
-            setLocalModels: (models: ModelOption[]) => setTransientState(funcType, 'localModels', models),
-            setRemoteModels: (models: ModelOption[]) => setTransientState(funcType, 'remoteModels', models),
-            setFetchStatus: (status: FetchStatus) => setTransientState(funcType, 'fetchStatus', status),
-            setFetchError: (error: Error | null) => setTransientState(funcType, 'fetchError', error),
-            setTestStatus: (status: TestStatus) => setTransientState(funcType, 'testStatus', status),
-            setTestError: (error: Error | null) => setTransientState(funcType, 'testError', error),
-            setShowSpinner: (show: boolean) => setTransientState(funcType, 'showSpinner', show),
-            setSpinnerTimeoutId: (id: ReturnType<typeof setTimeout> | undefined) => setTransientState(funcType, 'spinnerTimeoutId', id),
-        };
     };
 
     // --- Context Value ---

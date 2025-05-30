@@ -5,7 +5,7 @@ import type { Bookmark, Tag } from "../services/db/types";
 import type { Thread, ChatMessage } from '../features/chat/types';
 import type { EmbeddingResult } from '../services/llm/embedding';
 import type { FunctionConfig } from '../services/storage/types';
-import type { PersonalityEmbeddingResult } from '../services/llm/personalityService';
+import type { BrowsingAnalysisData } from '../services/llm/prompts/browsing-analysis';
 
 /**
  * Payload sent from the background script to the content script
@@ -414,6 +414,32 @@ export interface BackgroundProtocolMap {
     
     // Personality Operations
     embedPersonality(data: EmbedPersonalityRequest): Promise<EmbedPersonalityResponse>;
+    
+    // Browser History Messages
+    fetchBrowserHistory(data?: { daysBack?: number }): Promise<{
+      success: boolean;
+      history?: {
+        productive: Array<{ domain: string; visitCount: number; category: string }>;
+        entertaining: Array<{ domain: string; visitCount: number; category: string }>;
+        neutral: Array<{ domain: string; visitCount: number; category: string }>;
+        distracting: Array<{ domain: string; visitCount: number; category: string }>;
+      };
+      error?: string;
+    }>;
+    
+    requestHistoryPermission(): Promise<{
+      success: boolean;
+      granted?: boolean;
+      error?: string;
+    }>;
+    
+    analyzeBrowsingPatterns(data: { 
+      browsingData: BrowsingAnalysisData;
+    }): Promise<{
+      success: boolean;
+      analysis?: string;
+      error?: string;
+    }>;
 }
 // ---- END: BackgroundProtocolMap Definition ----
 
@@ -542,6 +568,32 @@ export interface BackgroundProtocolMap {
     
     // Personality Operations
     embedPersonality(data: EmbedPersonalityRequest): Promise<EmbedPersonalityResponse>;
+    
+    // Browser History Messages
+    fetchBrowserHistory(data?: { daysBack?: number }): Promise<{
+      success: boolean;
+      history?: {
+        productive: Array<{ domain: string; visitCount: number; category: string }>;
+        entertaining: Array<{ domain: string; visitCount: number; category: string }>;
+        neutral: Array<{ domain: string; visitCount: number; category: string }>;
+        distracting: Array<{ domain: string; visitCount: number; category: string }>;
+      };
+      error?: string;
+    }>;
+    
+    requestHistoryPermission(): Promise<{
+      success: boolean;
+      granted?: boolean;
+      error?: string;
+    }>;
+    
+    analyzeBrowsingPatterns(data: { 
+      browsingData: BrowsingAnalysisData;
+    }): Promise<{
+      success: boolean;
+      analysis?: string;
+      error?: string;
+    }>;
 }
 // --- END NEW CHAT RPC DEFINITIONS ---
 
