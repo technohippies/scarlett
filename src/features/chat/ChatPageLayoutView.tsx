@@ -168,14 +168,6 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
         <button onClick={props.onNavigateBack} class="mr-2 p-2 hover:cursor-pointer">
           <CaretLeft class="size-6" />
         </button>
-        <Switch
-          checked={props.isSpeechModeActive} // This can also come from machineContext if preferred
-          onChange={props.onToggleMode} // This sends TOGGLE_INPUT_MODE
-          class="ml-auto flex items-center space-x-2"
-        >
-          <SwitchControl class="relative"><SwitchThumb /></SwitchControl>
-          <SwitchLabel>Speech Mode</SwitchLabel>
-        </Switch>
         <Show when={(pendingEmbeddingData()?.count || 0) > 0 || isEmbedding()} fallback={<></>}>
           <EmbeddingProcessingPanel
             pendingEmbeddingCount={() => pendingEmbeddingData()?.count || 0}
@@ -184,9 +176,17 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
             processedCount={processedCount}
             totalCount={totalCount}
             onProcessClick={handleEmbedClick}
-            class="ml-2"
+            class="ml-auto"
           />
         </Show>
+        <Switch
+          checked={props.isSpeechModeActive} // This can also come from machineContext if preferred
+          onChange={props.onToggleMode} // This sends TOGGLE_INPUT_MODE
+          class="ml-2 flex items-center space-x-2"
+        >
+          <SwitchControl class="relative"><SwitchThumb /></SwitchControl>
+          <SwitchLabel>Speech Mode</SwitchLabel>
+        </Switch>
       </header>
 
       <div class="flex flex-1 overflow-hidden">
