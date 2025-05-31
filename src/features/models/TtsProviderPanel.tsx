@@ -110,9 +110,23 @@ export const TtsProviderPanel: Component<TtsProviderPanelProps> = (props) => {
                         />
                     </TextField>
                     
-                    {/* Play Test Audio Button - Test Connection button is removed, logic moves to footer */}
-                    <Show when={props.testAudioData() && selectedProvider() === 'elevenlabs'}>
+                    {/* Test Button */}
+                    <Show when={props.elevenLabsApiKey() && selectedProvider() === 'elevenlabs'}>
                         <div class="flex items-center gap-4 mt-4">
+                            <Button 
+                                onClick={props.onTestElevenLabs} 
+                                variant="outline"
+                                disabled={props.isElevenLabsTesting() || !props.elevenLabsApiKey()}
+                            >
+                                <SpeakerSimpleHigh class="h-4 w-4 mr-1" />
+                                {props.isElevenLabsTesting() ? 'Testing...' : 'Test Connection'}
+                            </Button>
+                        </div>
+                    </Show>
+                    
+                    {/* Play Test Audio Button */}
+                    <Show when={props.testAudioData() && selectedProvider() === 'elevenlabs'}>
+                        <div class="flex items-center gap-4 mt-2">
                             <Button onClick={props.onPlayTestAudio} variant="outline" >
                                 <SpeakerSimpleHigh class="h-4 w-4 mr-1" /> Play Test Audio
                             </Button>
