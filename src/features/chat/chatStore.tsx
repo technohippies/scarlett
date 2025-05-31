@@ -211,19 +211,17 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       // Clear the input immediately after capturing the text
       setState('userInput', '');
       
-      // Generate embedding for user message if embedding is configured
-      let userEmbeddingResult: EmbeddingResult | null = null;
-      const embeddingConfig = props.initialUserConfig.embeddingConfig;
-      if (embeddingConfig) {
-        try {
-          console.log('[chatStore] Generating embedding for user message...');
-          userEmbeddingResult = await getEmbedding(text, embeddingConfig);
-          console.log('[chatStore] User message embedding generated:', userEmbeddingResult?.dimension);
-        } catch (error) {
-          console.error('[chatStore] Failed to generate user message embedding:', error);
-          // Continue without embedding - don't block the chat
+              // Generate embedding for user message if embedding is configured
+        let userEmbeddingResult: EmbeddingResult | null = null;
+        const embeddingConfig = props.initialUserConfig.embeddingConfig;
+        if (embeddingConfig) {
+          try {
+            userEmbeddingResult = await getEmbedding(text, embeddingConfig);
+          } catch (error) {
+            console.error('[chatStore] Failed to generate user message embedding:', error);
+            // Continue without embedding - don't block the chat
+          }
         }
-      }
 
       const userMsg: ChatMessage = {
         id: `${state.currentThreadId}-user-${Date.now()}`,
@@ -300,13 +298,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           { threadSystemPrompt: noRomanPrompt }
         ) as AsyncGenerator<StreamedChatResponsePart>;
         for await (const part of stream) {
-          console.log('[chatStore] received stream part', part);
           if (part.type === 'content') {
-            // Clear streaming flag on first content part
-            const idx = state.messages.findIndex(m => m.id === placeholderId);
-            if (idx >= 0) {
-              setState('messages', idx, 'isStreaming', false);
-            }
             full += part.content;
           } else if (part.type === 'error') {
             setState('lastError', part.error);
@@ -323,7 +315,6 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
             }
             setState('messages', lastIndex, 'text_content', filtered);
           }
-          console.log('[chatStore] updated AI message to', full);
         }
       } catch (e: any) {
         setState('lastError', e.message || String(e));
@@ -343,9 +334,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         let aiEmbeddingResult: EmbeddingResult | null = null;
         if (embeddingConfig && full.trim()) {
           try {
-            console.log('[chatStore] Generating embedding for AI message...');
             aiEmbeddingResult = await getEmbedding(full, embeddingConfig);
-            console.log('[chatStore] AI message embedding generated:', aiEmbeddingResult?.dimension);
           } catch (error) {
             console.error('[chatStore] Failed to generate AI message embedding:', error);
             // Continue without embedding - don't block the chat

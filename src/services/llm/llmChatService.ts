@@ -411,9 +411,7 @@ export async function* getAiChatResponseStream(
       case 'ollama':
         console.log('[llmChatService Stream] About to iterate Ollama stream...');
         for await (const part of _ollamaChatStream(messagesForLLM, streamingProviderConfig)) {
-          console.log('[llmChatService Stream] Ollama part received:', JSON.stringify(part));
           yield part;
-          console.log('[llmChatService Stream] Ollama part yielded.');
         }
         streamProviderProcessed = true;
         console.log('[llmChatService Stream] Ollama stream iteration complete.');

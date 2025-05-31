@@ -56,7 +56,7 @@ export async function getEmbedding(text: string, config: FunctionConfig): Promis
     throw new Error('Incomplete embedding configuration.');
   }
 
-  console.log(`[getEmbedding] Requesting embedding for text (length: ${text.length}) using Provider: ${providerId}, Model: ${modelId}`);
+  // Silently generate embedding
 
   try {
     switch (providerId) {
@@ -84,7 +84,7 @@ export async function getEmbedding(text: string, config: FunctionConfig): Promis
 
         if (data.embedding && Array.isArray(data.embedding)) {
           const dimension = data.embedding.length;
-          console.log(`[getEmbedding Ollama] Successfully received embedding vector (model: ${modelId}, dimension: ${dimension}).`);
+          // Embedding successful
           return {
               embedding: data.embedding,
               modelName: modelId,
@@ -131,7 +131,7 @@ export async function getEmbedding(text: string, config: FunctionConfig): Promis
         if (data.data && Array.isArray(data.data) && data.data.length > 0 && data.data[0].embedding && Array.isArray(data.data[0].embedding)) {
           const embedding = data.data[0].embedding;
           const dimension = embedding.length;
-          console.log(`[getEmbedding Jan] Successfully received embedding vector (model: ${modelId}, dimension: ${dimension}).`);
+          // Embedding successful
           return {
               embedding: embedding,
               modelName: modelId,

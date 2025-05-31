@@ -121,15 +121,10 @@ export async function getDbInstance(): Promise<PGlite> {
     // Now, dbReadyPromise is guaranteed to be non-null (either from background or implicitly set above).
     // Await the promise. This ensures we wait for the *current* initialization to complete fully
     // (including schema and assignment to 'db') before proceeding.
-    console.log('[DB getDbInstance] Awaiting the dbReadyPromise...');
     try {
         // Important: Directly await the module-level promise variable,
         // which might have been set by ensureDbInitialized just above or earlier.
         const instance = await dbReadyPromise!; // Use non-null assertion as we ensured it's set
-        console.log('[DB getDbInstance] dbReadyPromise resolved. Returning instance.');
-        
-        // DEBUG: Log instance info
-        console.log(`[DB getDbInstance] Final instance tracker:`, Array.from(instanceTracker.entries()));
         
         // Double check 'db' variable after awaiting. It *should* be set by startInitialization on success.
         if (!db) {

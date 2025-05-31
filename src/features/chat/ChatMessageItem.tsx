@@ -55,12 +55,12 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
   const [isPopoverOpen, setIsPopoverOpen] = createSignal(false);
 
   // Local derived TTS state
-  const isStreaming = () => !!message.isStreaming;
+  const isStreaming = () => !!message.isStreaming || !!props.isStreaming;
   const wordMap = () => message.ttsWordMap;
   const isGlobalTTS = () => state.isGlobalTTSSpeaking;
   const isCurrentSpokenMessage = () => state.currentSpokenMessageId === message.id;
   const currentHighlightIndex = () => state.currentHighlightIndex;
-  const canInteractWithTTS = () => !message.isStreaming && message.text_content && message.text_content.trim() !== '';
+  const canInteractWithTTS = () => !isStreaming() && message.text_content && message.text_content.trim() !== '';
   const isAnotherMessagePlaying = () => isGlobalTTS() && !isCurrentSpokenMessage();
 
   const isThisMessagePlaying = () => isGlobalTTS() && isCurrentSpokenMessage();
@@ -103,7 +103,7 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
                 fallback={
                   <span class="whitespace-pre-wrap break-words">
                     {message.text_content}
-                    <Show when={message.sender === 'ai' && isStreaming()}>
+                    <Show when={message.sender === 'ai' && isStreaming() && (!message.text_content || message.text_content.trim() === '')}>
                       <Spinner class="ml-2 size-4 text-muted-foreground" />
                     </Show>
                   </span>
@@ -125,9 +125,6 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
                         )
                     }
                   </For>
-                  <Show when={message.sender === 'ai' && isStreaming()}>
-                    <Spinner class="ml-2 size-4 text-muted-foreground" />
-                  </Show>
                 </span>
               </Show>
             </div>
