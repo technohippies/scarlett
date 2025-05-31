@@ -81,7 +81,7 @@
     "message": "Choose an LLM"
   },
   "onboardingSetupLLMDescription": {
-    "message": "Cant run a 4B+ model locally like Gemma3 or Qwen3? Use Jan with an OpenRouter model, many are free!"
+    "message": "Can't run a 4B+ model locally like Qwen3, Gemma3, or Deepseek? Use Jan with an OpenRouter model, many are free!"
   },
   "onboardingSetupEmbeddingTitle": {
     "message": "Choose Embedding"
