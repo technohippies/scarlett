@@ -2,7 +2,7 @@ import type { Component, Accessor } from "solid-js";
 import { For, Show } from "solid-js";
 import { Button } from "../../components/ui/button";
 import { 
-  Brain, ChartLine, SpeakerHigh, Microphone,
+  Brain, SpeakerHigh, Microphone,
   TrendUp, EyeSlash
 } from "phosphor-solid";
 import {
@@ -32,7 +32,6 @@ import { Header } from '../../components/layout/Header';
 // Menu Items
 const settingsMenuItems = [
   { title: "LLM", url: "/settings/models/llm", icon: Brain, sectionKey: 'llm' },
-  { title: "Embedding", url: "/settings/models/embedding", icon: ChartLine, sectionKey: 'embedding' },
   { title: "TTS", url: "/settings/models/tts", icon: SpeakerHigh, sectionKey: 'tts' },
   { title: "VAD", url: "/settings/models/vad", icon: Microphone, sectionKey: 'vad' },
 ];
@@ -71,12 +70,7 @@ interface SettingsPageViewProps {
   onLlmSelectModel: (modelId: string | undefined) => void;
   onLlmTestConnection: (config: FunctionConfig) => void;
   
-  // Embedding Props (keep)
-  embeddingTransientState: TransientStateAccessors;
-  embeddingProviderOptions: ProviderOption[];
-  onEmbeddingSelectProvider: (provider: ProviderOption) => void;
-  onEmbeddingSelectModel: (modelId: string | undefined) => void;
-  onEmbeddingTestConnection: (config: FunctionConfig) => void;
+
 
   // --- NEW TTS Props --- 
   availableTtsProviders: TtsProviderOption[];
@@ -272,45 +266,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                       </div>
                     </Show>
 
-                    {/* --- Embedding Section --- */} 
-                    <Show when={props.activeSection() === 'embedding'}>
-                      <div class="space-y-4">
-                        <ProviderSelectionPanel
-                          providerOptions={props.embeddingProviderOptions} 
-                          selectedProviderId={() => props.config.embeddingConfig?.providerId}
-                          onSelectProvider={props.onEmbeddingSelectProvider}
-                        />
-                        <Show when={props.config.embeddingConfig?.providerId !== undefined}>
-                          <ModelSelectionPanel
-                            functionName="Embedding"
-                            selectedProvider={() => props.embeddingProviderOptions.find(p => p.id === props.config.embeddingConfig?.providerId)}
-                            fetchStatus={props.embeddingTransientState.fetchStatus} 
-                            showSpinner={props.embeddingTransientState.showSpinner}
-                            fetchError={props.embeddingTransientState.fetchError}
-                            fetchedModels={props.embeddingTransientState.localModels}
-                            remoteModels={props.embeddingTransientState.remoteModels}
-                            selectedModelId={() => props.config.embeddingConfig?.modelId}
-                            onSelectModel={props.onEmbeddingSelectModel}
-                          />
-                          <Show when={props.embeddingTransientState.fetchStatus() === 'success' && props.config.embeddingConfig?.modelId}>
-                            <ConnectionTestPanel
-                              testStatus={props.embeddingTransientState.testStatus}
-                              testError={props.embeddingTransientState.testError}
-                              functionName="Embedding"
-                              selectedProvider={() => props.embeddingProviderOptions.find(p => p.id === props.config.embeddingConfig?.providerId)}
-                            />
-                            <div class="flex space-x-4 mt-6">
-                              <Button 
-                                  onClick={() => props.onEmbeddingTestConnection(props.config.embeddingConfig as FunctionConfig)} 
-                                  disabled={props.embeddingTransientState.testStatus() === 'testing'}
-                              >
-                                  {props.embeddingTransientState.testStatus() === 'testing' ? 'Testing...' : 'Test Connection'}
-                              </Button>
-                            </div>
-                          </Show>
-                        </Show>
-                      </div>
-                    </Show>
+
                     
                     {/* --- TTS Section --- */} 
                     <Show when={props.activeSection() === 'tts'}>

@@ -25,7 +25,6 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
   });
 
   const llmTransientState = settings.getTransientState('LLM');
-  const embeddingTransientState = settings.getTransientState('Embedding');
   const ttsTestAudio = settings.ttsTestAudio;
 
   const availableTtsProviders: TtsProviderOption[] = [
@@ -320,11 +319,7 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       onLlmSelectProvider={(provider) => { void settings.handleSelectProvider('LLM', provider); }}
       onLlmSelectModel={(modelId) => { void settings.handleSelectModel('LLM', modelId); }}
       onLlmTestConnection={(config: FunctionConfig) => { void settings.testConnection('LLM', config); }}
-      embeddingTransientState={embeddingTransientState}
-      embeddingProviderOptions={settings.embeddingProviderOptions}
-      onEmbeddingSelectProvider={(provider) => { void settings.handleSelectProvider('Embedding', provider); }}
-      onEmbeddingSelectModel={(modelId) => { void settings.handleSelectModel('Embedding', modelId); }}
-      onEmbeddingTestConnection={(config: FunctionConfig) => { void settings.testConnection('Embedding', config); }}
+
       availableTtsProviders={availableTtsProviders}
       selectedTtsProviderId={selectedTtsProviderId} 
       onSelectTtsProvider={handleSelectTtsProvider}
