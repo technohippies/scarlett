@@ -17,18 +17,12 @@ export const ChatMessageArea: Component<ChatMessageAreaProps> = (props) => {
   createEffect(() => {
     console.log('[ChatMessageArea] description prop:', props.description);
   });
-  let scrollHostRef: HTMLDivElement | undefined;
   const [state, actions] = useChat();
 
-  createEffect(() => {
-    // Keep messages scrolled to the bottom
-    if (scrollHostRef) {
-      scrollHostRef.scrollTop = scrollHostRef.scrollHeight;
-    }
-  });
+  // Removed conflicting scroll logic - parent handles scrolling
 
   return (
-    <div ref={scrollHostRef} class="flex-grow p-4 space-y-6 bg-background overflow-y-auto" id="message-list-container">
+    <div class="p-4 space-y-6 bg-background pb-20" id="message-list-container">
       {props.description && (
         <div class="mb-4 p-2 bg-muted/20 text-muted-foreground italic rounded">
           {props.description}

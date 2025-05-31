@@ -131,7 +131,7 @@ const MockChatMessageArea: Component<{
   messages: ChatMessage[];
   description?: string;
 }> = (props) => (
-  <div class="p-4">
+  <div class="p-4 space-y-6 bg-background pb-20">
     {props.description && (
       <div class="mb-4 p-3 bg-muted/30 rounded border-l-4 border-primary/50 text-sm">
         {props.description}
@@ -341,10 +341,12 @@ const MockChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
         
         console.log('[MockChatPageLayoutView] Scroll metrics - scrollHeight:', scrollHeight, 'clientHeight:', clientHeight, 'currentScrollTop:', currentScrollTop);
         
-        // Only auto-scroll if user is near the bottom (within 100px) or when streaming
-        const isNearBottom = (scrollHeight - clientHeight - currentScrollTop) < 100;
+        // For streaming messages, be more aggressive about auto-scrolling to prevent cutoff
+        // Only auto-scroll if user is near the bottom (within 150px) or when streaming
+        const isNearBottom = (scrollHeight - clientHeight - currentScrollTop) < 150;
         
         if (isNearBottom || hasStreamingMessage) {
+          // Scroll to bottom with a small buffer to ensure content isn't cut off
           mainScrollRef.scrollTop = scrollHeight;
           console.log('[MockChatPageLayoutView] Auto-scrolled to bottom - new scrollTop:', mainScrollRef.scrollTop);
         } else {

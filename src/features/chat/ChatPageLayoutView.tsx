@@ -66,10 +66,12 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
         
         console.log('[ChatPageLayoutView] Scroll metrics - scrollHeight:', scrollHeight, 'clientHeight:', clientHeight, 'currentScrollTop:', currentScrollTop);
         
-        // Only auto-scroll if user is near the bottom (within 100px) or when streaming
-        const isNearBottom = (scrollHeight - clientHeight - currentScrollTop) < 100;
+        // For streaming messages, be more aggressive about auto-scrolling to prevent cutoff
+        // Only auto-scroll if user is near the bottom (within 150px) or when streaming
+        const isNearBottom = (scrollHeight - clientHeight - currentScrollTop) < 150;
         
         if (isNearBottom || hasStreamingMessage) {
+          // Scroll to bottom with a small buffer to ensure content isn't cut off
           mainScrollRef.scrollTop = scrollHeight;
           console.log('[ChatPageLayoutView] Auto-scrolled to bottom - new scrollTop:', mainScrollRef.scrollTop);
         } else {
