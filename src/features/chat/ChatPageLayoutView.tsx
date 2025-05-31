@@ -208,7 +208,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
         </Show>
         <div class="flex flex-col flex-1 overflow-hidden">
           <main ref={mainScrollRef} class="flex-1 overflow-y-auto">
-            <div class="max-w-4xl mx-auto">
+            <div class="max-w-4xl mx-auto px-2 md:px-4">
               <Show when={!props.isSpeechModeActive} fallback={
                 <div class="flex items-center justify-center h-full">
                   <SpeechVisualizer
@@ -224,7 +224,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
             </div>
           </main>
           <div class="p-2 md:p-4 border-t border-border/40 bg-background">
-            <div class="max-w-4xl mx-auto">
+            <div class="max-w-4xl mx-auto px-2 md:px-4">
               <Show when={!props.isSpeechModeActive} fallback={
                 <>
                   <div class="flex items-center space-x-2">
