@@ -139,7 +139,7 @@ const MockChatMessageArea: Component<{
     )}
     <div class="space-y-4">
       {props.messages.map(message => (
-        <div class={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+        <div class={`flex flex-col ${message.sender === 'user' ? 'items-end' : 'items-start'}`}>
           <div class={`max-w-[75%] md:max-w-[70%] p-2 px-3 rounded-lg break-words ${
             message.sender === 'user' 
               ? 'bg-neutral-700 text-neutral-50 shadow-sm' 
@@ -148,6 +148,20 @@ const MockChatMessageArea: Component<{
             <div class="text-md whitespace-pre-wrap break-words">{message.text_content}</div>
             {message.isStreaming && <div class="text-xs opacity-70 mt-1">Streaming...</div>}
           </div>
+          {/* Minimal TTS icon for AI messages (like ChatGPT) */}
+          {message.sender === 'ai' && !message.isStreaming && (
+            <div class="mt-1 w-full max-w-[75%] md:max-w-[70%] px-3">
+              <button 
+                class="inline-flex items-center justify-center rounded-md w-6 h-6 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                onClick={() => console.log('[Story] TTS dropdown clicked for message:', message.id)}
+                title="Play audio (dropdown available in real app)"
+              >
+                <svg class="size-3.5" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
       ))}
     </div>

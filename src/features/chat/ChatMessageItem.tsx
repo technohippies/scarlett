@@ -135,10 +135,10 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
         </div>
 
         <Show when={message.sender === 'ai' && canInteractWithTTS()}>
-          <div class="mt-2 w-full max-w-[75%] md:max-w-[70%] px-3">
+          <div class="mt-1 w-full max-w-[75%] md:max-w-[70%] px-3">
               <div class="flex items-center"> 
-                <Button
-                  variant="outline"
+                {/* Main play/pause button */}
+                <button
                   onClick={() => {
                     console.log('[ChatMessageItem] Speak button clicked. Message:', message.text_content, 'Language:', message.tts_lang);
                     actions.playTTS({
@@ -147,23 +147,28 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
                       lang: message.tts_lang ?? 'en'
                     }).catch(e => console.error('[ChatMessageItem] playTTS error', e));
                   }}
-                  class="h-11 w-20 px-2 rounded-l-md rounded-r-none flex items-center justify-center"
+                  class="inline-flex items-center justify-center rounded-md w-6 h-6 text-muted-foreground hover:text-foreground transition-colors disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
                   disabled={isAnotherMessagePlaying()}
+                  aria-label="Play audio"
                 >
                   <Show
                     when={isThisMessagePlaying()}
-                    fallback={<Play weight="fill" class="size-4" />}
+                    fallback={<Play weight="fill" class="size-3.5" />}
                   >
-                    <Pause weight="fill" class="size-4" />
+                    <Pause weight="fill" class="size-3.5" />
                   </Show>
-                </Button>
-                <Popover placement="top-end" gutter={4} open={isPopoverOpen()} onOpenChange={setIsPopoverOpen}>
+                </button>
+                {/* Dropdown for options */}
+                <Popover placement="top-start" gutter={4} open={isPopoverOpen()} onOpenChange={(open) => {
+                  console.log('[ChatMessageItem] Popover open state changed:', open);
+                  setIsPopoverOpen(open);
+                }}>
                   <Popover.Trigger
                     aria-label="More options"
                     disabled={isAnotherMessagePlaying()}
-                    class="inline-flex items-center justify-center whitespace-nowrap rounded-l-none rounded-r-md border-l w-11 h-11 text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input hover:bg-accent hover:text-accent-foreground cursor-pointer"
+                    class="inline-flex items-center justify-center rounded-md w-4 h-4 ml-1 text-muted-foreground hover:text-foreground transition-colors disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4"><path d="m6 9 6 6 6-6" /></svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3"><path d="m6 9 6 6 6-6" /></svg>
                   </Popover.Trigger>
                   <Show when={isPopoverOpen()}>
                     <Popover.Content class={POPOVER_CONTENT_CLASS} onOpenAutoFocus={(e) => e.preventDefault()}>
