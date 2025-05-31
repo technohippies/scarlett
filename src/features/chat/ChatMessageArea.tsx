@@ -22,7 +22,7 @@ export const ChatMessageArea: Component<ChatMessageAreaProps> = (props) => {
   // Removed conflicting scroll logic - parent handles scrolling
 
   return (
-    <div class="p-4 space-y-6 bg-background pb-20" id="message-list-container">
+    <div class="py-4 space-y-6 bg-background pb-20" id="message-list-container">
       {props.description && (
         <div class="mb-4 p-2 bg-muted/20 text-muted-foreground italic rounded">
           {props.description}

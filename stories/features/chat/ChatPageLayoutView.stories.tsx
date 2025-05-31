@@ -131,7 +131,7 @@ const MockChatMessageArea: Component<{
   messages: ChatMessage[];
   description?: string;
 }> = (props) => (
-  <div class="p-4 space-y-6 bg-background pb-20">
+  <div class="py-4 space-y-6 bg-background pb-20">
     {props.description && (
       <div class="mb-4 p-3 bg-muted/30 rounded border-l-4 border-primary/50 text-sm">
         {props.description}
@@ -444,37 +444,41 @@ const MockChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
         </Show>
         <div class="flex flex-col flex-1 overflow-hidden">
           <main ref={mainScrollRef} class="flex-1 overflow-y-auto">
-            <Show when={!props.isSpeechModeActive} fallback={
-              <div class="flex items-center justify-center h-full">
-                <MockSpeechVisualizer
-                  listening={props.isVADListening}
-                  processing={!props.isIdle}
-                  speaking={props.isSpeaking}
-                  audioLevel={props.audioLevel}
-                />
-              </div>
-            }>
-              <MockChatMessageArea messages={props.messages} description={props.threadSystemPrompt} />
-            </Show>
+            <div class="max-w-4xl mx-auto">
+              <Show when={!props.isSpeechModeActive} fallback={
+                <div class="flex items-center justify-center h-full">
+                  <MockSpeechVisualizer
+                    listening={props.isVADListening}
+                    processing={!props.isIdle}
+                    speaking={props.isSpeaking}
+                    audioLevel={props.audioLevel}
+                  />
+                </div>
+              }>
+                <MockChatMessageArea messages={props.messages} description={props.threadSystemPrompt} />
+              </Show>
+            </div>
           </main>
           <div class="p-2 md:p-4 border-t border-border/40 bg-background">
-            <Show when={!props.isSpeechModeActive} fallback={
-              <>
-                <div class="flex items-center space-x-2">
-                  <Show when={!props.isVADListening} fallback={<button class="btn btn-outline" onClick={props.onStopVAD}>Stop Recording</button>}>
-                    <button class="btn btn-outline" onClick={props.onStartVAD}>Start Recording</button>
-                  </Show>
-                </div>
-                <MockMicVisualizer active={props.isVADListening} />
-              </>
-            }>
-              <MockTextInputControls
-                userInput={props.userInput}
-                onInputChange={props.onInputChange}
-                onSendMessage={props.onSendText}
-                isDisabled={!props.isIdle}
-              />
-            </Show>
+            <div class="max-w-4xl mx-auto">
+              <Show when={!props.isSpeechModeActive} fallback={
+                <>
+                  <div class="flex items-center space-x-2">
+                    <Show when={!props.isVADListening} fallback={<button class="btn btn-outline" onClick={props.onStopVAD}>Stop Recording</button>}>
+                      <button class="btn btn-outline" onClick={props.onStartVAD}>Start Recording</button>
+                    </Show>
+                  </div>
+                  <MockMicVisualizer active={props.isVADListening} />
+                </>
+              }>
+                <MockTextInputControls
+                  userInput={props.userInput}
+                  onInputChange={props.onInputChange}
+                  onSendMessage={props.onSendText}
+                  isDisabled={!props.isIdle}
+                />
+              </Show>
+            </div>
           </div>
         </div>
       </div>
