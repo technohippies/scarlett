@@ -420,12 +420,17 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
                   content
                 };
               });
-              const summaryStream = getAiChatResponseStream(historyForLLM2 as any, summaryPrompt, llmConfig2, {}) as AsyncGenerator<StreamedChatResponsePart>;
+              const summaryStream = getAiChatResponseStream(historyForLLM2 as any, summaryPrompt, llmConfig2, { 
+                excludeBaseSystem: true,
+                threadSystemPrompt: 'You are a helpful assistant. Summarize the given conversation in exactly 3-4 words. Examples: "Math Problem Discussion", "Language Learning Chat", "Technical Help Request", "Personal Life Story". Respond with ONLY the 3-4 word summary, nothing else.'
+              }) as AsyncGenerator<StreamedChatResponsePart>;
               let summary = '';
               for await (const part2 of summaryStream) {
                 if (part2.type === 'content') summary += part2.content;
               }
-              const trimmed = summary.trim();
+              // Parse out thinking content if present
+              const parsed = parseThinkingContent(summary);
+              const trimmed = (parsed.response_content || summary).trim();
               await messaging.sendMessage('updateChatThreadTitle', { threadId: state.pendingThreadId, newTitle: trimmed });
               setState('threads', ts => ts.map(t => t.id === state.pendingThreadId ? { ...t, title: trimmed } : t));
             }
