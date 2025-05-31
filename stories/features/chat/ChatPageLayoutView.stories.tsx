@@ -2,6 +2,7 @@ import type { ChatMessage, Thread } from '../../../src/features/chat/types';
 import { createContext, ParentComponent, Component, Show, createEffect, onCleanup, createRenderEffect, createSignal } from 'solid-js';
 import { CaretLeft } from 'phosphor-solid';
 import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../../src/components/ui/switch';
+import { Motion } from 'solid-motionone';
 
 const MOCK_THREAD_ID_1 = 'view-1';
 const MOCK_THREAD_ID_2 = 'view-2';
@@ -150,17 +151,24 @@ const MockChatMessageArea: Component<{
           </div>
           {/* Minimal TTS icon for AI messages (like ChatGPT) */}
           {message.sender === 'ai' && !message.isStreaming && (
-            <div class="mt-1 w-full max-w-[75%] md:max-w-[70%] px-3">
-              <button 
-                class="inline-flex items-center justify-center rounded-md w-6 h-6 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-                onClick={() => console.log('[Story] TTS dropdown clicked for message:', message.id)}
-                title="Play audio (dropdown available in real app)"
-              >
-                <svg class="size-3.5" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
-              </button>
-            </div>
+            <Motion
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 8 }}
+              transition={{ duration: 0.3, easing: 'ease-out' }}
+            >
+              <div class="mt-1 w-full max-w-[75%] md:max-w-[70%] px-3">
+                <button 
+                  class="inline-flex items-center justify-center rounded-md w-6 h-6 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+                  onClick={() => console.log('[Story] TTS dropdown clicked for message:', message.id)}
+                  title="Play audio (dropdown available in real app)"
+                >
+                  <svg class="size-3.5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M8 5v14l11-7z"/>
+                  </svg>
+                </button>
+              </div>
+            </Motion>
           )}
         </div>
       ))}
@@ -186,7 +194,7 @@ const MockTextInputControls: Component<{
       <div class="w-full">
         <input
           type="text"
-          placeholder="Type your message..."
+          placeholder="Ask anything..."
           value={props.userInput}
           onInput={(e) => props.onInputChange(e.currentTarget.value)}
           onKeyPress={handleKeyPress}
@@ -401,7 +409,7 @@ const MockChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
   return (
     <div class="flex flex-col h-screen bg-background text-foreground">
       <header class="flex items-center p-2 md:p-4 border-b border-border/40 bg-background z-10">
-        <button onClick={props.onNavigateBack} class="mr-2 p-2">
+        <button onClick={props.onNavigateBack} class="mr-2 p-2 hover:cursor-pointer">
           <CaretLeft class="size-6" />
         </button>
         <Switch

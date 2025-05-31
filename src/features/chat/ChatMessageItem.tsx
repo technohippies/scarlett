@@ -5,6 +5,7 @@ import { Spinner } from '../../components/ui/spinner';
 import { Popover } from '@kobalte/core/popover';
 import { Play, Pause, ArrowClockwise } from 'phosphor-solid';
 import { useChat } from './chatStore';
+import { Motion } from 'solid-motionone';
 
 // WordInfo is expected to be provided by the parent or defined in a shared types file if necessary.
 // For now, we assume it matches the structure used by the parent.
@@ -132,53 +133,60 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
         </div>
 
         <Show when={message.sender === 'ai' && canInteractWithTTS()}>
-          <div class="mt-1 w-full max-w-[75%] md:max-w-[70%] px-3">
-              <div class="flex items-center"> 
-                {/* Main play/pause button */}
-                <button
-                  onClick={() => {
-                    console.log('[ChatMessageItem] Speak button clicked. Message:', message.text_content, 'Language:', message.tts_lang);
-                    actions.playTTS({
-                      messageId: message.id,
-                      text: message.text_content,
-                      lang: message.tts_lang ?? 'en'
-                    }).catch(e => console.error('[ChatMessageItem] playTTS error', e));
-                  }}
-                  class="inline-flex items-center justify-center rounded-md w-6 h-6 text-muted-foreground hover:text-foreground transition-colors disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
-                  disabled={isAnotherMessagePlaying()}
-                  aria-label="Play audio"
-                >
-                  <Show
-                    when={isThisMessagePlaying()}
-                    fallback={<Play weight="fill" class="size-3.5" />}
-                  >
-                    <Pause weight="fill" class="size-3.5" />
-                  </Show>
-                </button>
-                {/* Dropdown for options */}
-                <Popover placement="top-start" gutter={4} open={isPopoverOpen()} onOpenChange={(open) => {
-                  console.log('[ChatMessageItem] Popover open state changed:', open);
-                  setIsPopoverOpen(open);
-                }}>
-                  <Popover.Trigger
-                    aria-label="More options"
+          <Motion
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 8 }}
+            transition={{ duration: 0.3, easing: 'ease-out' }}
+          >
+            <div class="mt-1 w-full max-w-[75%] md:max-w-[70%] px-3">
+                <div class="flex items-center"> 
+                  {/* Main play/pause button */}
+                  <button
+                    onClick={() => {
+                      console.log('[ChatMessageItem] Speak button clicked. Message:', message.text_content, 'Language:', message.tts_lang);
+                      actions.playTTS({
+                        messageId: message.id,
+                        text: message.text_content,
+                        lang: message.tts_lang ?? 'en'
+                      }).catch(e => console.error('[ChatMessageItem] playTTS error', e));
+                    }}
+                    class="inline-flex items-center justify-center rounded-md w-6 h-6 text-muted-foreground hover:text-foreground transition-colors disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
                     disabled={isAnotherMessagePlaying()}
-                    class="inline-flex items-center justify-center rounded-md w-4 h-4 ml-1 text-muted-foreground hover:text-foreground transition-colors disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
+                    aria-label="Play audio"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-3"><path d="m6 9 6 6 6-6" /></svg>
-                  </Popover.Trigger>
-                  <Show when={isPopoverOpen()}>
-                    <Popover.Content class={POPOVER_CONTENT_CLASS} onOpenAutoFocus={(e) => e.preventDefault()}>
-                      <div class="flex flex-col">
-                        <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.80)} disabled={isAnotherMessagePlaying()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.80x </Button>
-                        <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.75)} disabled={isAnotherMessagePlaying()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.75x </Button>
-                        <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={handleRegenerate} disabled={isAnotherMessagePlaying()}> <ArrowClockwise weight="regular" class="mr-2 size-4" /> Regenerate </Button>
-                      </div>
-                    </Popover.Content>
-                  </Show>
-                </Popover>
-              </div>
-          </div>
+                    <Show
+                      when={isThisMessagePlaying()}
+                      fallback={<Play weight="fill" class="size-3.5" />}
+                    >
+                      <Pause weight="fill" class="size-3.5" />
+                    </Show>
+                  </button>
+                  {/* Dropdown for options */}
+                  <Popover placement="top-start" gutter={4} open={isPopoverOpen()} onOpenChange={(open) => {
+                    console.log('[ChatMessageItem] Popover open state changed:', open);
+                    setIsPopoverOpen(open);
+                  }}>
+                    <Popover.Trigger
+                      aria-label="More options"
+                      disabled={isAnotherMessagePlaying()}
+                      class="inline-flex items-center justify-center rounded-md w-5 h-5 ml-1 text-muted-foreground hover:text-foreground transition-colors disabled:pointer-events-none disabled:opacity-50 cursor-pointer"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-4"><path d="m6 9 6 6 6-6" /></svg>
+                    </Popover.Trigger>
+                    <Show when={isPopoverOpen()}>
+                      <Popover.Content class={POPOVER_CONTENT_CLASS} onOpenAutoFocus={(e) => e.preventDefault()}>
+                        <div class="flex flex-col">
+                          <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.80)} disabled={isAnotherMessagePlaying()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.80x </Button>
+                          <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={() => handlePlaySpeed(0.75)} disabled={isAnotherMessagePlaying()}> <Play weight="regular" class="mr-2 size-4" /> Play at 0.75x </Button>
+                          <Button variant="ghost" size="sm" class={POPOVER_ITEM_CLASS} onPointerDown={handleRegenerate} disabled={isAnotherMessagePlaying()}> <ArrowClockwise weight="regular" class="mr-2 size-4" /> Regenerate </Button>
+                        </div>
+                      </Popover.Content>
+                    </Show>
+                  </Popover>
+                </div>
+            </div>
+          </Motion>
         </Show>
       </div>
     </>

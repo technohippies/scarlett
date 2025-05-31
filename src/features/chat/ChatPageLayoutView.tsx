@@ -165,7 +165,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
   return (
     <div class="flex flex-col h-screen bg-background text-foreground">
       <header class="flex items-center p-2 md:p-4 border-b border-border/40 bg-background z-10">
-        <button onClick={props.onNavigateBack} class="mr-2 p-2">
+        <button onClick={props.onNavigateBack} class="mr-2 p-2 hover:cursor-pointer">
           <CaretLeft class="size-6" />
         </button>
         <Switch

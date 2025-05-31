@@ -63,7 +63,7 @@ export const Default = {
       disabled={args.disabled}
       required={args.required}
       readOnly={args.readOnly}
-      validationState={args.invalid ? 'invalid' : 'valid'} // Use validationState instead of invalid prop
+      validationState={args.invalid ? 'invalid' : 'valid'}
     >
       <TextFieldLabel>{args.labelText}</TextFieldLabel>
       <TextFieldInput placeholder={args.placeholder} />
@@ -114,7 +114,7 @@ export const TextArea = {
     </TextField>
   ),
   args: {
-    placeholder: 'Type your message here...',
+    placeholder: 'Ask anything here...',
     labelText: 'Your Message',
     descriptionText: 'Enter your feedback here.',
     errorMessageText: 'A message is required.',
@@ -136,7 +136,7 @@ export const Disabled = {
   args: {
     disabled: true, // Set the disabled arg for the story control
     labelText: 'Disabled Field',
-     // Other args inherit from meta.args
+    // Other args inherit from meta.args
   },
   render: Default.render, // Reuse the default render function
 }; 

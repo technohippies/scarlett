@@ -23,7 +23,7 @@ export const TextInputControls: Component<TextInputControlsProps> = (props) => {
       <TextField class="w-full">
         <TextFieldInput
           type="text"
-          placeholder="Type your message..."
+          placeholder="Ask anything..."
           value={props.userInput}
           onInput={(e) => props.onInputChange(e.currentTarget.value)}
           onKeyPress={handleKeyPress}
