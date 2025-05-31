@@ -1,4 +1,4 @@
-import { Component, Show, createEffect, onCleanup, createSignal, createResource } from 'solid-js';
+import { Component, Show, createEffect, onCleanup, createSignal, createResource, createRenderEffect } from 'solid-js';
 import { CaretLeft } from 'phosphor-solid';
 import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../components/ui/switch';
 import { ChatSidebar } from './ChatSidebar';
@@ -47,6 +47,38 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
   createEffect(() => {
     console.log('[ChatPageLayoutView] threadSystemPrompt prop:', props.threadSystemPrompt);
   });
+
+  // Scroll container ref for auto-scrolling
+  let mainScrollRef!: HTMLElement;
+
+  // Auto-scroll to bottom when messages change - on the main element that actually scrolls
+  createRenderEffect(() => {
+    const messageCount = props.messages.length;
+    const hasStreamingMessage = props.messages.some(m => m.isStreaming);
+    
+    console.log('[ChatPageLayoutView] Auto-scroll trigger - messageCount:', messageCount, 'hasStreaming:', hasStreamingMessage);
+    
+    if (mainScrollRef && (messageCount > 0 || hasStreamingMessage)) {
+      queueMicrotask(() => {
+        const scrollHeight = mainScrollRef.scrollHeight;
+        const clientHeight = mainScrollRef.clientHeight;
+        const currentScrollTop = mainScrollRef.scrollTop;
+        
+        console.log('[ChatPageLayoutView] Scroll metrics - scrollHeight:', scrollHeight, 'clientHeight:', clientHeight, 'currentScrollTop:', currentScrollTop);
+        
+        // Only auto-scroll if user is near the bottom (within 100px) or when streaming
+        const isNearBottom = (scrollHeight - clientHeight - currentScrollTop) < 100;
+        
+        if (isNearBottom || hasStreamingMessage) {
+          mainScrollRef.scrollTop = scrollHeight;
+          console.log('[ChatPageLayoutView] Auto-scrolled to bottom - new scrollTop:', mainScrollRef.scrollTop);
+        } else {
+          console.log('[ChatPageLayoutView] Skipped auto-scroll - user scrolled up');
+        }
+      });
+    }
+  });
+
   // Stop VAD when speech mode is disabled
   createEffect(() => {
     if (!props.isSpeechModeActive && props.isVADListening) {
@@ -173,7 +205,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
           })()}
         </Show>
         <div class="flex flex-col flex-1 overflow-hidden">
-          <main class="flex-1 overflow-y-auto">
+          <main ref={mainScrollRef} class="flex-1 overflow-y-auto">
             <Show when={!props.isSpeechModeActive} fallback={
               <div class="flex items-center justify-center h-full">
                 <SpeechVisualizer
