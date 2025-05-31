@@ -5,7 +5,6 @@ import type { LLMConfig, StreamedChatResponsePart } from '../../services/llm/typ
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import type { BackgroundProtocolMap, NewChatThreadDataForRpc } from '../../shared/messaging-types';
 import type { Thread, ChatMessage } from './types';
-import type { UserConfiguration } from '../../services/storage/types';
 import type { LLMProviderId } from '../../services/llm/types';
 import { generateElevenLabsSpeechWithTimestamps } from '../../services/tts/elevenLabsService';
 import type { WordInfo } from './types';
@@ -16,6 +15,7 @@ import { generateRoleplayScenariosLLM } from '../../services/llm/llmChatService'
 import { getEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
 import { trackMilestone } from '../../utils/analytics';
 import { isPersonalityEmbedded } from '../../services/llm/personalityService';
+import { useSettings } from '../../context/SettingsContext';
 
 // RPC client for background storage
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
@@ -77,8 +77,8 @@ export interface ChatActions {
   dismissPersonalityWarning: () => void;
 }
 
-// Props for ChatProvider now include userConfig
-export interface ChatProviderProps { initialUserConfig: UserConfiguration; }
+// Props for ChatProvider - no longer needs initialUserConfig
+export interface ChatProviderProps { }
 
 // Default empty state and no-op actions for context fallback
 const defaultState: ChatState = {
@@ -119,6 +119,7 @@ const defaultActions: ChatActions = {
 const ChatContext = createContext<[ChatState, ChatActions]>([defaultState, defaultActions]);
 
 export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
+  const settings = useSettings(); // Use SettingsContext instead of props
   const [state, setState] = createStore<ChatState>({
     threads: [],
     currentThreadId: null,
@@ -213,7 +214,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       
               // Generate embedding for user message if embedding is configured
         let userEmbeddingResult: EmbeddingResult | null = null;
-        const embeddingConfig = props.initialUserConfig.embeddingConfig;
+        const embeddingConfig = settings.config.embeddingConfig;
         if (embeddingConfig) {
           try {
             userEmbeddingResult = await getEmbedding(text, embeddingConfig);
@@ -241,7 +242,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         sender: 'ai',
         text_content: '',
         timestamp: new Date().toISOString(),
-        tts_lang: props.initialUserConfig.targetLanguage || 'en',
+        tts_lang: settings.config.targetLanguage || 'en',
         isStreaming: true
       };
       // Capture placeholder metadata for later persistence
@@ -266,11 +267,11 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       // Buffer for AI response
       let full = '';
       // Determine user's target language code and spacing behavior outside of try/finally
-      const targetCode = props.initialUserConfig.targetLanguage ?? '';
+      const targetCode = settings.config.targetLanguage ?? '';
       const collapseLangs = ['zh','ja','ko'];
       try {
         // build LLMConfig from user-provided configuration
-        const fc = props.initialUserConfig.llmConfig;
+        const fc = settings.config.llmConfig;
         if (!fc) {
           setState('lastError', 'LLM not configured in settings');
           return;
@@ -372,12 +373,12 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         if (state.isSpeechMode) {
           console.log('[chatStore] Speech mode active: auto-playing TTS');
           // Use placeholderId and full for playTTS
-          actions.playTTS({ messageId: placeholderId, text: full, lang: props.initialUserConfig.targetLanguage || 'en' });
+          actions.playTTS({ messageId: placeholderId, text: full, lang: settings.config.targetLanguage || 'en' });
         }
         // After first message in a new thread, auto-generate a title summary
         if (state.pendingThreadId === state.currentThreadId) {
           try {
-            const fc2 = props.initialUserConfig.llmConfig;
+            const fc2 = settings.config.llmConfig;
             if (fc2) {
               const llmConfig2: LLMConfig = {
                 provider: fc2.providerId as LLMProviderId,
@@ -465,7 +466,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           }
           const blob = new Blob(audioChunks, { type: audioChunks[0]?.type || 'audio/webm' });
           // Transcribe blob to text
-          const apiKey = props.initialUserConfig.ttsConfig?.apiKey || props.initialUserConfig.elevenLabsApiKey;
+          const apiKey = settings.config.ttsConfig?.apiKey || settings.config.elevenLabsApiKey;
           if (!apiKey) {
             console.warn('[chatStore] STT API key not configured');
             setState('lastError', 'Speech-to-text API key is missing. Please configure it in Settings.');
@@ -513,9 +514,9 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       try {
         setState({ currentSpokenMessageId: messageId, isGlobalTTSSpeaking: true, currentHighlightIndex: null });
         // Generate full audio blob with timestamps for highlighting
-        const apiKey = props.initialUserConfig.ttsConfig?.apiKey || props.initialUserConfig.elevenLabsApiKey || '';
-        const modelId = props.initialUserConfig.ttsConfig?.modelId || DEFAULT_ELEVENLABS_MODEL_ID;
-        const voiceId = props.initialUserConfig.elevenLabsVoiceId ?? DEFAULT_ELEVENLABS_VOICE_ID;
+        const apiKey = settings.config.ttsConfig?.apiKey || settings.config.elevenLabsApiKey || '';
+        const modelId = settings.config.ttsConfig?.modelId || DEFAULT_ELEVENLABS_MODEL_ID;
+        const voiceId = settings.config.elevenLabsVoiceId ?? DEFAULT_ELEVENLABS_VOICE_ID;
         const resp = await generateElevenLabsSpeechWithTimestamps(
           apiKey,
           text,
@@ -660,7 +661,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       setState('lastError', null);
       try {
         // Determine target language name
-        const code = props.initialUserConfig.targetLanguage || 'en';
+        const code = settings.config.targetLanguage || 'en';
         const langName = lookup(code).fullName || code;
         // Generate scenario via LLM service
         const [scenario] = await generateRoleplayScenariosLLM(langName, topicHint);
@@ -725,7 +726,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         setState('personalityEmbedded', isEmbedded);
         
         // Show warning if personality is not embedded and user has embedding config
-        if (!isEmbedded && props.initialUserConfig.embeddingConfig) {
+        if (!isEmbedded && settings.config.embeddingConfig) {
           setState('showPersonalityWarning', true);
           console.log('[chatStore] Personality not embedded - showing warning');
         } else {

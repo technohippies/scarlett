@@ -5,11 +5,9 @@ import StudyPage from '../../src/pages/study/StudyPage';
 import SettingsPage from '../../src/pages/settings/SettingsPage';
 import { ChatPageLayout } from '../../src/features/chat/ChatPageLayout';
 import { ChatProvider } from '../../src/features/chat/chatStore';
-import { SettingsProvider } from '../../src/context/SettingsContext';
+import { SettingsProvider, useSettings } from '../../src/context/SettingsContext';
 import type { Messages } from '../../src/types/i18n';
 import { browser } from 'wxt/browser';
-import { userConfigurationStorage } from '../../src/services/storage/storage';
-import type { UserConfiguration } from '../../src/services/storage/types';
 
 const minimalNativeLanguagesList = [
   { value: 'en' }, { value: 'zh' }, { value: 'vi' }, { value: 'th' }, { value: 'id' }, 
@@ -59,16 +57,10 @@ const fetchMessages = async (langCode: string): Promise<Messages> => {
 
 type ActiveView = 'newtab' | 'bookmarks' | 'study' | 'settings' | 'unifiedChat';
 
-const App: Component = (): JSX.Element => {
+const AppContent: Component = (): JSX.Element => {
   const [activeView, setActiveView] = createSignal<ActiveView>('newtab');
   const [effectiveLangCode] = createSignal<string>(getBestInitialLangCode());
-  const [userConfig, setUserConfig] = createSignal<UserConfiguration | null>(null);
-
-  createEffect(() => {
-    userConfigurationStorage.getValue()
-      .then(config => setUserConfig(config || null))
-      .catch(e => console.error('[App.tsx] Failed to load user config:', e));
-  });
+  const settings = useSettings();
 
   const [messagesData] = createResource(effectiveLangCode, fetchMessages);
 
@@ -85,35 +77,41 @@ const App: Component = (): JSX.Element => {
   };
 
   return (
+    <Switch fallback={<div>{i18n().get('newTabPageUnknownView', 'Unknown View')}</div>}>
+      <Match when={activeView() === 'newtab'}>
+        <NewTabPage 
+           onNavigateToBookmarks={() => navigateTo('bookmarks')}
+           onNavigateToStudy={() => navigateTo('study')}
+           onNavigateToSettings={() => navigateTo('settings')}
+           onNavigateToChat={() => navigateTo('unifiedChat')}
+           messages={messagesData()} 
+           messagesLoading={messagesData.loading} 
+        />
+      </Match>
+      <Match when={activeView() === 'bookmarks'}>
+        <BookmarksPage onNavigateBack={() => navigateTo('newtab')} />
+      </Match>
+      <Match when={activeView() === 'study'}>
+        <StudyPage onNavigateBack={() => navigateTo('newtab')} messages={messagesData()} />
+      </Match>
+      <Match when={activeView() === 'settings'}>
+        <SettingsPage onNavigateBack={() => navigateTo('newtab')} /> 
+      </Match>
+      <Match when={activeView() === 'unifiedChat'}>
+        <Show when={settings.loadStatus() === 'ready'} fallback={<div>Loading chats and configuration...</div>}>
+          <ChatProvider initialUserConfig={settings.config}>
+            <ChatPageLayout onNavigateBack={() => navigateTo('newtab')} />
+          </ChatProvider>
+        </Show>
+      </Match>
+    </Switch>
+  );
+}; 
+
+const App: Component = (): JSX.Element => {
+  return (
     <SettingsProvider>
-      <Switch fallback={<div>{i18n().get('newTabPageUnknownView', 'Unknown View')}</div>}>
-        <Match when={activeView() === 'newtab'}>
-          <NewTabPage 
-             onNavigateToBookmarks={() => navigateTo('bookmarks')}
-             onNavigateToStudy={() => navigateTo('study')}
-             onNavigateToSettings={() => navigateTo('settings')}
-             onNavigateToChat={() => navigateTo('unifiedChat')}
-             messages={messagesData()} 
-             messagesLoading={messagesData.loading} 
-          />
-        </Match>
-        <Match when={activeView() === 'bookmarks'}>
-          <BookmarksPage onNavigateBack={() => navigateTo('newtab')} />
-        </Match>
-        <Match when={activeView() === 'study'}>
-          <StudyPage onNavigateBack={() => navigateTo('newtab')} messages={messagesData()} />
-        </Match>
-        <Match when={activeView() === 'settings'}>
-          <SettingsPage onNavigateBack={() => navigateTo('newtab')} /> 
-        </Match>
-        <Match when={activeView() === 'unifiedChat'}>
-          <Show when={userConfig()} fallback={<div>Loading chats and configuration...</div>}>
-            <ChatProvider initialUserConfig={userConfig()!}>
-              <ChatPageLayout onNavigateBack={() => navigateTo('newtab')} />
-            </ChatProvider>
-          </Show>
-        </Match>
-      </Switch>
+      <AppContent />
     </SettingsProvider>
   );
 }; 
