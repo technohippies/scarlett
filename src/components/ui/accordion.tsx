@@ -17,7 +17,7 @@ const AccordionItem = <T extends ValidComponent = "div">(
   props: PolymorphicProps<T, AccordionItemProps<T>>
 ) => {
   const [local, others] = splitProps(props as AccordionItemProps, ["class"])
-  return <AccordionPrimitive.Item class={cn("border-b", local.class)} {...others} />
+  return <AccordionPrimitive.Item class={cn(local.class)} {...others} />
 }
 
 type AccordionTriggerProps<T extends ValidComponent = "button"> =
@@ -48,7 +48,7 @@ const AccordionTrigger = <T extends ValidComponent = "button">(
           stroke-width="2"
           stroke-linecap="round"
           stroke-linejoin="round"
-          class="size-4 shrink-0 transition-transform duration-200"
+          class="size-4 shrink-0 transition-transform duration-200 text-muted-foreground"
         >
           <path d="M6 9l6 6l6 -6" />
         </svg>
@@ -70,7 +70,7 @@ const AccordionContent = <T extends ValidComponent = "div">(
   return (
     <AccordionPrimitive.Content
       class={cn(
-        "animate-accordion-up overflow-hidden text-sm transition-all data-[expanded]:animate-accordion-down",
+        "overflow-hidden text-sm transition-all duration-200 ease-out",
         local.class
       )}
       {...others}

@@ -6,6 +6,7 @@ import { Popover } from '@kobalte/core/popover';
 import { Play, Pause, ArrowClockwise } from 'phosphor-solid';
 import { useChat } from './chatStore';
 import { Motion } from 'solid-motionone';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '../../components/ui/accordion';
 
 // WordInfo is expected to be provided by the parent or defined in a shared types file if necessary.
 // For now, we assume it matches the structure used by the parent.
@@ -87,10 +88,47 @@ export const ChatMessageItem: Component<ChatMessageItemProps> = (props) => {
     }
   };
 
+  const formatThinkingDuration = () => {
+    const duration = message.thinking_duration;
+    if (!duration) return '';
+    if (duration < 1) return 'Thought briefly';
+    if (duration < 60) return `Thought for ${duration.toFixed(1)} seconds`;
+    const minutes = Math.floor(duration / 60);
+    const seconds = Math.floor(duration % 60);
+    return `Thought for ${minutes}m ${seconds}s`;
+  };
+
   return (
     <>
       <style>{HIGHLIGHT_CSS}</style>
       <div class={`flex flex-col ${message.sender === 'user' ? 'items-end' : 'items-start'}`}>
+        {/* Thinking section for AI messages */}
+        <Show when={message.sender === 'ai' && (message.thinking_content || message.is_thinking_complete === false)}>
+          <div class="w-full max-w-[75%] md:max-w-[70%] mb-2 px-3">
+            <Accordion collapsible class="w-full">
+              <AccordionItem value="thinking" class="border-none">
+                <AccordionTrigger class="text-left text-sm font-normal text-muted-foreground py-2 px-0">
+                  <Show when={message.is_thinking_complete !== false} fallback="Thinking...">
+                    {formatThinkingDuration()}
+                  </Show>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div class="text-sm font-mono bg-muted/30 p-3 rounded border-l-2 border-muted-foreground/20 whitespace-pre-wrap">
+                    <Show when={message.thinking_content} fallback={
+                      <div class="flex items-center space-x-2">
+                        <Spinner class="size-4" />
+                        <span class="text-muted-foreground">Thinking in progress...</span>
+                      </div>
+                    }>
+                      {message.thinking_content}
+                    </Show>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </div>
+        </Show>
+
         <div class={`max-w-[75%] md:max-w-[70%] p-2 px-3 rounded-lg break-words no-underline outline-none ${
             message.sender === 'user'
               ? 'bg-neutral-700 text-neutral-50 shadow-sm'

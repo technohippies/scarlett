@@ -10,6 +10,11 @@ export interface ChatMessage {
   tts_lang?: string; // Language for this specific AI message's TTS
   tts_voice_id?: string;
   isStreaming?: boolean; // Added for UI control during streaming
+  // Thinking model fields
+  thinking_content?: string; // The reasoning/thinking process
+  thinking_duration?: number; // Time spent thinking in seconds
+  is_thinking_complete?: boolean; // Whether thinking stream is finished
+  show_thinking?: boolean; // User preference for this message
   // Embedding fields
   embedding_384?: number[] | null;
   embedding_512?: number[] | null;

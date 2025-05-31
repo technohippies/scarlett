@@ -13,6 +13,7 @@ import { lookup } from '../../shared/languages';
 import { transcribeElevenLabsAudio } from '../../services/stt/elevenLabsSttService';
 import { generateRoleplayScenariosLLM } from '../../services/llm/llmChatService';
 import { getEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
+import { enhanceMessageWithThinking, parseThinkingContent } from './utils';
 import { trackMilestone } from '../../utils/analytics';
 import { isPersonalityEmbedded } from '../../services/llm/personalityService';
 import { useSettings } from '../../context/SettingsContext';
@@ -308,13 +309,23 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           // Patch the last AI message text via path-based setter
           const lastIndex = state.messages.length - 1;
           if (lastIndex >= 0) {
-            // Remove any parentheses content (e.g., Pinyin)
-            let filtered = full.replace(/\s*\([^)]*\)/g, '');
+            // Parse thinking content from the streamed text
+            const parsed = enhanceMessageWithThinking({ text_content: full, sender: 'ai' });
+            
+            // Remove any parentheses content (e.g., Pinyin) from the response content
+            let filtered = (parsed.text_content || full).replace(/\s*\([^)]*\)/g, '');
             // If target language uses no inter-word spacing, collapse spaces only between CJK characters
             if (collapseLangs.includes(targetCode)) {
               filtered = filtered.replace(/([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])\s+([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])/gu, '$1$2');
             }
+            
+            // Update the message with both thinking and response content
             setState('messages', lastIndex, 'text_content', filtered);
+            if (parsed.thinking_content) {
+              setState('messages', lastIndex, 'thinking_content', parsed.thinking_content);
+              setState('messages', lastIndex, 'thinking_duration', parsed.thinking_duration);
+              setState('messages', lastIndex, 'is_thinking_complete', parsed.is_thinking_complete);
+            }
           }
         }
       } catch (e: any) {
@@ -325,10 +336,16 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         if (collapseLangs.includes(targetCode)) {
           full = full.replace(/([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])\s+([\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}])/gu, '$1$2');
         }
-        // Update the displayed AI message to the cleaned text
+        // Parse thinking content and update the displayed AI message
         const cleanIdx = state.messages.findIndex(m => m.id === placeholderId);
         if (cleanIdx >= 0) {
-          setState('messages', cleanIdx, 'text_content', full);
+          const finalParsed = enhanceMessageWithThinking({ text_content: full, sender: 'ai' });
+          setState('messages', cleanIdx, 'text_content', finalParsed.text_content || full);
+          if (finalParsed.thinking_content) {
+            setState('messages', cleanIdx, 'thinking_content', finalParsed.thinking_content);
+            setState('messages', cleanIdx, 'thinking_duration', finalParsed.thinking_duration);
+            setState('messages', cleanIdx, 'is_thinking_complete', finalParsed.is_thinking_complete);
+          }
         }
         
         // Generate embedding for AI message if embedding is configured
@@ -343,12 +360,13 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         }
         
         // Persist the AI's completed response (DB will timestamp)
+        // Note: We only store the clean response content, not thinking tokens
         try {
-          const aiMessageToSave: ChatMessage = {
+          const cleanMessage: Partial<ChatMessage> = {
             id: placeholderId,
             thread_id: aiPlaceholder.thread_id,
             sender: aiPlaceholder.sender,
-            text_content: full,
+            text_content: full, // Clean response content only
             tts_lang: aiPlaceholder.tts_lang,
             // Add embedding data if available
             ...(aiEmbeddingResult && {
@@ -356,7 +374,9 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
               active_embedding_dimension: aiEmbeddingResult.dimension as 512 | 768 | 1024
             })
           };
-          await messaging.sendMessage('addChatMessage', aiMessageToSave);
+          
+          // Save only the clean message to database (no thinking content)
+          await messaging.sendMessage('addChatMessage', cleanMessage as ChatMessage);
         } catch (e: any) {
           console.error('[chatStore] failed to persist AI message', e);
         }

@@ -5,6 +5,7 @@ import { Spinner } from '../../../src/components/ui/spinner';
 import { Popover } from '@kobalte/core/popover';
 import { Play, Pause, ArrowClockwise } from 'phosphor-solid';
 import type { JSX } from 'solid-js';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '../../../src/components/ui/accordion';
 
 // WordInfo interface
 interface WordInfo {
@@ -96,10 +97,46 @@ const MockChatMessageItem: Component<ChatMessageItemProps> = (props) => {
     setIsPlaying(!isPlaying());
   };
 
+  const formatThinkingDuration = () => {
+    const duration = message.thinking_duration;
+    if (!duration) return '';
+    if (duration < 1) return 'Thought briefly';
+    if (duration < 60) return `Thought for ${duration.toFixed(1)} seconds`;
+    const minutes = Math.floor(duration / 60);
+    const seconds = Math.floor(duration % 60);
+    return `Thought for ${minutes}m ${seconds}s`;
+  };
+
   return (
     <>
       <style>{HIGHLIGHT_CSS}</style>
       <div class={`flex flex-col ${message.sender === 'user' ? 'items-end' : 'items-start'}`}>
+        {/* Thinking section for AI messages */}
+        <Show when={message.sender === 'ai' && (message.thinking_content || message.is_thinking_complete === false)}>
+          <div class="w-full max-w-[75%] md:max-w-[70%] mb-2">
+            <Accordion collapsible class="w-full">
+              <AccordionItem value="thinking">
+                <AccordionTrigger class="text-left text-sm font-normal text-muted-foreground py-2">
+                  <Show when={message.is_thinking_complete !== false} fallback="Thinking...">
+                    {formatThinkingDuration()}
+                  </Show>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <div class="text-sm font-mono bg-muted/30 p-3 rounded border-l-2 border-muted-foreground/20 whitespace-pre-wrap">
+                    <Show when={message.thinking_content} fallback={
+                      <div class="flex items-center space-x-2">
+                        <Spinner class="size-4" />
+                        <span class="text-muted-foreground">Thinking in progress...</span>
+                      </div>
+                    }>
+                      {message.thinking_content}
+                    </Show>
+                  </div>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </div>
+        </Show>
         <div class={`max-w-[75%] md:max-w-[70%] p-2 px-3 rounded-lg break-words no-underline outline-none ${
             message.sender === 'user'
               ? 'bg-neutral-700 text-neutral-50 shadow-sm'
@@ -353,5 +390,113 @@ export const AIWithHighlighting = {
     alignment: sampleAlignment,
     currentHighlightIndex: 5, // Highlight "this"
     isCurrentSpokenMessage: true,
+  },
+};
+
+// Thinking model examples
+export const ThinkingModelComplete = {
+  name: 'AI Message (With Thinking - Complete)',
+  args: {
+    message: {
+      id: 'thinking-complete',
+      thread_id: 'thread-storybook',
+      sender: 'ai',
+      text_content: 'The equation x² - 5x + 6 = 0 has two solutions: x = 2 and x = 3.\n\nI solved this by factoring: (x - 2)(x - 3) = 0, which gives us x = 2 or x = 3.',
+      timestamp: new Date().toISOString(),
+      thinking_content: `I need to solve the quadratic equation x² - 5x + 6 = 0.
+
+Let me try factoring first. I'm looking for two numbers that multiply to 6 and add to -5.
+
+The factors of 6 are:
+- 1 and 6 (sum = 7)
+- -1 and -6 (sum = -7)
+- 2 and 3 (sum = 5)
+- -2 and -3 (sum = -5) ✓
+
+So I can factor this as: (x - 2)(x - 3) = 0
+
+This gives me x = 2 or x = 3.
+
+Let me verify:
+- For x = 2: 2² - 5(2) + 6 = 4 - 10 + 6 = 0 ✓
+- For x = 3: 3² - 5(3) + 6 = 9 - 15 + 6 = 0 ✓
+
+Both solutions check out.`,
+      thinking_duration: 3.2,
+      is_thinking_complete: true,
+    },
+  },
+};
+
+export const ThinkingModelInProgress = {
+  name: 'AI Message (Thinking in Progress)',
+  args: {
+    message: {
+      id: 'thinking-progress',
+      thread_id: 'thread-storybook',
+      sender: 'ai',
+      text_content: '',
+      timestamp: new Date().toISOString(),
+      thinking_content: `I need to analyze this complex problem step by step.
+
+First, let me understand what we're dealing with:
+- This is a mathematical equation
+- It appears to be quadratic
+- I should try different solution methods
+
+Let me start with factoring...`,
+      is_thinking_complete: false,
+      isStreaming: true,
+    },
+  },
+};
+
+export const ThinkingModelLongContent = {
+  name: 'AI Message (Long Thinking Process)',
+  args: {
+    message: {
+      id: 'thinking-long',
+      thread_id: 'thread-storybook',
+      sender: 'ai',
+      text_content: 'Based on my analysis, I recommend implementing a microservices architecture with the following components...',
+      timestamp: new Date().toISOString(),
+      thinking_content: `This is a complex software architecture question. Let me think through this systematically.
+
+First, I need to consider the requirements:
+1. Scalability - the system needs to handle varying loads
+2. Maintainability - the codebase should be easy to update
+3. Performance - response times should be optimal
+4. Cost - solution should be cost-effective
+
+Now let me evaluate different architectural patterns:
+
+Monolithic Architecture:
+- Pros: Simple deployment, easier debugging, no network latency between components
+- Cons: Scaling entire app for one component, technology lock-in, large codebase
+
+Microservices Architecture:
+- Pros: Independent scaling, technology diversity, team autonomy, fault isolation
+- Cons: Distributed system complexity, network latency, data consistency challenges
+
+Service-Oriented Architecture (SOA):
+- Pros: Reusability, modularity, platform independence
+- Cons: Performance overhead, complexity in service management
+
+Given the requirements, microservices seems like the best fit because:
+1. Each service can scale independently based on demand
+2. Teams can use different technologies for different services
+3. Fault isolation prevents cascade failures
+4. Easier to maintain and update individual services
+
+Key components I would recommend:
+- API Gateway for routing and authentication
+- Service discovery for dynamic service location
+- Load balancers for distributing traffic
+- Message queues for asynchronous communication
+- Centralized logging and monitoring
+- Database per service pattern for data isolation`,
+      thinking_duration: 127.5,
+      is_thinking_complete: true,
+    },
   },
 }; 
