@@ -293,6 +293,10 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   const [browsingHistoryAnalysisStage, setBrowsingHistoryAnalysisStage] = createSignal<string | undefined>(undefined);
   const [browsingHistoryInsight, setBrowsingHistoryInsight] = createSignal<string | undefined>(undefined);
   
+  // --- State for Embedding Progress ---
+  const [embeddingProgress, setEmbeddingProgress] = createSignal(0);
+  const [embeddingStartTime, setEmbeddingStartTime] = createSignal<number | null>(null);
+  
   // --- End Browsing History State ---
 
   // --- TTS Panel Handlers for Onboarding (Kokoro handlers removed) ---
@@ -923,6 +927,51 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     }
   });
 
+  // --- Effect to track embedding progress ---
+  createEffect(() => {
+    const embeddingTransientState = settingsContext.getTransientState('Embedding');
+    const isEmbeddingTesting = embeddingTransientState?.testStatus() === 'testing';
+    
+    if (isEmbeddingTesting && currentStep() === 'setupEmbedding') {
+      if (!embeddingStartTime()) {
+        setEmbeddingStartTime(Date.now());
+        setEmbeddingProgress(0);
+        
+        // Real progress polling based on actual database
+        const pollProgress = async () => {
+          try {
+                         const response = await sendBackgroundMessage('getPersonalityProgress', undefined);
+            if (response.success) {
+              const percentage = (response.chunksEmbedded / response.totalChunks) * 100;
+              setEmbeddingProgress(percentage);
+              console.log(`[Onboarding] Real progress: ${response.chunksEmbedded}/${response.totalChunks} (${percentage.toFixed(1)}%)`);
+              
+              // Keep polling if not complete and still embedding
+              if (percentage < 100 && settingsContext.getTransientState('Embedding')?.testStatus() === 'testing') {
+                setTimeout(pollProgress, 1000); // Poll every second
+              }
+            }
+          } catch (error) {
+            console.error('[Onboarding] Failed to get personality progress:', error);
+          }
+        };
+        
+        // Start polling immediately and then periodically
+        pollProgress();
+        const progressInterval = setInterval(pollProgress, 1000);
+        
+        // Cleanup on unmount or step change
+        return () => {
+          clearInterval(progressInterval);
+        };
+      }
+    } else {
+      // Reset when not embedding
+      setEmbeddingStartTime(null);
+      setEmbeddingProgress(0);
+    }
+  });
+
   // --- Redirects Handlers (Keep as is) ---
   const handleRedirectsComplete = async () => {
     // Use the passed redirectSettings accessor
@@ -1042,6 +1091,9 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         return i18n().get('onboardingTest', 'Test Connection');
       }
       if (state?.testStatus() === 'testing') {
+        if (step === 'setupEmbedding') {
+          return 'Embedding Scarlett\'s personality... This might take a minute';
+        }
         return i18n().get('onboardingConnecting', 'Connecting...');
       }
       return i18n().get('onboardingContinue', 'Continue');
@@ -1365,6 +1417,16 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
                     functionName={funcType}
                     selectedProvider={() => availableEmbeddingProviders.find(p => p.id === config?.providerId)}
                   />
+                  {/* Simple progress bar for embedding */}
+                  <Show when={transientState.testStatus() === 'testing'}>
+                    <div class="mt-4">
+                      <div class="flex justify-between text-sm text-muted-foreground mb-1">
+                        <span>Embedding Scarlett's personality... This might take a minute</span>
+                        <span id="embedding-progress-text">{Math.round(embeddingProgress())}%</span>
+                      </div>
+                      <Progress value={embeddingProgress()} maxValue={100} class="w-full h-2" />
+                    </div>
+                  </Show>
                 </Show>
               </div>
             </Show>

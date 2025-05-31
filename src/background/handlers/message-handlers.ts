@@ -1172,6 +1172,37 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
             };
         }
     });
+
+    // --- PERSONALITY PROGRESS HANDLER ---
+    messaging.onMessage('getPersonalityProgress', async (message) => {
+        try {
+            const db = await getDbInstance();
+            
+            // Count embedded personality chunks
+            const embedResult = await db.query<{ count: number }>(
+                `SELECT COUNT(*) as count FROM ai_personality`
+            );
+            const chunksEmbedded = embedResult.rows?.[0]?.count || 0;
+
+            // Import the total count (65 chunks from personality-embeddable.json)
+            const personalityChunks = await import('../../services/llm/prompts/personality-embeddable.json');
+            const totalChunks = personalityChunks.default.length;
+
+            return {
+                success: true,
+                chunksEmbedded,
+                totalChunks
+            };
+        } catch (error) {
+            console.error('[Message Handlers getPersonalityProgress] Error:', error);
+            return {
+                success: false,
+                chunksEmbedded: 0,
+                totalChunks: 65, // Fallback to known count
+                error: error instanceof Error ? error.message : String(error)
+            };
+        }
+    });
     // --- END PERSONALITY EMBEDDING HANDLER ---
 
     // Browser History Handlers

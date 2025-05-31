@@ -143,6 +143,11 @@ export const SettingsProvider: ParentComponent = (props) => {
         testError: Error | null;
         showSpinner: boolean;
         spinnerTimeoutId?: ReturnType<typeof setTimeout>;
+        // Personality embedding progress
+        personalityEmbeddingProgress?: number; // 0-100
+        personalityEmbeddingCurrentChunk?: string;
+        personalityEmbeddingChunksEmbedded?: number;
+        personalityEmbeddingTotalChunks?: number;
     }>>({});
 
     // Define the signal for the TTS test audio blob
@@ -180,7 +185,11 @@ export const SettingsProvider: ParentComponent = (props) => {
                 testStatus: 'idle',
                 testError: null,
                 showSpinner: false,
-                spinnerTimeoutId: undefined
+                spinnerTimeoutId: undefined,
+                personalityEmbeddingProgress: 0,
+                personalityEmbeddingCurrentChunk: undefined,
+                personalityEmbeddingChunksEmbedded: 0,
+                personalityEmbeddingTotalChunks: 0
             });
         }
     };
@@ -370,6 +379,15 @@ export const SettingsProvider: ParentComponent = (props) => {
         }
     });
 
+    // Helper to sanitize config for logging (removes verbose fields)
+    const sanitizeConfigForLogging = (config: UserConfiguration) => {
+        const sanitized = { ...config };
+        if (sanitized.focusModeBlockedDomains && sanitized.focusModeBlockedDomains.length > 0) {
+            sanitized.focusModeBlockedDomains = [`... ${sanitized.focusModeBlockedDomains.length} domains`] as any;
+        }
+        return sanitized;
+    };
+
     // Helper to save settings (can be called by update actions)
     const saveCurrentSettings = async () => {
         try {
@@ -385,9 +403,9 @@ export const SettingsProvider: ParentComponent = (props) => {
                 ...currentStoreState,
             };
 
-            console.log(`[SettingsContext setValue] About to save from saveCurrentSettings. Full config: ${JSON.stringify(configToSave, null, 2)}`);
+            console.log(`[SettingsContext setValue] About to save from saveCurrentSettings. Full config: ${JSON.stringify(sanitizeConfigForLogging(configToSave), null, 2)}`);
             await userConfigurationStorage.setValue(configToSave);
-            console.log(`[SettingsContext setValue] Save complete from saveCurrentSettings. Config was: ${JSON.stringify(configToSave, null, 2)}`);
+            console.log(`[SettingsContext setValue] Save complete from saveCurrentSettings. Config was: ${JSON.stringify(sanitizeConfigForLogging(configToSave), null, 2)}`);
         } catch (error) {
             console.error("[SettingsContext] Failed to save settings:", error);
         }
@@ -444,7 +462,7 @@ export const SettingsProvider: ParentComponent = (props) => {
             };
 
             // Save the newly merged configuration to storage
-            console.log(`[SettingsContext setValue] About to save from updateUserConfiguration. Full new config: ${JSON.stringify(newConfig, null, 2)}`);
+            console.log(`[SettingsContext setValue] About to save from updateUserConfiguration. Full new config: ${JSON.stringify(sanitizeConfigForLogging(newConfig), null, 2)}`);
             await userConfigurationStorage.setValue(newConfig);
             console.log(`[SettingsContext setValue] Save complete from updateUserConfiguration.`);
 
@@ -686,6 +704,8 @@ export const SettingsProvider: ParentComponent = (props) => {
                 console.log(`[SettingsContext] EMBEDDING DEBUG: About to call embedPersonality via background messaging with config:`, currentFunctionConfig);
                 console.log(`[SettingsContext] EMBEDDING DEBUG: Current timestamp before embedding:`, new Date().toISOString());
                 
+                // Note: Progress tracking could be added here in the future
+                
                 // Use background messaging to embed personality in the correct context
                 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
                 const result = await messaging.sendMessage('embedPersonality', { 
@@ -746,6 +766,10 @@ export const SettingsProvider: ParentComponent = (props) => {
             testStatus: () => transientState[funcType]?.testStatus || 'idle',
             testError: () => transientState[funcType]?.testError || null,
             showSpinner: () => transientState[funcType]?.showSpinner || false,
+            personalityEmbeddingProgress: () => transientState[funcType]?.personalityEmbeddingProgress || 0,
+            personalityEmbeddingCurrentChunk: () => transientState[funcType]?.personalityEmbeddingCurrentChunk || '',
+            personalityEmbeddingChunksEmbedded: () => transientState[funcType]?.personalityEmbeddingChunksEmbedded || 0,
+            personalityEmbeddingTotalChunks: () => transientState[funcType]?.personalityEmbeddingTotalChunks || 0,
          };
     };
 
@@ -761,6 +785,10 @@ export const SettingsProvider: ParentComponent = (props) => {
             setTestError: (error: Error | null) => setTransientState(funcType, 'testError', error),
             setShowSpinner: (show: boolean) => setTransientState(funcType, 'showSpinner', show),
             setSpinnerTimeoutId: (id: ReturnType<typeof setTimeout> | undefined) => setTransientState(funcType, 'spinnerTimeoutId', id),
+            setPersonalityEmbeddingProgress: (progress: number) => setTransientState(funcType, 'personalityEmbeddingProgress', progress),
+            setPersonalityEmbeddingCurrentChunk: (chunk: string) => setTransientState(funcType, 'personalityEmbeddingCurrentChunk', chunk),
+            setPersonalityEmbeddingChunksEmbedded: (count: number) => setTransientState(funcType, 'personalityEmbeddingChunksEmbedded', count),
+            setPersonalityEmbeddingTotalChunks: (total: number) => setTransientState(funcType, 'personalityEmbeddingTotalChunks', total),
         };
     };
 

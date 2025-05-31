@@ -414,6 +414,7 @@ export interface BackgroundProtocolMap {
     
     // Personality Operations
     embedPersonality(data: EmbedPersonalityRequest): Promise<EmbedPersonalityResponse>;
+    getPersonalityProgress(): Promise<GetPersonalityProgressResponse>;
     
     // Browser History Messages
     fetchBrowserHistory(data?: { daysBack?: number }): Promise<{
@@ -608,5 +609,13 @@ export interface EmbedPersonalityRequest {
 export interface EmbedPersonalityResponse {
   success: boolean;
   chunksEmbedded?: number;
+  error?: string;
+}
+
+/** Response from getting personality embedding progress */
+export interface GetPersonalityProgressResponse {
+  success: boolean;
+  chunksEmbedded: number;
+  totalChunks: number;
   error?: string;
 }
