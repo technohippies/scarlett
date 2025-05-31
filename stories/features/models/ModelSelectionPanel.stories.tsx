@@ -11,7 +11,6 @@ const mockOllamaModels: ModelOption[] = [
     { id: 'mistral:latest', name: 'mistral:latest' },
     { id: 'codellama:latest', name: 'codellama:latest' },
     { id: 'bge-m3:latest', name: 'bge-m3:latest' }, // Embedding model
-    { id: 'milkey/reader-lm-v2:latest', name: 'milkey/reader-lm-v2:latest' }, // Reader model
 ];
 const mockJanLocalModels: ModelOption[] = [
     { id: 'jan-local-mistral-7b', name: 'Mistral 7B Instruct v0.2 (Local)' },

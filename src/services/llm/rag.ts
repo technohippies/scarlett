@@ -46,7 +46,7 @@ const MODEL_CONTEXT_WINDOWS: Record<string, number> = {
 
 export interface RAGResult {
   content: string;
-  source: 'chat' | 'bookmark' | 'page' | 'learning' | 'context';
+  source: 'chat' | 'bookmark' | 'page' | 'learning' | 'context' | 'visited';
   relevanceScore: number;
   metadata?: {
     url?: string;
@@ -54,13 +54,14 @@ export interface RAGResult {
     title?: string;
     messageId?: string;
     threadId?: string;
+    visitCount?: number;
   };
 }
 
 export interface RAGSearchOptions {
   maxResults?: number;
   minRelevanceScore?: number;
-  sources?: ('chat' | 'bookmark' | 'page' | 'learning' | 'context')[];
+  sources?: ('chat' | 'bookmark' | 'page' | 'learning' | 'context' | 'visited')[];
   timeWindow?: {
     start?: Date;
     end?: Date;
@@ -107,6 +108,15 @@ interface LearningRow {
   similarity: number;
 }
 
+// Add interface for visited pages with embeddings
+interface VisitedPageRow {
+  url: string;
+  title: string;
+  total_visit_count: number;
+  last_visited_at: string;
+  similarity: number;
+}
+
 /**
  * Get the context window size for a given model
  */
@@ -142,8 +152,8 @@ export async function performRAGSearch(
 ): Promise<RAGResult[]> {
   const {
     maxResults = 10,
-    minRelevanceScore = 0.3,
-    sources = ['chat', 'bookmark', 'page', 'learning', 'context'],
+    minRelevanceScore = 0.1,
+    sources = ['chat', 'bookmark', 'page', 'learning', 'context', 'visited'],
     timeWindow
   } = options;
 
@@ -181,6 +191,16 @@ export async function performRAGSearch(
     // 1. Search chat messages
     if (sources.includes('chat')) {
       console.log('[RAG] 📚 GENERAL RAG: Searching chat messages...');
+      
+      // Debug: Check if any embeddings exist
+      const debugQuery = `
+        SELECT COUNT(*) as total_messages, 
+               COUNT(embedding_${dimension}) as messages_with_embeddings
+        FROM chat_messages
+      `;
+      const debugResult = await db.query(debugQuery);
+      console.log('[RAG] 📚 DEBUG: Chat messages embedding status:', debugResult.rows?.[0]);
+      
       const chatQuery = `
         SELECT 
           id, thread_id, sender, text_content, timestamp,
@@ -199,7 +219,7 @@ export async function performRAGSearch(
       const chatResults = await db.query<ChatMessageRow>(chatQuery, [
         vectorLiteral,
         minRelevanceScore,
-        Math.ceil(maxResults * 0.4) // 40% of results from chat
+        Math.ceil(maxResults * 0.35) // 35% of results from chat (reduced from 40%)
       ]);
 
       if (chatResults.rows) {
@@ -242,7 +262,7 @@ export async function performRAGSearch(
       const bookmarkResults = await db.query<BookmarkRow>(bookmarkQuery, [
         vectorLiteral,
         minRelevanceScore,
-        Math.ceil(maxResults * 0.3) // 30% from bookmarks
+        Math.ceil(maxResults * 0.25) // 25% from bookmarks (reduced from 30%)
       ]);
 
       if (bookmarkResults.rows) {
@@ -305,7 +325,66 @@ export async function performRAGSearch(
       }
     }
 
-    // 4. Search learning content (lexemes + definitions) - using keyword search instead of similarity
+    // 4. Search visited pages with visit counts
+    if (sources.includes('visited')) {
+      console.log('[RAG] 📚 GENERAL RAG: Searching visited pages...');
+      
+      // Debug: Check if any embeddings exist
+      const debugQuery = `
+        SELECT COUNT(*) as total_pages, 
+               COUNT(pv.embedding_${dimension}) as pages_with_embeddings
+        FROM pages p
+        JOIN page_versions pv ON p.url = pv.url
+      `;
+      const debugResult = await db.query(debugQuery);
+      console.log('[RAG] 📚 DEBUG: Visited pages embedding status:', debugResult.rows?.[0]);
+      
+      const visitedQuery = `
+        SELECT 
+          p.url, p.title, SUM(pv.visit_count) as total_visit_count, p.last_visited_at,
+          1 - (pv.embedding_${dimension} <=> $1::vector) as similarity
+        FROM pages p
+        JOIN page_versions pv ON p.url = pv.url
+        WHERE pv.embedding_${dimension} IS NOT NULL 
+          AND p.title IS NOT NULL
+          ${timeFilter.replace('timestamp', 'p.last_visited_at')}
+          AND (1 - (pv.embedding_${dimension} <=> $1::vector)) > $2
+        GROUP BY p.url, p.title, p.last_visited_at, pv.embedding_${dimension}
+        ORDER BY similarity DESC, total_visit_count DESC
+        LIMIT $3
+      `;
+      
+      // Format embedding as PostgreSQL vector literal
+      const vectorLiteral = `[${embedding.join(',')}]`;
+      
+      const visitedResults = await db.query<VisitedPageRow>(visitedQuery, [
+        vectorLiteral,
+        minRelevanceScore,
+        Math.ceil(maxResults * 0.2) // 20% from visited pages
+      ]);
+
+      if (visitedResults.rows) {
+        console.log('[RAG] 📚 GENERAL RAG: Found', visitedResults.rows.length, 'visited page results');
+        for (const row of visitedResults.rows) {
+          const visitedRow = row as any; // Type conversion needed due to aggregation
+          // Include visit count in the content for context
+          const contentWithVisits = `${visitedRow.title} (visited ${visitedRow.total_visit_count} times)`;
+          results.push({
+            content: contentWithVisits,
+            source: 'visited',
+            relevanceScore: visitedRow.similarity,
+            metadata: {
+              url: visitedRow.url,
+              title: visitedRow.title,
+              timestamp: visitedRow.last_visited_at,
+              visitCount: visitedRow.total_visit_count
+            }
+          });
+        }
+      }
+    }
+
+    // 5. Search learning content (lexemes + definitions) - using keyword search instead of similarity
     if (sources.includes('learning')) {
       console.log('[RAG] 📚 GENERAL RAG: Searching learning content...');
       try {
@@ -494,6 +573,9 @@ export function formatRAGContextForPrompt(ragContext: RAGContext): string {
     const source = result.source.toUpperCase();
     const timestamp = result.metadata?.timestamp ? 
       ` (${new Date(result.metadata.timestamp).toLocaleDateString()})` : '';
+    
+    // For visited pages, we already include visit count in the content
+    // For other sources, just show the content as-is
     return `[${source}${timestamp}] ${result.content}`;
   });
   

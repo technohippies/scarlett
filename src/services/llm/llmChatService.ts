@@ -89,7 +89,7 @@ export async function fetchAndFormatUserContext(): Promise<string> {
     const userMemory = await searchUserMemory('user preferences name goals');
     if (userMemory.length > 0) {
       const memoryContext = userMemory
-        .slice(0, 3) // Limit to top 3 most relevant memories
+        .slice(0, 3) // Limit to top 2 most relevant memories
         .map(result => result.content)
         .join('; ');
       contextParts.push(`User Context: ${memoryContext}`);
@@ -130,9 +130,9 @@ export async function fetchAndFormatUserContext(): Promise<string> {
     console.log('[llmChatService DEBUG] Combined and deduplicated visited pages:', JSON.stringify(combinedPages, null, 2));
 
     if (combinedPages.length > 0) {
-      // Only include page titles to save tokens, omit URLs
-      const pageLines = combinedPages.map(p => `- Visited: "${p.title || 'Untitled Page'}"`);
-      contextParts.push("Visited Pages (Recent & Top):\n" + pageLines.join('\n'));
+      // Only include page titles to save tokens, omit URLs - and limit to 3 most important
+      const pageLines = combinedPages.slice(0, 3).map(p => `"${p.title || 'Untitled Page'}"`);
+      contextParts.push("Recent pages: " + pageLines.join(', '));
     }
   } catch (e) {
     console.warn("[llmChatService] Error fetching and processing visited pages for context:", e);
@@ -142,8 +142,8 @@ export async function fetchAndFormatUserContext(): Promise<string> {
     const recentBookmarks = await getRecentBookmarks(3);
     console.log('[llmChatService DEBUG] Received recentBookmarks:', JSON.stringify(recentBookmarks, null, 2)); // ADDED LOG
     if (recentBookmarks.length > 0) {
-      const bookmarkLines = recentBookmarks.map(b => `- Bookmarked: "${b.title || 'Untitled Bookmark'}"`);
-      contextParts.push("Recent Bookmarks:\n" + bookmarkLines.join('\n'));
+      const bookmarkLines = recentBookmarks.map(b => `"${b.title || 'Untitled Bookmark'}"`);
+      contextParts.push("Bookmarks: " + bookmarkLines.join(', '));
     }
   } catch (e) {
     console.warn("[llmChatService] Error fetching recent bookmarks for context:", e);
@@ -154,8 +154,8 @@ export async function fetchAndFormatUserContext(): Promise<string> {
     console.log('[llmChatService fetchAndFormatUserContext] Received recentFlashcards:', JSON.stringify(recentFlashcards, null, 2)); 
     if (recentFlashcards.length > 0) {
       // Simplified syntax: sourceText (targetText)
-      const flashcardLines = recentFlashcards.map(fc => `- ${fc.sourceText} (${fc.targetText})`);
-      contextParts.push("Recently Studied Flashcards:\n" + flashcardLines.join('\n'));
+      const flashcardLines = recentFlashcards.map(fc => `${fc.sourceText} (${fc.targetText})`);
+      contextParts.push("Recent study: " + flashcardLines.join(', '));
     }
   } catch (e) {
     console.warn("[llmChatService] Error fetching recent flashcards for context:", e);
@@ -164,32 +164,32 @@ export async function fetchAndFormatUserContext(): Promise<string> {
   // --- START: Add Daily Study Stats Context ---
   try {
     const dailyStats = await getOrInitDailyStudyStats();
-    contextParts.push(`Daily New Items Studied: ${dailyStats.newItemsStudiedToday}`);
-  } catch (e) {
-    console.warn("[llmChatService] Error fetching daily study stats for context:", e);
-  }
-  // --- END: Add Daily Study Stats Context ---
-
-  // --- START: Add Study Streak Context ---
-  try {
     const streakData = await getStudyStreakData();
-    contextParts.push(`Study Streak: ${streakData.currentStreak} days current, ${streakData.longestStreak} days longest`);
+    contextParts.push(`Study: ${dailyStats.newItemsStudiedToday} new today, ${streakData.currentStreak} day streak`);
   } catch (e) {
-    console.warn("[llmChatService] Error fetching study streak data for context:", e);
+    console.warn("[llmChatService] Error fetching study stats for context:", e);
   }
-  // --- END: Add Study Streak Context ---
+  // --- END: Add Study Stats Context ---
 
   // --- START: Add Songs Listening Context ---
   try {
-    const topSongs = await getTopPlayedSongs(3, 1);
+    const [topSongs, recentSongs] = await Promise.all([
+      getTopPlayedSongs(2, 1), // Limit to 2 songs
+      getRecentPlayedSongs(2)   // Limit to 2 songs
+    ]);
+    
+    const musicParts: string[] = [];
     if (topSongs.length > 0) {
-      const songLines = topSongs.map(s => `- ${s.track_name} by ${s.artist_name} (${s.play_count} plays today)`);
-      contextParts.push("Top Played Songs:\n" + songLines.join('\n'));
+      const songLines = topSongs.map(s => `${s.track_name} by ${s.artist_name}`);
+      musicParts.push("top: " + songLines.join(', '));
     }
-    const recentSongs = await getRecentPlayedSongs(3);
     if (recentSongs.length > 0) {
-      const songLines = recentSongs.map(s => `- ${s.track_name} by ${s.artist_name}`);
-      contextParts.push("Recently Played Songs:\n" + songLines.join('\n'));
+      const songLines = recentSongs.map(s => `${s.track_name} by ${s.artist_name}`);
+      musicParts.push("recent: " + songLines.join(', '));
+    }
+    
+    if (musicParts.length > 0) {
+      contextParts.push("Music: " + musicParts.join(' | '));
     }
   } catch (e) {
     console.warn("[llmChatService] Error fetching songs for context:", e);
@@ -202,7 +202,7 @@ export async function fetchAndFormatUserContext(): Promise<string> {
     return ""; // Return empty string if no context was gathered
   }
 
-  return `[User Activity Context]\n\n${contextParts.join('\n\n')}\n\n[/User Activity Context]`;
+  return `[Context: ${contextParts.join(' | ')}]`;
 }
 // --- END NEW FUNCTION ---
 
@@ -253,9 +253,9 @@ async function prepareLLMMessages(
     
     // Build RAG context for the current query
     const ragResult = await buildRAGContext(latestUserMessageContent, modelId, {
-      maxResults: 8,
-      minRelevanceScore: 0.3,
-      sources: ['chat', 'bookmark', 'page', 'learning']
+      maxResults: 4, // Reduced from 8 for brevity
+      minRelevanceScore: 0.4, // Slightly higher threshold for better relevance
+      sources: ['chat', 'bookmark', 'page', 'learning', 'visited']
     });
     
     if (ragResult.results.length > 0) {
@@ -288,6 +288,9 @@ async function prepareLLMMessages(
     if (options.threadSystemPrompt) {
       fullSystemPrompt += "\n\n[Current Thread Focus]\n" + options.threadSystemPrompt;
     }
+    
+    // Add strong brevity reminder
+    fullSystemPrompt += "\n\nREMINDER: Keep responses brief and conversational (1-3 sentences max).";
   }
 
   if (fullSystemPrompt.trim()) {

@@ -118,7 +118,7 @@ async function janEmbed(
 // --- Test Connection Function --- 
 async function testConnection(
   config: LLMConfig,
-  functionName: 'LLM' | 'Embedding' | 'TTS' // Changed Reader to TTS
+  functionName: 'LLM' | 'Embedding' | 'TTS'
 ): Promise<void> {
   const baseUrl = config.baseUrl || 'http://localhost:1337';
   let testApiUrl = '';

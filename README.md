@@ -19,7 +19,7 @@ A browser extension designed to enhance language learning and productivity, feat
 *   **AI Integration:**
     *   Leverage Large Language Models (LLMs) for various tasks like flashcard generation, translation, and summarization.
     *   Integrates with local model providers like **Jan.ai**, **Ollama**, and **LM Studio**, allowing you to run and manage your preferred models.
-    *   Supports flexible configuration, allowing you to mix and match different providers for LLM inference, embedding generation, Text-to-Speech (TTS), and text extraction (Reader).
+    *   Supports flexible configuration, allowing you to mix and match different providers for LLM inference, embedding generation, Text-to-Speech (TTS)
     *   Utilizes **PGLite** (PostgreSQL in WASM) with `pgvector` support for efficient local AI functionality directly within the browser.
 
 ## Installation

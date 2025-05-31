@@ -544,7 +544,6 @@ export const SettingsProvider: ParentComponent = (props) => {
             baseUrl = currentConfig.embeddingConfig.baseUrl || baseUrl;
             apiKey = currentConfig.embeddingConfig.apiKey ?? undefined;
         } 
-        // Reader removed
         
         if (!baseUrl) {
             console.warn(`[SettingsContext] No baseUrl configured or defaulted for provider ${provider.id}. Cannot fetch models.`);
@@ -578,7 +577,6 @@ export const SettingsProvider: ParentComponent = (props) => {
             );
             remoteModels = []; // No remote embedding models assumed
         } 
-        // Reader removed
         console.log(`[SettingsContext filterModels] Filtered models for ${funcType}. Local: ${localModels.length}, Remote: ${remoteModels.length}`);
         return { localModels, remoteModels };
     };

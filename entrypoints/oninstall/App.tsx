@@ -1223,7 +1223,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     }
   };
 
-  // --- Render Step Logic (Remove Reader Case) --- 
+  // --- Render Step Logic --- 
   const renderStep = () => {
     const step = currentStep();
     switch (step) {
@@ -1437,7 +1437,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
               {i18n().get('onboardingBrowsingHistoryTitle', 'Your browsing patterns')}
             </p>
             <p class="text-lg text-muted-foreground mb-6">
-              {i18n().get('onboardingBrowsingHistoryDescription', 'Privately, I will analyse your browser history to better understand you')}
+              {i18n().get('onboardingBrowsingHistoryDescription', 'Privately, I will analyse your browser history to better understand you!')}
             </p>
             <BrowsingHistoryPanel
               categories={browsingHistoryCategories()}

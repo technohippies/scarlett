@@ -46,7 +46,6 @@ const shouldShowCorsHelp = (error: Error | null): boolean => {
 const getModelTypeLabel = (funcName: string): string => {
   switch (funcName) {
     case 'Embedding': return 'Embedding Model';
-    case 'Reader': return 'Reader Model';
     case 'LLM': // Fallthrough intended
     default: return 'LLM'; // Default to LLM
   }
@@ -107,7 +106,7 @@ const getModelTypeLabel = (funcName: string): string => {
 
 // --- ModelSelectionPanel Props ---
 export interface ModelSelectionPanelProps {
-  functionName: string; // "LLM", "Embedding", "Reader"
+  functionName: string; // "LLM", "Embedding"
   selectedProvider: () => ProviderOption | undefined; // Accessor
   fetchStatus: () => FetchStatus; // Accessor
   showSpinner: () => boolean; // Accessor for delayed spinner

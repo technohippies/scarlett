@@ -489,5 +489,3 @@ export const TTS_Section = {
     ttsTestError: null,
   }
 };
-
-// TODO: Add stories for Embedding and Reader sections

@@ -6,10 +6,6 @@ import type {
     TagListResponse, 
     // GetPageContentResponse // Removed
 } from '../../shared/messaging-types'; 
-// Import LLM service and prompts
-// import { defineExtensionMessaging } from '@webext-core/messaging'; // Removed as messaging is unused
-// import { getMarkdownFromHtml } from '../../services/llm/reader'; // Removed
-// import type { LLMConfig } from '../../services/llm/types'; // Removed
 
 console.log('[Tag Handlers] Module loaded.');
 
