@@ -408,10 +408,18 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
                 stream: true
               };
               const summaryPrompt = 'Summarize this conversation in 3–4 words.';
-              const historyForLLM2 = state.messages.map(m => ({
-                role: m.sender === 'ai' ? 'assistant' : 'user',
-                content: m.text_content
-              }));
+              const historyForLLM2 = state.messages.map(m => {
+                let content = m.text_content;
+                // Strip thinking tags from AI messages for summary generation
+                if (m.sender === 'ai' && content) {
+                  const parsed = parseThinkingContent(content);
+                  content = parsed.response_content;
+                }
+                return {
+                  role: m.sender === 'ai' ? 'assistant' : 'user',
+                  content
+                };
+              });
               const summaryStream = getAiChatResponseStream(historyForLLM2 as any, summaryPrompt, llmConfig2, {}) as AsyncGenerator<StreamedChatResponsePart>;
               let summary = '';
               for await (const part2 of summaryStream) {

@@ -841,7 +841,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       ];
       
       setBrowsingHistoryCategories(realCategories);
-      setBrowsingHistoryAnalysisStage("Generating insights...");
+      setBrowsingHistoryAnalysisStage("Analyzing..");
       setBrowsingHistoryAnalysisProgress(85);
       await new Promise(resolve => setTimeout(resolve, 800));
       
@@ -940,25 +940,28 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         // Real progress polling based on actual database
         const pollProgress = async () => {
           try {
-                         const response = await sendBackgroundMessage('getPersonalityProgress', undefined);
+            const response = await sendBackgroundMessage('getPersonalityProgress', undefined);
             if (response.success) {
               const percentage = (response.chunksEmbedded / response.totalChunks) * 100;
               setEmbeddingProgress(percentage);
               console.log(`[Onboarding] Real progress: ${response.chunksEmbedded}/${response.totalChunks} (${percentage.toFixed(1)}%)`);
-              
-              // Keep polling if not complete and still embedding
-              if (percentage < 100 && settingsContext.getTransientState('Embedding')?.testStatus() === 'testing') {
-                setTimeout(pollProgress, 1000); // Poll every second
-              }
             }
           } catch (error) {
             console.error('[Onboarding] Failed to get personality progress:', error);
           }
         };
         
-        // Start polling immediately and then periodically
+        // Start polling immediately and then set up interval
         pollProgress();
-        const progressInterval = setInterval(pollProgress, 1000);
+        const progressInterval = setInterval(async () => {
+          // Check if still embedding before polling
+          if (settingsContext.getTransientState('Embedding')?.testStatus() === 'testing') {
+            await pollProgress();
+          } else {
+            // Clear interval if no longer testing
+            clearInterval(progressInterval);
+          }
+        }, 1000);
         
         // Cleanup on unmount or step change
         return () => {
@@ -1092,7 +1095,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       }
       if (state?.testStatus() === 'testing') {
         if (step === 'setupEmbedding') {
-          return 'Embedding Scarlett\'s personality... This might take a minute';
+          return i18n().get('onboardingEmbedding', 'Embedding...');
         }
         return i18n().get('onboardingConnecting', 'Connecting...');
       }
@@ -1343,7 +1346,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
               {i18n().get('onboardingSetupLLMTitle', 'Choose an LLM')}
             </p>
             <p class="text-lg text-muted-foreground mb-6">
-              {i18n().get('onboardingSetupLLMDescription', 'Cant run a 4B+ model locally like Gemma3 or Qwen3? Use Jan with an OpenRouter model, many are free!')}
+              {i18n().get('onboardingSetupLLMDescription', 'Can\'t run a 4B+ model locally like Gemma3 or Qwen3? Use Jan with an OpenRouter model, many are free!')}
             </p>
             <div class="mb-6">
               <ProviderSelectionPanel

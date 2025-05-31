@@ -21,7 +21,6 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.1",
-    "@huggingface/transformers": "^3.5.1",
     "@ricky0123/vad-web": "^0.0.24",
     "@silk-wallet/silk-wallet-sdk": "^0.6.0",
     "@solid-primitives/scheduled": "^1.5.1",

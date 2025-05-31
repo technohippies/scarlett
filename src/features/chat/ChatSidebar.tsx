@@ -3,6 +3,7 @@ import { Plus, X } from 'phosphor-solid';
 import { Button } from '../../components/ui/button'; // Assuming Button component path
 import type { Thread } from './types';
 import { Spinner } from '../../components/ui/spinner';
+import { parseThinkingContent } from './utils';
 
 interface ChatSidebarProps {
   threads: Thread[];
@@ -22,10 +23,17 @@ export const ChatSidebar: Component<ChatSidebarProps> = (props) => {
     console.log('[ChatSidebar] isRoleplayLoading:', props.isRoleplayLoading);
   });
 
+  const cleanThreadTitle = (title: string | undefined) => {
+    if (!title) return '';
+    // Remove any thinking tokens that might be in existing thread titles
+    const parsed = parseThinkingContent(title);
+    return parsed.response_content || title;
+  };
+
   const handleDeleteClick = (e: Event, threadId: string) => {
     e.stopPropagation(); // Prevent thread selection when clicking delete
     const thread = props.threads.find(t => t.id === threadId);
-    const threadTitle = thread?.title || `Thread ${threadId.substring(0, 8)}`;
+    const threadTitle = cleanThreadTitle(thread?.title) || `Thread ${threadId.substring(0, 8)}`;
     if (confirm(`Are you sure you want to delete "${threadTitle}"?\n\nThis will permanently delete the conversation and cannot be undone.`)) {
       props.onDeleteThread(threadId);
     }
@@ -53,10 +61,10 @@ export const ChatSidebar: Component<ChatSidebarProps> = (props) => {
                 variant={props.currentThreadId === thread.id ? "secondary" : "ghost"}
                 class="w-full justify-start text-sm p-2 h-auto text-left pr-10"
                 onClick={() => props.onSelectThread(thread.id)}
-                title={thread.title}
+                title={cleanThreadTitle(thread.title)}
               >
                 <span class="block w-full truncate">
-                  {thread.title || `Thread ${thread.id.substring(0, 8)}`}
+                  {cleanThreadTitle(thread.title) || `Thread ${thread.id.substring(0, 8)}`}
                 </span>
               </Button>
               {hoveredThreadId() === thread.id && (
