@@ -185,7 +185,10 @@ const MockTextInputControls: Component<{
   const handleKeyPress = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      props.onSendMessage();
+      // Only send if not disabled and has content
+      if (!props.isDisabled && props.userInput.trim()) {
+        props.onSendMessage();
+      }
     }
   };
 
@@ -198,7 +201,6 @@ const MockTextInputControls: Component<{
           value={props.userInput}
           onInput={(e) => props.onInputChange(e.currentTarget.value)}
           onKeyPress={handleKeyPress}
-          disabled={props.isDisabled}
           class="w-full text-md md:text-base h-10 px-3 rounded border border-input bg-background"
         />
       </div>

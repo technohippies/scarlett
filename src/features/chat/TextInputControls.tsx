@@ -14,7 +14,10 @@ export const TextInputControls: Component<TextInputControlsProps> = (props) => {
   const handleKeyPress = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      props.onSendMessage();
+      // Only send if not disabled and has content
+      if (!props.isDisabled && props.userInput.trim()) {
+        props.onSendMessage();
+      }
     }
   };
 
@@ -27,7 +30,6 @@ export const TextInputControls: Component<TextInputControlsProps> = (props) => {
           value={props.userInput}
           onInput={(e) => props.onInputChange(e.currentTarget.value)}
           onKeyPress={handleKeyPress}
-          disabled={props.isDisabled}
           class="text-md md:text-base h-10"
         />
       </TextField>
