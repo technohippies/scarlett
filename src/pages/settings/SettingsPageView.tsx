@@ -33,7 +33,7 @@ import { Header } from '../../components/layout/Header';
 const settingsMenuItems = [
   { title: "LLM", url: "/settings/models/llm", icon: Brain, sectionKey: 'llm' },
   { title: "TTS", url: "/settings/models/tts", icon: SpeakerHigh, sectionKey: 'tts' },
-  { title: "VAD", url: "/settings/models/vad", icon: Microphone, sectionKey: 'vad' },
+  { title: "STT & VAD", url: "/settings/models/vad", icon: Microphone, sectionKey: 'vad' },
 ];
 
 const censorshipMenuItems = [
@@ -289,7 +289,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                     {/* --- VAD Section --- */}
                     <Show when={props.activeSection() === 'vad'}>
                       <div class="space-y-4">
-                        <h2 class="text-xl font-semibold text-foreground">Speech to Text</h2>
+                        <h2 class="text-xl font-semibold text-foreground">Speech to Text & Voice Activity Detection</h2>
                         <VadPanel
                           availableVadOptions={props.availableVadOptions}
                           selectedVadId={props.selectedVadId}

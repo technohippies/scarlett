@@ -101,7 +101,7 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
 
   // --- VAD State and Handlers ---
   const availableVadOptions: VadOption[] = [
-    { id: 'silero_vad', name: 'ElevenLabs' }
+    { id: 'silero_vad', name: 'ElevenLabs', logoUrl: '/images/tts-providers/elevenlabs.png' }
   ];
   const [selectedVadId, setSelectedVadId] = createSignal<string | undefined>(availableVadOptions[0].id);
   const [vadInstance, setVadInstance] = createSignal<MicVAD | null>(null);
@@ -202,14 +202,24 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
         vadInstance()?.pause();
         setIsVadTestingSignal(false);
     }
-    if (vadId === 'silero_vad' && !vadInstance() && !isVadLoading()) {
-        void initVad();
-    }
+    // Don't auto-initialize - only init when user explicitly tests
   };
 
+  // Cleanup VAD when leaving the VAD section or component unmounts
   createEffect(() => {
-    if (selectedVadId() === 'silero_vad' && !vadInstance() && !isVadLoading()) {
-      void initVad();
+    const section = activeSection();
+    const vadInstanceRef = vadInstance();
+    if (section !== 'vad' && vadInstanceRef) {
+      console.log("[SettingsPage VAD] Cleaning up VAD instance due to section change.");
+      // Proper cleanup: destroy the VAD instance to release microphone
+      vadInstanceRef.destroy();
+      setVadInstance(null);
+      cleanupLastRecording();
+      // Reset VAD state signals
+      setIsVadTestingSignal(false);
+      setVadStatusMessage(null);
+      setVadTestError(null);
+      setIsVadLoading(false);
     }
   });
   
@@ -218,8 +228,22 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       setVadTestError(new Error("Audio capture method not selected."));
       return;
     }
+
+    // If currently testing, stop the test
+    if (isVadTestingSignal()) {
+      const currentVad = vadInstance();
+      if (currentVad) {
+        currentVad.pause();
+        setIsVadTestingSignal(false);
+        setVadStatusMessage("Test stopped.");
+      }
+      return;
+    }
+
+    // If no VAD instance exists, initialize it first
     let currentVad = vadInstance();
     if (!currentVad && !isVadLoading()) {
+      console.log("[SettingsPage VAD] User clicked test - initializing VAD on demand");
       await initVad();
       currentVad = vadInstance();
       if (!currentVad) {
@@ -234,21 +258,16 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
         return;
     }
 
-    if (isVadTestingSignal()) { 
-      currentVad.pause();
+    // Start the test
+    try {
+      await currentVad.start();
+      setIsVadTestingSignal(true);
+      setVadStatusMessage("Listening for speech...");
+    } catch (e) {
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      setVadTestError(new Error("Error starting audio capture: " + errorMsg));
+      setVadStatusMessage("Error starting audio capture: " + errorMsg);
       setIsVadTestingSignal(false);
-      setVadStatusMessage("Test stopped.");
-    } else {
-      try {
-        await currentVad.start();
-        setIsVadTestingSignal(true);
-        setVadStatusMessage("Listening for speech...");
-      } catch (e) {
-        const errorMsg = e instanceof Error ? e.message : String(e);
-        setVadTestError(new Error("Error starting audio capture: " + errorMsg));
-        setVadStatusMessage("Error starting audio capture: " + errorMsg);
-        setIsVadTestingSignal(false);
-      }
     }
   };
   
@@ -261,7 +280,8 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
 
   onCleanup(() => {
     if (vadInstance()) {
-      vadInstance()!.pause();
+      console.log("[SettingsPage VAD] Component cleanup - destroying VAD instance");
+      vadInstance()!.destroy(); // Use destroy instead of pause for complete cleanup
       setVadInstance(null); 
     }
     cleanupLastRecording(); // Use the centralized cleanup
