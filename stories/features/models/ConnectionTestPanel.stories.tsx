@@ -3,8 +3,8 @@ import { ConnectionTestPanel } from '../../../src/features/models/ConnectionTest
 import type { ProviderOption } from '../../../src/features/models/ProviderSelectionPanel';
 
 // --- Mock Data ---
-const mockOllamaProvider: ProviderOption = { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' };
-const mockJanProvider: ProviderOption = { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/llm-providers/jan.png' };
+const mockOllamaProvider: ProviderOption = { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/ollama.png' };
+const mockJanProvider: ProviderOption = { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/jan.png' };
 
 // --- Story Definition ---
 export default {

@@ -108,7 +108,7 @@ export const StudyPageView: Component<StudyPageViewProps> = (props) => {
                             </p>
                         </div>
                         <img 
-                            src="/images/scarlett-supercoach/scarlett-proud-512x512.png" 
+                            src="/images/scarlett-proud-512x512.png" 
                             alt="Scarlett Proud" 
                             class="w-128 h-128" // Respecting user-defined size
                         />

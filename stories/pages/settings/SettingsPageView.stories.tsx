@@ -13,14 +13,14 @@ import type { TtsProviderOption } from '../../../src/features/models/TtsProvider
 // --- Mock Data ---
 
 const mockLlmProviderOptions: ProviderOption[] = [
-    { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
-    { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/llm-providers/jan.png' },
-    { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
+    { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/ollama.png' },
+    { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/jan.png' },
+    { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/lmstudio.png' },
 ];
 const mockEmbeddingProviderOptions: ProviderOption[] = [...mockLlmProviderOptions];
 const mockAvailableTtsProviders: TtsProviderOption[] = [
     { id: 'browser', name: 'Browser TTS', logoUrl: '' },
-    { id: 'elevenlabs', name: 'ElevenLabs', logoUrl: '/images/llm-providers/11-labs.png' },
+    { id: 'elevenlabs', name: 'ElevenLabs', logoUrl: '/images/11-labs.png' },
 ];
 const mockTtsProviderOptions: ProviderOption[] = [];
 

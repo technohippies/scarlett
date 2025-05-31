@@ -115,7 +115,7 @@ export const Language: Component<LanguageProps> = (props) => {
       <div class="flex-grow overflow-y-auto flex flex-col items-center p-4 pt-24 md:p-8 md:pt-24">
           {/* Image: Centered by parent's items-center */} 
           <img
-            src="/images/scarlett-supercoach/scarlett-proud-512x512.png"
+            src="/images/scarlett-proud-512x512.png"
             alt="Scarlett Supercoach"
             // Adjusted mb for spacing within scrollable area
             class="w-32 h-32 md:w-48 md:h-48 object-contain mb-6 flex-shrink-0" 

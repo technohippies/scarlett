@@ -28,7 +28,7 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
   const ttsTestAudio = settings.ttsTestAudio;
 
   const availableTtsProviders: TtsProviderOption[] = [
-      { id: 'elevenlabs', name: 'ElevenLabs', logoUrl: '/images/tts-providers/elevenlabs.png' },
+      { id: 'elevenlabs', name: 'ElevenLabs', logoUrl: '/images/11-labs.png' },
   ];
 
   const selectedTtsProviderId = () => settings.config.ttsConfig?.providerId;
@@ -101,7 +101,7 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
 
   // --- VAD State and Handlers ---
   const availableVadOptions: VadOption[] = [
-    { id: 'silero_vad', name: 'ElevenLabs', logoUrl: '/images/tts-providers/elevenlabs.png' }
+    { id: 'silero_vad', name: 'ElevenLabs', logoUrl: '/images/11-labs.png' }
   ];
   const [selectedVadId, setSelectedVadId] = createSignal<string | undefined>(availableVadOptions[0].id);
   const [vadInstance, setVadInstance] = createSignal<MicVAD | null>(null);

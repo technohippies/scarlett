@@ -42,7 +42,7 @@ export const OllamaCorsInstructions: Component<OllamaCorsInstructionsProps> = (p
                 <p>4. Add Variable name: <code class="bg-neutral-700 px-1 py-0.5 rounded">OLLAMA_ORIGINS</code>, Value: <code class="bg-neutral-700 px-1 py-0.5 rounded">*</code></p>
                 <p>5. Click OK, then restart Ollama</p>
                 <img 
-                    src="/images/llm-providers/ollama-cors-windows.png"
+                    src="/images/ollama-cors-windows.png"
                     alt="Ollama Windows Environment Variables settings"
                     class="mt-4 rounded border border-neutral-700"
                 />

@@ -3,8 +3,8 @@ import { ModelSelectionPanel, type ModelOption } from '../../../src/features/mod
 import type { ProviderOption } from '../../../src/features/models/ProviderSelectionPanel';
 
 // --- Mock Data ---
-const mockOllamaProvider: ProviderOption = { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' };
-const mockJanProvider: ProviderOption = { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/llm-providers/jan.png' };
+const mockOllamaProvider: ProviderOption = { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/ollama.png' };
+const mockJanProvider: ProviderOption = { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/jan.png' };
 
 const mockOllamaModels: ModelOption[] = [
     { id: 'llama3:latest', name: 'llama3:latest' },

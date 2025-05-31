@@ -17,12 +17,12 @@ export type KokoroDownloadStatus = 'not-downloaded' | 'downloading' | 'downloade
 const mockElevenLabsProvider: TtsProviderOption = { 
     id: 'elevenlabs', 
     name: 'ElevenLabs', 
-    logoUrl: '/images/tts-providers/elevenlabs.png' // Assuming a logo path
+    logoUrl: '/images/elevenlabs.png' // Assuming a logo path
 };
 const mockKokoroProvider: TtsProviderOption = { 
     id: 'kokoro', 
     name: 'Kokoro (Local)', 
-    logoUrl: '/images/tts-providers/kokoro.png' // Assuming a logo path
+    logoUrl: '/images/kokoro.png' // Assuming a logo path
 };
 
 const mockElevenLabsModels: TtsModelOption[] = [

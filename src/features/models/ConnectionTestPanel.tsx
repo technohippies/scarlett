@@ -86,14 +86,14 @@ export const ConnectionTestPanel: Component<ConnectionTestPanelProps> = (props) 
                               </Match>
                               <Match when={props.selectedProvider()?.id === 'jan'}>
                                   <img
-                                      src="/images/llm-providers/Jan-help.png"
+                                      src="/images/Jan-help.png"
                                       alt="Jan CORS setting location"
                                       class="rounded border border-neutral-700 max-w-sm" // Limit image width
                                   />
                               </Match>
                               <Match when={props.selectedProvider()?.id === 'lmstudio'}>
                                   <img
-                                      src="/images/llm-providers/LMStudio-help.png"
+                                      src="/images/LMStudio-help.png"
                                       alt="LM Studio CORS setting location"
                                       class="rounded border border-neutral-700 max-w-sm" // Limit image width
                                   />

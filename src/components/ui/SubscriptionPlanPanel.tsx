@@ -21,7 +21,7 @@ const planOptions: PlanOption[] = [
     priceLabel: 'Free',
     description: 'Slow and limited on-device LLM',
     features: ['Local model (on-device)', 'No long-term memory', 'Censored responses'],
-    logoUrl: '/images/scarlett-supercoach/scarlett-proud-512x512.png',
+    logoUrl: '/images/scarlett-proud-512x512.png',
   },
   {
     id: 'hosted',
@@ -29,7 +29,7 @@ const planOptions: PlanOption[] = [
     priceLabel: '$10 / month',
     description: 'Uncensored intelligence with lowest refusal rate',
     features: ['Unlimited messaging', 'Near instant responses', 'Long-term memory'],
-    logoUrl: '/images/llm-providers/venice-ai.png',
+    logoUrl: '/images/venice-ai.png',
   },
 ];
 

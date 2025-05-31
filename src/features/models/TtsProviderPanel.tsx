@@ -54,8 +54,8 @@ export const TtsProviderPanel: Component<TtsProviderPanelProps> = (props) => {
                              const isSelected = () => selectedProvider() === provider.id;
                              // --->>> Define the correct image source based on provider ID <<<---
                              const imageSrc = () => {
-                                 if (provider.id === 'elevenlabs') return '/images/llm-providers/11-labs.png';
-                                 if (provider.id === 'kokoro') return '/images/llm-providers/kokoro.png';
+                                 if (provider.id === 'elevenlabs') return '/images/11-labs.png';
+                                 if (provider.id === 'kokoro') return '/images/kokoro.png';
                                  return provider.logoUrl; // Fallback to provided logoUrl if any
                              };
                              return (

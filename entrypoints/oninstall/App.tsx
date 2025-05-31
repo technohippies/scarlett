@@ -74,20 +74,20 @@ const availableProviders: ProviderOption[] = [ // Updated type
       id: 'ollama',
       name: 'Ollama',
       defaultBaseUrl: 'http://localhost:11434',
-      logoUrl: '/images/llm-providers/ollama.png' // Assuming logo path
+      logoUrl: '/images/ollama.png' // Assuming logo path
     },
     {
       id: 'jan',
       name: 'Jan',
       defaultBaseUrl: 'http://localhost:1337',
-      logoUrl: '/images/llm-providers/jan.png' // Assuming logo path
+      logoUrl: '/images/jan.png' // Assuming logo path
     },
     // Add LMStudio or others here when ready
     {
       id: 'lmstudio',
       name: 'LM Studio',
       defaultBaseUrl: 'ws://127.0.0.1:1234', // Default LM Studio WebSocket URL
-      logoUrl: '/images/llm-providers/lmstudio.png' // Assuming logo path
+      logoUrl: '/images/lmstudio.png' // Assuming logo path
     },
 ];
 
@@ -96,15 +96,15 @@ const availableLLMProviders: ProviderOption[] = availableProviders; // Reuse the
 
 // Define available Embedding Providers
 const availableEmbeddingProviders: ProviderOption[] = [
-    { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/llm-providers/ollama.png' },
-    { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/llm-providers/jan.png' },
-    { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/llm-providers/lmstudio.png' },
+    { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/ollama.png' },
+    { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/jan.png' },
+    { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/lmstudio.png' },
 ];
 
 // Define available TTS Providers for Onboarding (Kokoro removed)
 const onboardingTtsProviderOptions: OnboardingTtsProviderOption[] = [
-    { id: 'elevenlabs', name: 'ElevenLabs', logoUrl: '/images/tts-providers/elevenlabs.png' }, 
-    // { id: 'kokoro', name: 'Kokoro (Local)', logoUrl: '/images/tts-providers/kokoro.png' }, 
+    { id: 'elevenlabs', name: 'ElevenLabs', logoUrl: '/images/11-labs.png' }, 
+    // { id: 'kokoro', name: 'Kokoro (Local)', logoUrl: '/images/kokoro.png' }, 
 ];
 
 // Simplified Step type for the new flow - remove choosePlan
