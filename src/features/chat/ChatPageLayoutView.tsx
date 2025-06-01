@@ -182,13 +182,15 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
             processedCount={processedCount}
             totalCount={totalCount}
             onProcessClick={handleEmbedClick}
-            class="ml-auto"
+            class="ml-4"
           />
         </Show>
+        {/* Flexible spacer to always push Switch to the right */}
+        <div class="flex-1"></div>
         <Switch
           checked={props.isSpeechModeActive} // This can also come from machineContext if preferred
           onChange={props.onToggleMode} // This sends TOGGLE_INPUT_MODE
-          class="ml-2 flex items-center space-x-2"
+          class="flex items-center space-x-2"
         >
           <SwitchControl class="relative"><SwitchThumb /></SwitchControl>
           <SwitchLabel>Speech Mode</SwitchLabel>
@@ -216,7 +218,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
           <main ref={mainScrollRef} class="flex-1 overflow-y-auto">
             <div class="max-w-4xl mx-auto px-2 md:px-4">
               <Show when={!props.isSpeechModeActive} fallback={
-                <div class="flex items-center justify-center h-full">
+                <div class="flex items-center justify-center h-full pt-24">
                   <SpeechVisualizer
                     listening={props.isVADListening}
                     processing={!props.isIdle}
