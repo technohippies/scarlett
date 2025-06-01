@@ -1,5 +1,5 @@
 import { createStore } from 'solid-js/store';
-import { createContext, ParentComponent, useContext, onMount } from 'solid-js';
+import { createContext, ParentComponent, useContext, onMount, createEffect } from 'solid-js';
 import { getAiChatResponseStream } from '../../services/llm/llmChatService';
 import type { LLMConfig, StreamedChatResponsePart } from '../../services/llm/types';
 import { defineExtensionMessaging } from '@webext-core/messaging';
@@ -48,6 +48,7 @@ export interface ChatState {
   messages: ChatMessage[];
   userInput: string;
   isSpeechMode: boolean;
+  isVoiceConversationActive: boolean;
   isLoading: boolean;
   isRoleplayLoading: boolean;
   isVADListening: boolean;
@@ -68,6 +69,7 @@ export interface ChatActions {
   sendText: () => Promise<void>;
   setInput: (text: string) => void;
   toggleSpeech: () => void;
+  startVoiceConversation: () => void;
   startVAD: () => void;
   stopVAD: () => void;
   playTTS: (params: { messageId: string; text: string; lang: string; speed?: number }) => Promise<void>;
@@ -88,6 +90,7 @@ const defaultState: ChatState = {
   messages: [],
   userInput: '',
   isSpeechMode: false,
+  isVoiceConversationActive: false,
   isLoading: false,
   isRoleplayLoading: false,
   isVADListening: false,
@@ -107,6 +110,7 @@ const defaultActions: ChatActions = {
   sendText: async () => {},
   setInput: () => {},
   toggleSpeech: () => {},
+  startVoiceConversation: () => {},
   startVAD: () => {},
   stopVAD: () => {},
   playTTS: async (_params) => {},
@@ -127,6 +131,7 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     messages: [],
     userInput: '',
     isSpeechMode: false,
+    isVoiceConversationActive: false,
     isLoading: false,
     isRoleplayLoading: false,
     isVADListening: false,
@@ -139,6 +144,11 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     audioLevel: 0,
     personalityEmbedded: null,
     showPersonalityWarning: false,
+  });
+
+  // Debug logging for state changes
+  createEffect(() => {
+    console.log('[chatStore] State update - isVoiceConversationActive:', state.isVoiceConversationActive, 'isSpeechMode:', state.isSpeechMode, 'isVADListening:', state.isVADListening);
   });
 
   // VAD recorder, stream and buffer
@@ -352,7 +362,10 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         let aiEmbeddingResult: EmbeddingResult | null = null;
         if (embeddingConfig && full.trim()) {
           try {
-            aiEmbeddingResult = await getEmbedding(full, embeddingConfig);
+            // Parse out thinking content before generating embedding
+            const parsed = parseThinkingContent(full);
+            const cleanContent = parsed.response_content || full;
+            aiEmbeddingResult = await getEmbedding(cleanContent, embeddingConfig);
           } catch (error) {
             console.error('[chatStore] Failed to generate AI message embedding:', error);
             // Continue without embedding - don't block the chat
@@ -362,11 +375,15 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         // Persist the AI's completed response (DB will timestamp)
         // Note: We only store the clean response content, not thinking tokens
         try {
+          // Parse out thinking content before saving to database
+          const parsed = parseThinkingContent(full);
+          const cleanContent = parsed.response_content || full;
+          
           const cleanMessage: Partial<ChatMessage> = {
             id: placeholderId,
             thread_id: aiPlaceholder.thread_id,
             sender: aiPlaceholder.sender,
-            text_content: full, // Clean response content only
+            text_content: cleanContent, // Clean response content only (no thinking tokens)
             tts_lang: aiPlaceholder.tts_lang,
             // Add embedding data if available
             ...(aiEmbeddingResult && {
@@ -392,8 +409,10 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         // If speech mode is active, play TTS for AI response
         if (state.isSpeechMode) {
           console.log('[chatStore] Speech mode active: auto-playing TTS');
-          // Use placeholderId and full for playTTS
-          actions.playTTS({ messageId: placeholderId, text: full, lang: settings.config.targetLanguage || 'en' });
+          // Parse out thinking content before TTS playback
+          const parsed = parseThinkingContent(full);
+          const cleanContent = parsed.response_content || full;
+          actions.playTTS({ messageId: placeholderId, text: cleanContent, lang: settings.config.targetLanguage || 'en' });
         }
         // After first message in a new thread, auto-generate a title summary
         if (state.pendingThreadId === state.currentThreadId) {
@@ -448,13 +467,28 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     },
 
     toggleSpeech() {
-      // Toggle speech mode; if turning off, immediately stop VAD
+      // Toggle speech mode; if turning off, immediately stop VAD and voice conversation
       const newMode = !state.isSpeechMode;
+      console.log('[chatStore] toggleSpeech: switching to speech mode:', newMode);
       if (!newMode) {
-        console.log('[chatStore] toggleSpeech: speech mode off, stopping VAD');
+        console.log('[chatStore] toggleSpeech: speech mode off, stopping VAD and voice conversation');
+        setState('isVoiceConversationActive', false);
         actions.stopVAD();
+      } else {
+        console.log('[chatStore] toggleSpeech: speech mode on, ready for voice conversation');
       }
       setState('isSpeechMode', newMode);
+    },
+
+    startVoiceConversation() {
+      console.log('[chatStore] startVoiceConversation called');
+      if (!state.isSpeechMode) {
+        console.log('[chatStore] startVoiceConversation: not in speech mode, ignoring');
+        return;
+      }
+      setState('isVoiceConversationActive', true);
+      console.log('[chatStore] startVoiceConversation: voice conversation now active, starting VAD');
+      actions.startVAD();
     },
 
     startVAD() {
@@ -650,10 +684,12 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           if (state.animationFrameId) cancelAnimationFrame(state.animationFrameId);
           setState({ isGlobalTTSSpeaking: false, currentSpokenMessageId: null, currentHighlightIndex: null, animationFrameId: null, audioLevel: 0 });
           sourceNode.disconnect(); analyserNode.disconnect(); audioCtx.close();
-          // Auto-restart VAD if still in speech mode
-          if (state.isSpeechMode) {
-            console.log('[chatStore] TTS ended, restarting VAD');
+          // Auto-restart VAD if voice conversation is still active
+          if (state.isSpeechMode && state.isVoiceConversationActive) {
+            console.log('[chatStore] TTS ended, voice conversation active, restarting VAD');
             actions.startVAD();
+          } else {
+            console.log('[chatStore] TTS ended, voice conversation not active, not restarting VAD');
           }
         };
 

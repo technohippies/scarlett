@@ -4,6 +4,7 @@ import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../component
 import { ChatSidebar } from './ChatSidebar';
 import { ChatMessageArea } from './ChatMessageArea';
 import { TextInputControls } from './TextInputControls';
+import { SpeechInputControls } from './SpeechInputControls';
 import { MicVisualizer } from '../../components/ui/MicVisualizer';
 import { SpeechVisualizer } from '../../components/ui/SpeechVisualizer';
 import type { Thread, ChatMessage } from './types';
@@ -31,8 +32,10 @@ export interface ChatPageLayoutViewProps {
   onSendText: () => void;
   isIdle: boolean;
   isVADListening: boolean;
+  isVoiceConversationActive: boolean;
   isSpeaking: boolean;
   audioLevel: number;
+  onStartVoiceConversation: () => void;
   onStartVAD: () => void;
   onStopVAD: () => void;
 }
@@ -46,6 +49,9 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
   });
   createEffect(() => {
     console.log('[ChatPageLayoutView] threadSystemPrompt prop:', props.threadSystemPrompt);
+  });
+  createEffect(() => {
+    console.log('[ChatPageLayoutView] Voice conversation props - isVoiceConversationActive:', props.isVoiceConversationActive, 'onStartVoiceConversation:', typeof props.onStartVoiceConversation);
   });
 
   // Scroll container ref for auto-scrolling
@@ -226,14 +232,13 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
           <div class="p-2 md:p-4 border-t border-border/40 bg-background">
             <div class="max-w-4xl mx-auto px-2 md:px-4">
               <Show when={!props.isSpeechModeActive} fallback={
-                <>
-                  <div class="flex items-center space-x-2">
-                    <Show when={!props.isVADListening} fallback={<button class="btn btn-outline" onClick={props.onStopVAD}>Stop Recording</button>}>
-                      <button class="btn btn-outline" onClick={props.onStartVAD}>Start Recording</button>
-                    </Show>
-                  </div>
-                  <MicVisualizer active={props.isVADListening} />
-                </>
+                <SpeechInputControls
+                  isVADListening={props.isVADListening}
+                  isVoiceConversationActive={props.isVoiceConversationActive}
+                  isSpeaking={props.isSpeaking}
+                  onStartVoiceConversation={props.onStartVoiceConversation}
+                  onStopVAD={props.onStopVAD}
+                />
               }>
                 <TextInputControls
                   userInput={props.userInput}

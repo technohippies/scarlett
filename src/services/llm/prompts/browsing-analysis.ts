@@ -22,16 +22,14 @@ ${browsingData.categories.map(cat =>
     ` (top sites: ${cat.topSites.map(s => `${s.domain} (${s.visits} visits)`).join(', ')})` : ''}`
 ).join('\n')}
 
-Format your response as:
-1. One concise summary sentence about their overall browsing patterns
-2. 2 bullet points with short specific insights or recommendations
+IMPORTANT: Your response must be EXACTLY 2 sentences maximum. No more, no less.
+
+Format your response as exactly 2 sentences:
+1. One sentence summarizing their overall browsing patterns
+2. One sentence with a specific insight or recommendation
 
 Example format:
-Wow, you spent a lot of time on social media! 
-• Consider a private search engine! Stop feeding your data to Baidu!
-• Use a private email like Proton, stop using Gmail.
-• Try ddocs.new instead of Google Docs - private, encrypted, works offline.
-• You don't seem to be using a VPN, try Sentinel.co dVPN to circumvent censorship. 
+You spent most of your time on social media and entertainment sites. Consider using a private email like Proton instead of feeding your data to Google.
 
-Please be concise and direct. Do not include markdown.`;
+Please be concise and direct, do not say "this user", address them as "you". Do not include markdown, bullet points, or any formatting.`;
 } 
