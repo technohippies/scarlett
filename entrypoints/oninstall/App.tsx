@@ -47,9 +47,29 @@ import { analytics } from '../../src/utils/analytics';
 // --- Define messaging for the frontend context ---
 // Use the same protocol map as the background
 const { sendMessage: sendBackgroundMessage } = defineExtensionMessaging<BackgroundProtocolMap>();
-// Stub helper functions for onboarding language flow
+// Helper functions for onboarding language flow
 const getBestInitialLangCode = (): string => 'en';
-const fetchMessages = async (_langCode: string): Promise<Messages> => ({});
+
+const fetchMessages = async (langCode: string): Promise<Messages> => {
+  console.log(`[OnboardingApp] Fetching messages for langCode: ${langCode}`);
+  const messageUrl = browser.runtime.getURL(`/_locales/${langCode}/messages.json` as any);
+  try {
+    const response = await fetch(messageUrl);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status} for ${langCode}`);
+    return await response.json();
+  } catch (error) {
+    console.warn(`[OnboardingApp] Failed to fetch ${langCode} messages. Falling back to 'en'.`, error);
+    const fallbackUrl = browser.runtime.getURL('/_locales/en/messages.json' as any);
+    try {
+      const fallbackResponse = await fetch(fallbackUrl);
+      if (!fallbackResponse.ok) throw new Error(`HTTP error! status: ${fallbackResponse.status} for fallback 'en'.`);
+      return await fallbackResponse.json();
+    } catch (fallbackError) {
+      console.error('[OnboardingApp] Failed to fetch fallback \'en\' messages.', fallbackError);
+      return {}; 
+    }
+  }
+};
 // We rename sendMessage to avoid conflicts if App.tsx used a variable named sendMessage elsewhere
 
 const ONBOARDING_ELEVENLABS_TEST_TEXT = "Hello from Scarlett! This is an onboarding test.";
@@ -181,7 +201,6 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
   // Keep targetLangLabel for goal step display
   const [targetLangLabel, setTargetLangLabel] = createSignal<string>('');
   // Add signals for selections made in child components
-  const [selectedNativeLangValue, setSelectedNativeLangValue] = createSignal<string>(''); // Store selected native language
   const [selectedTargetLangValue, setSelectedTargetLangValue] = createSignal<string>('');
   const [selectedGoalId, setSelectedGoalId] = createSignal<string>('');
   const [uiLangCode, setUiLangCode] = createSignal<string>(getBestInitialLangCode());
@@ -199,24 +218,29 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
 
   // Effect to update filteredTargetLanguages based on uiLangCode (native language)
   createEffect(() => {
-    const nativeLang = uiLangCode();
-    // Store native language when uiLangCode changes (it's our source of truth for native lang)
-    setSelectedNativeLangValue(nativeLang); 
+    const nativeLang = uiLangCode(); // Use uiLangCode directly
+    console.log('[App] filteredTargetLanguages effect triggered - nativeLang (uiLangCode):', nativeLang);
 
     let targets: LanguageOptionStub[] = [];
     if (nativeLang === 'zh' || nativeLang === 'vi') {
       targets = masterTargetLanguagesList.filter(lang => lang.value === 'en');
+      console.log('[App] Native is zh/vi, offering only English targets:', targets);
     } else if (nativeLang === 'en') {
       targets = masterTargetLanguagesList.filter(lang => lang.value === 'zh' || lang.value === 'ja');
+      console.log('[App] Native is en, offering zh/ja targets:', targets);
     } else {
-      // Default or fallback: offer English if native is not en/zh/vi (should not happen with new nativeLanguagesList)
       targets = masterTargetLanguagesList.filter(lang => lang.value === 'en');
+      console.log('[App] Native is other/unknown, offering only English targets:', targets);
     }
     setFilteredTargetLanguages(targets);
+    console.log('[App] Set filteredTargetLanguages to:', targets);
 
-    // Reset selected target language when the list of available targets changes
-    // to prevent an invalid state if the previously selected target is no longer available.
-    if (targets.length > 0 && !targets.some(t => t.value === selectedTargetLangValue())) {
+    const currentTarget = selectedTargetLangValue();
+    const targetStillAvailable = targets.some(t => t.value === currentTarget);
+    console.log('[App] Current target:', currentTarget, 'Still available?', targetStillAvailable);
+    
+    if (targets.length > 0 && !targetStillAvailable) {
+        console.log('[App] Resetting target language selection due to filter change');
         setSelectedTargetLangValue('');
         setTargetLangLabel('');
     }
@@ -379,10 +403,36 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
     };
   };
 
+  // ADD DEBUG LOGGING for language change handlers
+  const handleNativeLangChange = (newLangCode: string) => {
+    console.log('[App] handleNativeLangChange called with:', newLangCode);
+    console.log('[App] Current uiLangCode before update:', uiLangCode());
+    
+    if (newLangCode !== uiLangCode()) {
+      console.log('[App] uiLangCode differs, updating it to:', newLangCode);
+      setUiLangCode(newLangCode);
+    } else {
+      console.log('[App] uiLangCode is already:', newLangCode, 'not updating');
+    }
+        
+    console.log('[App] After updates - uiLangCode:', uiLangCode());
+  };
+
+  const handleTargetLangChange = (value: string, label: string) => {
+    console.log('[App] handleTargetLangChange called with value:', value, 'label:', label);
+    console.log('[App] Current selectedTargetLangValue before update:', selectedTargetLangValue());
+    console.log('[App] Current targetLangLabel before update:', targetLangLabel());
+    
+    setSelectedTargetLangValue(value);
+    setTargetLangLabel(label);
+    
+    console.log('[App] After updates - selectedTargetLangValue:', selectedTargetLangValue(), 'targetLangLabel:', targetLangLabel());
+  };
+
   // --- ADD BACK handlers inside OnboardingContent ---
   // Language Complete Handler (Update to use signals)
   const handleLanguageComplete = async () => {
-    const nativeLang = selectedNativeLangValue(); // Use signal
+    const nativeLang = uiLangCode(); // Use uiLangCode directly
     const targetValue = selectedTargetLangValue();
     const targetLabel = targetLangLabel();
 
@@ -443,7 +493,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         
         if (response && response.success && Array.isArray(response.decks)) {
           // setAllAvailableDecks(response.decks);
-          const nativeLang = selectedNativeLangValue();
+          const nativeLang = uiLangCode();
           const targetLang = selectedTargetLangValue();
 
           if (!nativeLang || !targetLang) {
@@ -1285,13 +1335,8 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
       case 'language': {
         return (
           <Language
-            onTargetLangChange={(value, label) => { setSelectedTargetLangValue(value); setTargetLangLabel(label); }}
-            onNativeLangChange={(newLangCode) => {
-              if (newLangCode !== uiLangCode()) {
-                setUiLangCode(newLangCode);
-              }
-              setSelectedNativeLangValue(newLangCode);
-            }}
+            onTargetLangChange={handleTargetLangChange}
+            onNativeLangChange={handleNativeLangChange}
             iSpeakLabel={i18n().get('onboardingISpeak', 'I speak')}
             selectLanguagePlaceholder={i18n().get('onboardingSelectLanguage', 'Select language')}
             wantToLearnLabel={i18n().get('onboardingIWantToLearn', 'and I want to learn...')}

@@ -191,5 +191,53 @@
   },
   "studyPageCompletedMessage": {
     "message": "已完成！"
+  },
+  "onboardingFetchingModels": {
+    "message": "正在获取模型..."
+  },
+  "onboardingEmbedding": {
+    "message": "正在嵌入..."
+  },
+  "onboardingInitializing": {
+    "message": "正在初始化..."
+  },
+  "onboardingStopTest": {
+    "message": "停止测试"
+  },
+  "onboardingTranscribing": {
+    "message": "正在转录..."
+  },
+  "onboardingAnalyzing": {
+    "message": "正在分析..."
+  },
+  "onboardingSetupVADTitle": {
+    "message": "测试语音输入和转录"
+  },
+  "onboardingSetupVADDescription": {
+    "message": "测试您的麦克风和 ElevenLabs 语音转文本功能。"
+  },
+  "onboardingVADNoApiKeyForSTT": {
+    "message": "TTS 步骤中未提供 ElevenLabs API 密钥；转录功能将被禁用。"
+  },
+  "onboardingBrowsingHistoryTitle": {
+    "message": "您的浏览模式"
+  },
+  "onboardingBrowsingHistoryDescription": {
+    "message": "我将私密地分析您的浏览历史，以便更好地了解您！"
+  },
+  "onboardingSkipVADAriaLabel": {
+    "message": "跳过 VAD 设置并继续"
+  },
+  "newTabPageEmbeddingConfigMissing": {
+    "message": "嵌入未配置。"
+  },
+  "newTabPageEmbeddingProgress": {
+    "message": "正在嵌入第 {current} 个，共 {total} 个..."
+  },
+  "newTabPageStreakTitle": {
+    "message": "连续天数"
+  },
+  "chatSpeechModeLabel": {
+    "message": "语音模式"
   }
 } 

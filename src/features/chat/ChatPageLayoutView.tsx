@@ -193,7 +193,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
           class="flex items-center space-x-2"
         >
           <SwitchControl class="relative"><SwitchThumb /></SwitchControl>
-          <SwitchLabel>Speech Mode</SwitchLabel>
+          <SwitchLabel>{/* TODO: Add i18n for Speech Mode */}Speech Mode</SwitchLabel>
         </Switch>
       </header>
 

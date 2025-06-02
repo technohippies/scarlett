@@ -47,7 +47,8 @@ const HIGHLIGHT_CSS = `
     will-change: background-color; /* Hint for optimization */
   }
   .scarlett-unified-word-highlight {
-    background-color: hsl(240, 5%, 25%);
+    background-color: hsl(45, 100%, 80%);
+    color: hsl(45, 95%, 15%);
   }
 `;
 

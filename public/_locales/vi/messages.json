@@ -188,5 +188,53 @@
   },
   "studyPageCompletedMessage": {
     "message": "Hoàn thành!"
+  },
+  "onboardingFetchingModels": {
+    "message": "Đang tải mô hình..."
+  },
+  "onboardingEmbedding": {
+    "message": "Đang nhúng..."
+  },
+  "onboardingInitializing": {
+    "message": "Đang khởi tạo..."
+  },
+  "onboardingStopTest": {
+    "message": "Dừng Kiểm tra"
+  },
+  "onboardingTranscribing": {
+    "message": "Đang chuyển đổi giọng nói..."
+  },
+  "onboardingAnalyzing": {
+    "message": "Đang phân tích..."
+  },
+  "onboardingSetupVADTitle": {
+    "message": "Kiểm tra Đầu vào Giọng nói & Chuyển đổi"
+  },
+  "onboardingSetupVADDescription": {
+    "message": "Kiểm tra micrô và chuyển đổi giọng nói thành văn bản ElevenLabs của bạn."
+  },
+  "onboardingVADNoApiKeyForSTT": {
+    "message": "Khóa API ElevenLabs không được cung cấp trong bước TTS; việc chuyển đổi sẽ bị vô hiệu hóa."
+  },
+  "onboardingBrowsingHistoryTitle": {
+    "message": "Thói quen duyệt web của bạn"
+  },
+  "onboardingBrowsingHistoryDescription": {
+    "message": "Một cách riêng tư, tôi sẽ phân tích lịch sử duyệt web của bạn để hiểu bạn tốt hơn!"
+  },
+  "onboardingSkipVADAriaLabel": {
+    "message": "Bỏ qua cài đặt VAD và tiếp tục"
+  },
+  "newTabPageEmbeddingConfigMissing": {
+    "message": "Nhúng chưa được cấu hình."
+  },
+  "newTabPageEmbeddingProgress": {
+    "message": "Nhúng {current} của {total}..."
+  },
+  "newTabPageStreakTitle": {
+    "message": "Chuỗi"
+  },
+  "chatSpeechModeLabel": {
+    "message": "Chế độ Giọng nói"
   }
 }

@@ -46,19 +46,17 @@ const getLangName = (value: string | undefined, messages: Messages | undefined):
 };
 
 export const Language: Component<LanguageProps> = (props) => {
+  // Controlled native language stub computed from prop
+  const selectedNativeLangStub = () => {
+    const stub = props.availableNativeLanguages.find(lang => lang.value === props.initialNativeLangValue);
+    return stub || props.availableNativeLanguages.find(l => l.value === 'en');
+  };
 
-  console.log(`[Language] Render Start. initialNativeLangValue prop: ${props.initialNativeLangValue}`);
-
-  // Removed redundant initial stub finding
-  // const initialNativeLangStub = props.availableNativeLanguages.find(lang => lang.value === props.initialNativeLangValue);
-  // console.log(`[Language] Initial native lang stub found:`, initialNativeLangStub);
-  
-  // State now holds the LanguageOptionStub - Initialize directly using prop
-  const [selectedNativeLangStub, setSelectedNativeLangStub] = createSignal<LanguageOptionStub | undefined>(
-    props.availableNativeLanguages.find(lang => lang.value === props.initialNativeLangValue) || 
-    props.availableNativeLanguages.find(l => l.value === 'en') // Fallback to English stub
-  );
-  console.log(`[Language] Initial selectedNativeLangStub signal set to:`, selectedNativeLangStub());
+  const handleNativeChange = (stub: LanguageOptionStub | null) => {
+    if (stub?.value) {
+      props.onNativeLangChange(stub.value);
+    }
+  };
 
   // State for target language VALUE
   const [selectedTargetLang, setSelectedTargetLang] = createSignal<LanguageOptionStub | undefined>();
@@ -83,19 +81,6 @@ export const Language: Component<LanguageProps> = (props) => {
               lang => lang.value === 'en'
           );
       }
-  };
-
-  const handleNativeChange = (stub: LanguageOptionStub | null) => {
-    console.log('[Language] handleNativeChange triggered. Received stub:', stub);
-    const newValue = stub?.value;
-    console.log('[Language] handleNativeChange: Derived newValue:', newValue);
-    setSelectedNativeLangStub(stub ?? undefined);
-    console.log('[Language] handleNativeChange: Updated selectedNativeLangStub signal to:', selectedNativeLangStub());
-    // Call the new prop if value is valid
-    if (newValue) {
-      console.log(`[Language] handleNativeChange: Calling props.onNativeLangChange with ${newValue}`);
-      props.onNativeLangChange(newValue);
-    }
   };
 
   // Handler for target language selection
@@ -150,11 +135,19 @@ export const Language: Component<LanguageProps> = (props) => {
                   multiple={false}
                   id="native-language"
                   class="w-auto inline-block align-middle"
+
                 >
                   <SelectTrigger class="font-semibold border-b border-border hover:border-primary pl-3 pr-1 py-0 focus:ring-0 min-w-[150px] cursor-pointer">
                     <SelectValue<LanguageOptionStub>>
                       {(state) => {
+                        // Force reactivity by accessing both the state and our controlled value
                         const stub = state.selectedOption();
+                        const controlledStub = selectedNativeLangStub();
+                        const currentPropValue = props.initialNativeLangValue;
+                        
+                        console.log('[Language SelectValue] Rendering - state.selectedOption():', stub, 'controlledStub:', controlledStub, 'props.initialNativeLangValue:', currentPropValue);
+                        
+                        // Use state.selectedOption() as per Kobalte docs, but ensure reactivity
                         if (!stub) return '...';
                         const name = getLangName(stub.value, props.messages);
                         return `${name} ${stub.emoji}`.trim(); 

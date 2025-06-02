@@ -184,5 +184,62 @@
   },
   "studyPageCompletedMessage": {
     "message": "Completed!"
+  },
+  "onboardingFetchingModels": {
+    "message": "Fetching models..."
+  },
+  "onboardingEmbedding": {
+    "message": "Embedding..."
+  },
+  "onboardingInitializing": {
+    "message": "Initializing..."
+  },
+  "onboardingStopTest": {
+    "message": "Stop Test"
+  },
+  "onboardingTranscribing": {
+    "message": "Transcribing..."
+  },
+  "onboardingAnalyzing": {
+    "message": "Analyzing..."
+  },
+  "onboardingSetupVADTitle": {
+    "message": "Test Voice Input & Transcription"
+  },
+  "onboardingSetupVADDescription": {
+    "message": "Test your microphone and ElevenLabs speech to text."
+  },
+  "onboardingVADNoApiKeyForSTT": {
+    "message": "ElevenLabs API key not provided in TTS step; transcription will be disabled."
+  },
+  "onboardingBrowsingHistoryTitle": {
+    "message": "Your browsing patterns"
+  },
+  "onboardingBrowsingHistoryDescription": {
+    "message": "Privately, I will analyse your browser history to better understand you!"
+  },
+  "onboardingSkipVADAriaLabel": {
+    "message": "Skip VAD setup and continue"
+  },
+  "deckSelectionPanelTitle": {
+    "message": "Add Flashcards to Learn"
+  },
+  "deckSelectionPanelDescription": {
+    "message": "Like Anki web, you can create, use, and share our community's flashcards."
+  },
+  "deckSelectionPanelNoDecks": {
+    "message": "No recommended decks available for this learning goal."
+  },
+  "newTabPageEmbeddingConfigMissing": {
+    "message": "Embedding not configured."
+  },
+  "newTabPageEmbeddingProgress": {
+    "message": "Embedding {current} of {total}..."
+  },
+  "newTabPageStreakTitle": {
+    "message": "Streak"
+  },
+  "chatSpeechModeLabel": {
+    "message": "Speech Mode"
   }
 } 
