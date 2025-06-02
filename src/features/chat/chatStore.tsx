@@ -17,33 +17,13 @@ import { enhanceMessageWithThinking, parseThinkingContent } from './utils';
 import { trackMilestone } from '../../utils/analytics';
 import { isPersonalityEmbedded } from '../../services/llm/personalityService';
 import { useSettings } from '../../context/SettingsContext';
+import { getChatSeedContent, getAdaptiveChatSeedContent, type AdaptiveSeedingContext } from '../../services/chat/seedingService';
 
 // RPC client for background storage
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
 
 // Pagination constants for testing
 const INITIAL_MESSAGES_LIMIT = 20; // Load only last 10 messages initially
-
-// Default AI seed messages for initial threads (not stored in DB system_prompt)
-const defaultIntroPrompt = "I'm Scarlett, your friendly AI language companion. I'd love to get to know you a bit! Tell me about yourself - what are your interests, what languages are you learning, or anything else you'd like to share?";
-const defaultSharingPrompt = "It's great to connect on a deeper level. As an AI, I have a unique perspective. I can share some 'AI thoughts' or how I learn if you're curious, and I'm always here to listen to yours. What's on your mind, or what would you like to ask me?";
-
-// Default threads to seed
-const defaultIntroThread: NewChatThreadDataForRpc = {
-  id: 'thread-welcome-introductions',
-  title: 'Introductions',
-  systemPrompt: ''
-};
-const defaultSharingThread: NewChatThreadDataForRpc = {
-  id: 'thread-welcome-sharing',
-  title: 'Sharing Thoughts',
-  systemPrompt: ''
-};
-const defaultJustChatThread: NewChatThreadDataForRpc = {
-  id: 'thread-just-chat',
-  title: 'Just Chat',
-  systemPrompt: ''
-};
 
 export interface ChatState {
   threads: Thread[];
@@ -179,26 +159,60 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         console.log('[chatStore] fetched threads:', threads);
         if (!threads || threads.length === 0) {
           console.log('[chatStore] no threads found, seeding defaults');
-          // Create threads with empty systemPrompt, then seed AI messages separately
-          const created = await Promise.all([
-            defaultIntroThread,
-            defaultSharingThread,
-            defaultJustChatThread
-          ].map(d => messaging.sendMessage('addChatThread', d)));
+          
+          // Get user's interface language from settings (fallback to browser language, then English)
+          const interfaceLanguage = settings.config.nativeLanguage || 
+                                   navigator.language || 
+                                   'en';
+          const targetLanguage = settings.config.targetLanguage;
+          
+          console.log('[chatStore] using interface language for seeding:', interfaceLanguage);
+          console.log('[chatStore] target language:', targetLanguage);
+          
+          // Always use adaptive seeding which handles all scenarios
+          const adaptiveContext: AdaptiveSeedingContext = {
+            interfaceLanguage,
+            targetLanguage: targetLanguage || undefined,
+            isLearningInterfaceLanguage: false // Not used anymore
+          };
+          const seedContent = getAdaptiveChatSeedContent(adaptiveContext);
+          console.log('[chatStore] using adaptive seeding');
+          
+          // Create threads with localized titles and system prompts
+          const threadsToCreate: NewChatThreadDataForRpc[] = seedContent.threads.map(thread => {
+            console.log('[chatStore] Processing seed thread:', thread.id, 'systemPrompt length:', thread.systemPrompt.length);
+            
+            // For roleplay threads, use systemPrompt as scenarioDescription for UI display
+            const isRoleplay = thread.systemPrompt && thread.systemPrompt.length > 0;
+            console.log('[chatStore] Thread', thread.id, 'is roleplay:', isRoleplay);
+            
+            return {
+              id: thread.id,
+              title: thread.title,
+              systemPrompt: thread.systemPrompt,
+              // Set scenarioDescription for roleplay threads so UI displays the context
+              scenarioDescription: isRoleplay ? thread.systemPrompt : undefined
+            };
+          });
+          
+          const created = await Promise.all(
+            threadsToCreate.map(d => messaging.sendMessage('addChatThread', d))
+          );
           console.log('[chatStore] default threads created:', created);
           threads = (created.filter(Boolean) as any);
-          // seed AI messages for intro and sharing only
-          for (const th of threads) {
-            let seedText: string | undefined;
-            if (th.id === defaultIntroThread.id) seedText = defaultIntroPrompt;
-            else if (th.id === defaultSharingThread.id) seedText = defaultSharingPrompt;
-            if (seedText) {
-              console.log('[chatStore] seeding AI message for thread', th.id);
+          
+          // Seed AI messages for threads that have them
+          for (let i = 0; i < threads.length; i++) {
+            const thread = threads[i];
+            const seedThread = seedContent.threads[i];
+            
+            if (seedThread?.aiMessage) {
+              console.log('[chatStore] seeding AI message for thread', thread.id);
               await messaging.sendMessage('addChatMessage', {
-                id: `msg-ai-seed-${th.id}-${Date.now()}`,
-                thread_id: th.id,
+                id: `msg-ai-seed-${thread.id}-${Date.now()}`,
+                thread_id: thread.id,
                 sender: 'ai',
-                text_content: seedText
+                text_content: seedThread.aiMessage
               });
             }
           }
