@@ -842,12 +842,15 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         return;
       }
 
-      console.log('[chatStore] Loading older messages...');
+      console.log('[chatStore] Loading...');
       setState('isLoadingOlderMessages', true);
       
       try {
-        // For testing: fetch all messages again and load the next batch
-        const allMsgs: ChatMessage[] = await messaging.sendMessage('getChatMessages', { threadId: state.currentThreadId });
+        // Add a minimum loading time to make the transition feel less jarring
+        const loadingPromise = messaging.sendMessage('getChatMessages', { threadId: state.currentThreadId });
+        const delayPromise = new Promise(resolve => setTimeout(resolve, 300)); // 300ms minimum
+        
+        const [allMsgs] = await Promise.all([loadingPromise, delayPromise]);
         
         // Calculate how many more messages to load
         const currentCount = state.messages.length;
@@ -860,6 +863,9 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
         const olderMessages = allMsgs.slice(startIndex, endIndex);
         
         if (olderMessages.length > 0) {
+          // Use a small delay before updating messages to ensure smooth transitions
+          await new Promise(resolve => setTimeout(resolve, 50));
+          
           // Prepend older messages to current messages
           setState('messages', msgs => [...olderMessages, ...msgs]);
           setState('messageOffset', startIndex);

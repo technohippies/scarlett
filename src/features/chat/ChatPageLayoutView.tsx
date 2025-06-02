@@ -84,6 +84,12 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
     }
   });
 
+  // Store scroll state for smooth restoration
+  const [scrollRestoreData, setScrollRestoreData] = createSignal<{
+    previousScrollHeight: number;
+    previousScrollTop: number;
+  } | null>(null);
+
   // Handle scroll events for loading older messages
   const handleScroll = () => {
     if (!mainScrollRef || !props.onLoadOlderMessages || props.isLoadingOlderMessages) return;
@@ -92,25 +98,44 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
     
     // If user scrolls near the top and there are older messages, load them
     if (scrollTop < SCROLL_THRESHOLD && props.hasOlderMessages) {
-      console.log('[ChatPageLayoutView] Loading older messages...');
+      console.log('[ChatPageLayoutView] Loading...');
       
       // Store current scroll position to maintain it after loading
       const previousScrollHeight = mainScrollRef.scrollHeight;
       const previousScrollTop = mainScrollRef.scrollTop;
       
-      props.onLoadOlderMessages();
+      setScrollRestoreData({
+        previousScrollHeight,
+        previousScrollTop
+      });
       
-      // After loading, restore scroll position
-      setTimeout(() => {
-        if (mainScrollRef) {
-          const newScrollHeight = mainScrollRef.scrollHeight;
-          const heightDifference = newScrollHeight - previousScrollHeight;
-          mainScrollRef.scrollTop = previousScrollTop + heightDifference;
-          console.log('[ChatPageLayoutView] Restored scroll position after loading older messages');
-        }
-      }, 50);
+      props.onLoadOlderMessages();
     }
   };
+
+  // Watch for loading completion to restore scroll position smoothly
+  createEffect(() => {
+    if (!props.isLoadingOlderMessages && scrollRestoreData()) {
+      // Use requestAnimationFrame for smooth scroll restoration
+      requestAnimationFrame(() => {
+        if (mainScrollRef && scrollRestoreData()) {
+          const data = scrollRestoreData()!;
+          const newScrollHeight = mainScrollRef.scrollHeight;
+          const heightDifference = newScrollHeight - data.previousScrollHeight;
+          const newScrollTop = data.previousScrollTop + heightDifference;
+          
+          // Use smooth scrolling for better UX
+          mainScrollRef.scrollTo({
+            top: newScrollTop,
+            behavior: 'auto' // Keep auto for instant positioning, but smooth DOM updates
+          });
+          
+          console.log('[ChatPageLayoutView] Smoothly restored scroll position after loading older messages');
+          setScrollRestoreData(null);
+        }
+      });
+    }
+  });
 
   // Auto-scroll to bottom when messages change
   createRenderEffect(() => {
@@ -291,10 +316,10 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
               }>
                 {/* Loading indicator for older messages */}
                 <Show when={props.isLoadingOlderMessages}>
-                  <div class="flex justify-center py-4">
-                    <div class="text-sm text-muted-foreground flex items-center">
+                  <div class="flex justify-center py-4 animate-in fade-in duration-200">
+                    <div class="text-sm text-muted-foreground flex items-center bg-background/80 backdrop-blur-sm px-3 py-2 rounded-full border border-border/40">
                       <span class="mr-2 animate-spin">⟳</span>
-                      Loading older messages...
+                      Loading...
                     </div>
                   </div>
                 </Show>

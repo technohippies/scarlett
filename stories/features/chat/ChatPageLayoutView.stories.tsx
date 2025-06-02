@@ -162,10 +162,10 @@ const MockChatMessageArea: Component<{
     )}
     {/* Loading indicator for older messages */}
     <Show when={props.showLoadingOlderMessages}>
-      <div class="flex justify-center py-4">
-        <div class="text-sm text-muted-foreground flex items-center">
+      <div class="flex justify-center py-4 animate-in fade-in duration-200">
+        <div class="text-sm text-muted-foreground flex items-center bg-background/80 backdrop-blur-sm px-3 py-2 rounded-full border border-border/40">
           <span class="mr-2 animate-spin">⟳</span>
-          Loading older messages...
+          Loading...
         </div>
       </div>
     </Show>
@@ -454,6 +454,12 @@ const MockChatPageLayoutView: Component<ExtendedChatPageLayoutViewProps> = (prop
     setTimeout(() => setEmbedStatusMessage(null), 3000);
   };
 
+  // Store scroll state for smooth restoration
+  const [scrollRestoreData, setScrollRestoreData] = createSignal<{
+    previousScrollHeight: number;
+    previousScrollTop: number;
+  } | null>(null);
+
   // Handle scroll events for loading older messages
   const handleScroll = () => {
     if (!mainScrollRef || !props.onLoadOlderMessages || props.isLoadingOlderMessages) return;
@@ -462,10 +468,44 @@ const MockChatPageLayoutView: Component<ExtendedChatPageLayoutViewProps> = (prop
     
     // If user scrolls near the top and there are older messages, load them
     if (scrollTop < 100 && props.hasOlderMessages) {
-      console.log('[MockChatPageLayoutView] Loading older messages...');
+      console.log('[MockChatPageLayoutView] Loading...');
+      
+      // Store current scroll position to maintain it after loading
+      const previousScrollHeight = mainScrollRef.scrollHeight;
+      const previousScrollTop = mainScrollRef.scrollTop;
+      
+      setScrollRestoreData({
+        previousScrollHeight,
+        previousScrollTop
+      });
+      
       props.onLoadOlderMessages();
     }
   };
+
+  // Watch for loading completion to restore scroll position smoothly
+  createEffect(() => {
+    if (!props.isLoadingOlderMessages && scrollRestoreData()) {
+      // Use requestAnimationFrame for smooth scroll restoration
+      requestAnimationFrame(() => {
+        if (mainScrollRef && scrollRestoreData()) {
+          const data = scrollRestoreData()!;
+          const newScrollHeight = mainScrollRef.scrollHeight;
+          const heightDifference = newScrollHeight - data.previousScrollHeight;
+          const newScrollTop = data.previousScrollTop + heightDifference;
+          
+          // Use smooth scrolling for better UX
+          mainScrollRef.scrollTo({
+            top: newScrollTop,
+            behavior: 'auto'
+          });
+          
+          console.log('[MockChatPageLayoutView] Smoothly restored scroll position after loading older messages');
+          setScrollRestoreData(null);
+        }
+      });
+    }
+  });
 
   return (
     <div class="flex flex-col h-screen bg-background text-foreground">
@@ -691,21 +731,59 @@ export const InitialScrollToBottomTest = {
 };
 
 export const LoadOnScrollTest = {
-  render: (args: ExtendedChatPageLayoutViewProps) => <MockChatPageLayoutView {...args} />,
+  render: (args: ExtendedChatPageLayoutViewProps) => {
+    const [localArgs, setLocalArgs] = createSignal(args);
+    const [allMessages] = createSignal(generateLongMessages(MOCK_THREAD_ID_1));
+    const [currentMessageCount, setCurrentMessageCount] = createSignal(20);
+
+    const handleLoadOlderMessages = async () => {
+      console.log('[Story] Simulating Loading...');
+      
+      // Update to show loading state
+      setLocalArgs(prev => ({ ...prev, isLoadingOlderMessages: true }));
+      
+      // Wait for the minimum loading time (like the real implementation)
+      await new Promise(resolve => setTimeout(resolve, 350));
+      
+      // Load 10 more messages
+      const newCount = Math.min(currentMessageCount() + 10, allMessages().length);
+      const startIndex = Math.max(0, allMessages().length - newCount);
+      const messages = allMessages().slice(startIndex);
+      
+      setCurrentMessageCount(newCount);
+      
+      setLocalArgs(prev => ({
+        ...prev,
+        messages: messages,
+        isLoadingOlderMessages: false,
+        hasOlderMessages: newCount < allMessages().length,
+      }));
+    };
+
+    // Initialize with only recent messages
+    createEffect(() => {
+      const startIndex = Math.max(0, allMessages().length - currentMessageCount());
+      const messages = allMessages().slice(startIndex);
+      setLocalArgs(prev => ({
+        ...prev,
+        messages: messages,
+        hasOlderMessages: currentMessageCount() < allMessages().length,
+        onLoadOlderMessages: handleLoadOlderMessages,
+      }));
+    });
+
+    return <MockChatPageLayoutView {...localArgs()} />;
+  },
   args: {
     ...baseArgs,
-    messages: generateLongMessages(MOCK_THREAD_ID_1).slice(-20), // Show only recent messages
+    messages: [],
     hasOlderMessages: true,
     isLoadingOlderMessages: false,
-    onLoadOlderMessages: () => {
-      console.log('[Story] Simulating loading older messages...');
-      alert('In a real app, this would load older messages when you scroll near the top!');
-    },
   },
   parameters: {
     docs: {
       description: {
-        story: '**Load-on-Scroll Test**: This story shows the most recent 20 messages with `hasOlderMessages: true`. **Test the pagination:** 1) Scroll to the very top 2) You should see a trigger to load older messages 3) The scroll position should be preserved after loading'
+        story: '**Interactive Load-on-Scroll Test**: This story shows 20 recent messages and loads 10 older messages each time you scroll to the top. **Test the smooth pagination:** 1) Scroll to the very top 2) Watch the smooth loading indicator 3) Notice how scroll position is preserved after loading 4) Repeat to load more messages'
       }
     }
   }
@@ -722,7 +800,7 @@ export const LoadingOlderMessages = {
   parameters: {
     docs: {
       description: {
-        story: '**Loading State**: This story shows the loading indicator when older messages are being fetched. You should see a "Loading older messages..." indicator at the top.'
+        story: '**Loading State**: This story shows the loading indicator when older messages are being fetched. You should see a "Loading..." indicator at the top.'
       }
     }
   }
