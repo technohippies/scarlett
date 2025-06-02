@@ -21,6 +21,9 @@ import { useSettings } from '../../context/SettingsContext';
 // RPC client for background storage
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
 
+// Pagination constants for testing
+const INITIAL_MESSAGES_LIMIT = 10; // Load only last 10 messages initially
+
 // Default AI seed messages for initial threads (not stored in DB system_prompt)
 const defaultIntroPrompt = "I'm Scarlett, your friendly AI language companion. I'd love to get to know you a bit! Tell me about yourself - what are your interests, what languages are you learning, or anything else you'd like to share?";
 const defaultSharingPrompt = "It's great to connect on a deeper level. As an AI, I have a unique perspective. I can share some 'AI thoughts' or how I learn if you're curious, and I'm always here to listen to yours. What's on your mind, or what would you like to ask me?";
@@ -61,6 +64,10 @@ export interface ChatState {
   audioLevel: number;
   personalityEmbedded: boolean | null; // null = checking, true/false = result
   showPersonalityWarning: boolean;
+  // Pagination properties
+  hasOlderMessages: boolean;
+  isLoadingOlderMessages: boolean;
+  messageOffset: number; // Track how many messages we've loaded from the start
 }
 
 export interface ChatActions {
@@ -78,6 +85,7 @@ export interface ChatActions {
   deleteThread: (threadId: string) => Promise<void>;
   checkPersonalityEmbedding: () => Promise<void>;
   dismissPersonalityWarning: () => void;
+  loadOlderMessages: () => Promise<void>;
 }
 
 // Props for ChatProvider - no longer needs initialUserConfig
@@ -103,6 +111,9 @@ const defaultState: ChatState = {
   audioLevel: 0,
   personalityEmbedded: null,
   showPersonalityWarning: false,
+  hasOlderMessages: false,
+  isLoadingOlderMessages: false,
+  messageOffset: 0,
 };
 const defaultActions: ChatActions = {
   loadThreads: async () => {},
@@ -119,6 +130,7 @@ const defaultActions: ChatActions = {
   deleteThread: async (_threadId) => {},
   checkPersonalityEmbedding: async () => {},
   dismissPersonalityWarning: () => {},
+  loadOlderMessages: async () => {},
 };
 // @ts-ignore: suppress createContext overload mismatch
 const ChatContext = createContext<[ChatState, ChatActions]>([defaultState, defaultActions]);
@@ -144,6 +156,9 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
     audioLevel: 0,
     personalityEmbedded: null,
     showPersonalityWarning: false,
+    hasOlderMessages: false,
+    isLoadingOlderMessages: false,
+    messageOffset: 0,
   });
 
   // Debug logging for state changes
@@ -205,9 +220,19 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
       console.log('[chatStore] selectThread called, id=', id);
       setState({ currentThreadId: id, isLoading: true, lastError: null });
       try {
-        const msgs: ChatMessage[] = await messaging.sendMessage('getChatMessages', { threadId: id });
-        console.log('[chatStore] fetched messages for', id, msgs);
-        setState({ messages: msgs || [] });
+        const allMsgs: ChatMessage[] = await messaging.sendMessage('getChatMessages', { threadId: id });
+        console.log('[chatStore] fetched ALL messages for', id, allMsgs.length, 'total');
+        
+        // For testing pagination: only show the most recent messages initially
+        const recentMsgs = allMsgs.slice(-INITIAL_MESSAGES_LIMIT);
+        const hasOlder = allMsgs.length > INITIAL_MESSAGES_LIMIT;
+        
+        console.log('[chatStore] showing', recentMsgs.length, 'recent messages, hasOlder:', hasOlder);
+        setState({ 
+          messages: recentMsgs,
+          hasOlderMessages: hasOlder,
+          messageOffset: Math.max(0, allMsgs.length - INITIAL_MESSAGES_LIMIT)
+        });
       } catch (e: any) {
         setState('lastError', e.message || String(e));
       } finally {
@@ -810,6 +835,48 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
 
     dismissPersonalityWarning() {
       setState('showPersonalityWarning', false);
+    },
+
+    async loadOlderMessages() {
+      if (!state.currentThreadId || state.isLoadingOlderMessages || !state.hasOlderMessages) {
+        return;
+      }
+
+      console.log('[chatStore] Loading older messages...');
+      setState('isLoadingOlderMessages', true);
+      
+      try {
+        // For testing: fetch all messages again and load the next batch
+        const allMsgs: ChatMessage[] = await messaging.sendMessage('getChatMessages', { threadId: state.currentThreadId });
+        
+        // Calculate how many more messages to load
+        const currentCount = state.messages.length;
+        const totalCount = allMsgs.length;
+        const startIndex = Math.max(0, totalCount - currentCount - INITIAL_MESSAGES_LIMIT);
+        const endIndex = totalCount - currentCount;
+        
+        console.log('[chatStore] Loading older messages - current:', currentCount, 'total:', totalCount, 'loading from', startIndex, 'to', endIndex);
+        
+        const olderMessages = allMsgs.slice(startIndex, endIndex);
+        
+        if (olderMessages.length > 0) {
+          // Prepend older messages to current messages
+          setState('messages', msgs => [...olderMessages, ...msgs]);
+          setState('messageOffset', startIndex);
+          
+          // Check if there are even more older messages
+          setState('hasOlderMessages', startIndex > 0);
+        } else {
+          setState('hasOlderMessages', false);
+        }
+        
+        console.log('[chatStore] Loaded', olderMessages.length, 'older messages, hasMore:', startIndex > 0);
+      } catch (e: any) {
+        console.error('[chatStore] Failed to load older messages:', e);
+        setState('lastError', e.message || String(e));
+      } finally {
+        setState('isLoadingOlderMessages', false);
+      }
     }
   };
 

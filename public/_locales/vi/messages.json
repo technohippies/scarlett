@@ -54,7 +54,7 @@
   "learningGoalDating": { "message": "Hẹn hò", "description": "Lựa chọn mục tiêu học tập: Hẹn hò" },
   "learningGoalTravel": { "message": "Du lịch", "description": "Lựa chọn mục tiêu học tập: Du lịch" },
   "learningGoalSchool": { "message": "Học tập", "description": "Lựa chọn mục tiêu học tập: Học tập" },
-  "learningGoalSelf": { "message": "Phát triển bản thân", "description": "Lựa chọn mục tiêu học tập: Phát triển bản thân" },
+  "learningGoalSelf": { "message": "Phát triển", "description": "Lựa chọn mục tiêu học tập: Phát triển bản thân" },
   "learningGoalOther": {
     "message": "Khác",
     "description": "Lựa chọn mục tiêu học tập: Khác"
@@ -235,6 +235,7 @@
     "message": "Chuỗi"
   },
   "chatSpeechModeLabel": {
-    "message": "Chế độ Giọng nói"
+    "message": "Chế độ Giọng nói",
+    "description": "Nhãn cho công tắc chế độ giọng nói trong trang chat"
   }
 }

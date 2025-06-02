@@ -35,6 +35,9 @@ export const ChatPageLayout: Component<ChatPageLayoutProps> = (props) => {
       onStartVoiceConversation={() => actions.startVoiceConversation()}
       onStartVAD={() => actions.startVAD()}
       onStopVAD={() => actions.stopVAD()}
+      onLoadOlderMessages={() => actions.loadOlderMessages?.()}
+      hasOlderMessages={state.hasOlderMessages ?? false}
+      isLoadingOlderMessages={state.isLoadingOlderMessages ?? false}
     />
   );
 }; 

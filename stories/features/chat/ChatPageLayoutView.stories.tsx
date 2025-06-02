@@ -1,5 +1,5 @@
 import type { ChatMessage, Thread } from '../../../src/features/chat/types';
-import { createContext, ParentComponent, Component, Show, createEffect, onCleanup, createRenderEffect, createSignal } from 'solid-js';
+import { createContext, ParentComponent, Component, Show, createEffect, onCleanup, createRenderEffect, createSignal, onMount } from 'solid-js';
 import { CaretLeft } from 'phosphor-solid';
 import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../../src/components/ui/switch';
 import { Motion } from 'solid-motionone';
@@ -66,6 +66,14 @@ const MockChatSidebar: Component<{
   onGenerateRoleplay: () => void;
   onDeleteThread: (threadId: string) => void;
   isRoleplayLoading: boolean;
+  // Embedding props
+  pendingEmbeddingCount?: () => number;
+  isEmbedding?: () => boolean;
+  embedStatusMessage?: () => string | null;
+  processedCount?: () => number;
+  totalCount?: () => number;
+  onEmbedClick?: () => void;
+  showEmbeddingPanel?: boolean;
 }> = (props) => {
   const [hoveredThreadId, setHoveredThreadId] = createSignal<string | null>(null);
 
@@ -115,7 +123,20 @@ const MockChatSidebar: Component<{
           </div>
         ))}
       </div>
-      <div class="p-2 border-t border-border/40">
+      <div class="p-2 border-t border-border/40 space-y-2">
+        {/* Update Memory Button */}
+        <Show when={props.showEmbeddingPanel && props.onEmbedClick && props.pendingEmbeddingCount && props.isEmbedding && props.embedStatusMessage && props.processedCount && props.totalCount}>
+          <MockEmbeddingProcessingPanel
+            pendingEmbeddingCount={props.pendingEmbeddingCount!}
+            isEmbedding={props.isEmbedding!}
+            embedStatusMessage={props.embedStatusMessage!}
+            processedCount={props.processedCount!}
+            totalCount={props.totalCount!}
+            onProcessClick={props.onEmbedClick!}
+            class="w-full"
+          />
+        </Show>
+        
         <button
           class={`w-full flex justify-center p-2 rounded border ${props.isRoleplayLoading ? 'opacity-50 cursor-not-allowed' : 'hover:bg-accent'}`}
           onClick={props.onGenerateRoleplay}
@@ -131,6 +152,7 @@ const MockChatSidebar: Component<{
 const MockChatMessageArea: Component<{
   messages: ChatMessage[];
   description?: string;
+  showLoadingOlderMessages?: boolean;
 }> = (props) => (
   <div class="py-4 space-y-6 bg-background pb-20">
     {props.description && (
@@ -138,6 +160,15 @@ const MockChatMessageArea: Component<{
         {props.description}
       </div>
     )}
+    {/* Loading indicator for older messages */}
+    <Show when={props.showLoadingOlderMessages}>
+      <div class="flex justify-center py-4">
+        <div class="text-sm text-muted-foreground flex items-center">
+          <span class="mr-2 animate-spin">⟳</span>
+          Loading older messages...
+        </div>
+      </div>
+    </Show>
     <div class="space-y-4">
       {props.messages.map(message => (
         <div class={`flex flex-col ${message.sender === 'user' ? 'items-end' : 'items-start'}`}>
@@ -297,32 +328,18 @@ const MockEmbeddingProcessingPanel: Component<{
   );
 };
 
-export interface ChatPageLayoutViewProps {
-  threads: Thread[];
-  currentThreadId: string | null;
-  onNavigateBack: () => void;
-  onSelectThread: (threadId: string) => void;
-  isSpeechModeActive: boolean;
-  onToggleMode: () => void;
-  onCreateThread: () => void;
-  onGenerateRoleplay: () => void;
-  onDeleteThread: (threadId: string) => void;
-  isRoleplayLoading: boolean;
-  threadSystemPrompt?: string;
-  messages: ChatMessage[];
-  userInput: string;
-  onInputChange: (text: string) => void;
-  onSendText: () => void;
-  isIdle: boolean;
-  isVADListening: boolean;
-  isSpeaking: boolean;
-  audioLevel: number;
-  onStartVAD: () => void;
-  onStopVAD: () => void;
+// Import the real interface from the component
+import type { ChatPageLayoutViewProps } from '../../../src/features/chat/ChatPageLayoutView';
+
+// Add new interface that extends the base props to include pagination
+interface ExtendedChatPageLayoutViewProps extends ChatPageLayoutViewProps {
+  onLoadOlderMessages?: () => void;
+  hasOlderMessages?: boolean;
+  isLoadingOlderMessages?: boolean;
 }
 
-// Mock ChatPageLayoutView that matches the real structure exactly
-const MockChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
+// Update the MockChatPageLayoutView component signature
+const MockChatPageLayoutView: Component<ExtendedChatPageLayoutViewProps> = (props) => {
   createEffect(() => {
     console.log('[MockChatPageLayoutView EFFECT] isRoleplayLoading prop:', props.isRoleplayLoading);
   });
@@ -336,12 +353,32 @@ const MockChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
   // Scroll container ref for auto-scrolling (moved to the correct element)
   let mainScrollRef!: HTMLElement;
 
+  // Track if this is the initial load to force scroll to bottom
+  const [isInitialLoad, setIsInitialLoad] = createSignal(true);
+  const [shouldScrollToBottom, setShouldScrollToBottom] = createSignal(false);
+
+  // Handle initial scroll to bottom when messages first load
+  onMount(() => {
+    if (mainScrollRef && props.messages.length > 0) {
+      // Use setTimeout to ensure DOM is fully rendered
+      setTimeout(() => {
+        if (mainScrollRef) {
+          mainScrollRef.scrollTop = mainScrollRef.scrollHeight;
+          console.log('[MockChatPageLayoutView] Initial scroll to bottom completed');
+          setIsInitialLoad(false);
+        }
+      }, 100);
+    } else {
+      setIsInitialLoad(false);
+    }
+  });
+
   // Auto-scroll to bottom when messages change - on the main element that actually scrolls
   createRenderEffect(() => {
     const messageCount = props.messages.length;
     const hasStreamingMessage = props.messages.some(m => m.isStreaming);
     
-    console.log('[MockChatPageLayoutView] Auto-scroll trigger - messageCount:', messageCount, 'hasStreaming:', hasStreamingMessage);
+    console.log('[MockChatPageLayoutView] Auto-scroll trigger - messageCount:', messageCount, 'hasStreaming:', hasStreamingMessage, 'isInitialLoad:', isInitialLoad());
     
     if (mainScrollRef && (messageCount > 0 || hasStreamingMessage)) {
       queueMicrotask(() => {
@@ -351,18 +388,27 @@ const MockChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
         
         console.log('[MockChatPageLayoutView] Scroll metrics - scrollHeight:', scrollHeight, 'clientHeight:', clientHeight, 'currentScrollTop:', currentScrollTop);
         
-        // For streaming messages, be more aggressive about auto-scrolling to prevent cutoff
-        // Only auto-scroll if user is near the bottom (within 150px) or when streaming
+        // Always scroll to bottom on initial load, or when streaming, or when user is near bottom
         const isNearBottom = (scrollHeight - clientHeight - currentScrollTop) < 150;
         
-        if (isNearBottom || hasStreamingMessage) {
+        if (isInitialLoad() || hasStreamingMessage || isNearBottom || shouldScrollToBottom()) {
           // Scroll to bottom with a small buffer to ensure content isn't cut off
           mainScrollRef.scrollTop = scrollHeight;
           console.log('[MockChatPageLayoutView] Auto-scrolled to bottom - new scrollTop:', mainScrollRef.scrollTop);
+          setShouldScrollToBottom(false);
         } else {
           console.log('[MockChatPageLayoutView] Skipped auto-scroll - user scrolled up');
         }
       });
+    }
+  });
+
+  // Watch for thread changes to scroll to bottom
+  createEffect(() => {
+    const currentThreadId = props.currentThreadId;
+    if (currentThreadId) {
+      console.log('[MockChatPageLayoutView] Thread changed, scheduling scroll to bottom');
+      setShouldScrollToBottom(true);
     }
   });
 
@@ -408,6 +454,19 @@ const MockChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
     setTimeout(() => setEmbedStatusMessage(null), 3000);
   };
 
+  // Handle scroll events for loading older messages
+  const handleScroll = () => {
+    if (!mainScrollRef || !props.onLoadOlderMessages || props.isLoadingOlderMessages) return;
+    
+    const scrollTop = mainScrollRef.scrollTop;
+    
+    // If user scrolls near the top and there are older messages, load them
+    if (scrollTop < 100 && props.hasOlderMessages) {
+      console.log('[MockChatPageLayoutView] Loading older messages...');
+      props.onLoadOlderMessages();
+    }
+  };
+
   return (
     <div class="flex flex-col h-screen bg-background text-foreground">
       <header class="flex items-center p-2 md:p-4 border-b border-border/40 bg-background z-10">
@@ -422,17 +481,6 @@ const MockChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
           <SwitchControl class="relative"><SwitchThumb /></SwitchControl>
           <SwitchLabel>Speech Mode</SwitchLabel>
         </Switch>
-        <Show when={pendingCount() > 0 || isEmbedding()} fallback={<></>}>
-          <MockEmbeddingProcessingPanel
-            pendingEmbeddingCount={pendingCount}
-            isEmbedding={isEmbedding}
-            embedStatusMessage={embedStatusMessage}
-            processedCount={processedCount}
-            totalCount={totalCount}
-            onProcessClick={handleEmbedClick}
-            class="ml-2"
-          />
-        </Show>
       </header>
 
       <div class="flex flex-1 overflow-hidden">
@@ -448,12 +496,20 @@ const MockChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
                 onGenerateRoleplay={props.onGenerateRoleplay}
                 onDeleteThread={props.onDeleteThread}
                 isRoleplayLoading={props.isRoleplayLoading}
+                // Embedding props
+                pendingEmbeddingCount={pendingCount}
+                isEmbedding={isEmbedding}
+                embedStatusMessage={embedStatusMessage}
+                processedCount={processedCount}
+                totalCount={totalCount}
+                onEmbedClick={handleEmbedClick}
+                showEmbeddingPanel={pendingCount() > 0 || isEmbedding()}
               />
             );
           })()}
         </Show>
         <div class="flex flex-col flex-1 overflow-hidden">
-          <main ref={mainScrollRef} class="flex-1 overflow-y-auto">
+          <main ref={mainScrollRef} class="flex-1 overflow-y-auto" onScroll={handleScroll}>
             <div class="max-w-4xl mx-auto">
               <Show when={!props.isSpeechModeActive} fallback={
                 <div class="flex items-center justify-center h-full">
@@ -465,7 +521,11 @@ const MockChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
                   />
                 </div>
               }>
-                <MockChatMessageArea messages={props.messages} description={props.threadSystemPrompt} />
+                <MockChatMessageArea 
+                  messages={props.messages} 
+                  description={props.threadSystemPrompt}
+                  showLoadingOlderMessages={props.isLoadingOlderMessages}
+                />
               </Show>
             </div>
           </main>
@@ -515,7 +575,7 @@ const generateLongMessages = (threadId: string): ChatMessage[] => {
   return messages;
 };
 
-const baseArgs: ChatPageLayoutViewProps = {
+const baseArgs: ExtendedChatPageLayoutViewProps = {
   threads: mockThreads,
   currentThreadId: MOCK_THREAD_ID_1,
   isSpeechModeActive: false,
@@ -536,6 +596,12 @@ const baseArgs: ChatPageLayoutViewProps = {
   audioLevel: 0,
   onStartVAD: () => console.log('[Story] Start VAD'),
   onStopVAD: () => console.log('[Story] Stop VAD'),
+  isVoiceConversationActive: false,
+  onStartVoiceConversation: () => console.log('[Story] Start Voice Conversation'),
+  // Pagination props
+  onLoadOlderMessages: () => console.log('[Story] Load Older Messages'),
+  hasOlderMessages: false,
+  isLoadingOlderMessages: false,
 };
 
 export default {
@@ -567,7 +633,7 @@ export default {
 };
 
 export const TextMode = {
-  render: (args: ChatPageLayoutViewProps) => <MockChatPageLayoutView {...args} />,
+  render: (args: ExtendedChatPageLayoutViewProps) => <MockChatPageLayoutView {...args} />,
   args: {
     ...baseArgs,
     isSpeechModeActive: false,
@@ -576,7 +642,7 @@ export const TextMode = {
 
 
 export const LongConversation = {
-  render: (args: ChatPageLayoutViewProps) => <MockChatPageLayoutView {...args} />,
+  render: (args: ExtendedChatPageLayoutViewProps) => <MockChatPageLayoutView {...args} />,
   args: {
     ...baseArgs,
     messages: generateLongMessages(MOCK_THREAD_ID_1),
@@ -591,7 +657,7 @@ export const LongConversation = {
 };
 
 export const NoThreads = {
-  render: (args: ChatPageLayoutViewProps) => <MockChatPageLayoutView {...args} />,
+  render: (args: ExtendedChatPageLayoutViewProps) => <MockChatPageLayoutView {...args} />,
   args: {
     ...baseArgs,
     threads: [],
@@ -601,10 +667,63 @@ export const NoThreads = {
 };
 
 export const NoActiveThread = {
-  render: (args: ChatPageLayoutViewProps) => <MockChatPageLayoutView {...args} />,
+  render: (args: ExtendedChatPageLayoutViewProps) => <MockChatPageLayoutView {...args} />,
   args: {
     ...baseArgs,
     currentThreadId: null,
     messages: [],
   },
+};
+
+export const InitialScrollToBottomTest = {
+  render: (args: ExtendedChatPageLayoutViewProps) => <MockChatPageLayoutView {...args} />,
+  args: {
+    ...baseArgs,
+    messages: generateLongMessages(MOCK_THREAD_ID_1),
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: '**Initial Scroll Test**: This story loads a long conversation and should automatically scroll to the bottom when first opened. The page should open with the latest message visible at the bottom, not at the top.'
+      }
+    }
+  }
+};
+
+export const LoadOnScrollTest = {
+  render: (args: ExtendedChatPageLayoutViewProps) => <MockChatPageLayoutView {...args} />,
+  args: {
+    ...baseArgs,
+    messages: generateLongMessages(MOCK_THREAD_ID_1).slice(-20), // Show only recent messages
+    hasOlderMessages: true,
+    isLoadingOlderMessages: false,
+    onLoadOlderMessages: () => {
+      console.log('[Story] Simulating loading older messages...');
+      alert('In a real app, this would load older messages when you scroll near the top!');
+    },
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: '**Load-on-Scroll Test**: This story shows the most recent 20 messages with `hasOlderMessages: true`. **Test the pagination:** 1) Scroll to the very top 2) You should see a trigger to load older messages 3) The scroll position should be preserved after loading'
+      }
+    }
+  }
+};
+
+export const LoadingOlderMessages = {
+  render: (args: ExtendedChatPageLayoutViewProps) => <MockChatPageLayoutView {...args} />,
+  args: {
+    ...baseArgs,
+    messages: generateLongMessages(MOCK_THREAD_ID_1).slice(-20),
+    hasOlderMessages: true,
+    isLoadingOlderMessages: true, // Show loading state
+  },
+  parameters: {
+    docs: {
+      description: {
+        story: '**Loading State**: This story shows the loading indicator when older messages are being fetched. You should see a "Loading older messages..." indicator at the top.'
+      }
+    }
+  }
 }; 

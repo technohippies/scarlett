@@ -111,11 +111,7 @@ export const Language: Component<LanguageProps> = (props) => {
               {/* Combine both sentences into one paragraph */}
               <p class="inline-flex items-center justify-center flex-wrap gap-2"> 
                 <span>{props.iSpeakLabel}</span>
-                {(() => {
-                    // Log value just before Select render
-                    console.log('[Language] Rendering Select. Current selectedNativeLangStub():', selectedNativeLangStub());
-                    return null; 
-                })()}
+
                 <Select<LanguageOptionStub>
                   options={props.availableNativeLanguages}
                   value={selectedNativeLangStub()}
@@ -140,14 +136,7 @@ export const Language: Component<LanguageProps> = (props) => {
                   <SelectTrigger class="font-semibold border-b border-border hover:border-primary pl-3 pr-1 py-0 focus:ring-0 min-w-[150px] cursor-pointer">
                     <SelectValue<LanguageOptionStub>>
                       {(state) => {
-                        // Force reactivity by accessing both the state and our controlled value
                         const stub = state.selectedOption();
-                        const controlledStub = selectedNativeLangStub();
-                        const currentPropValue = props.initialNativeLangValue;
-                        
-                        console.log('[Language SelectValue] Rendering - state.selectedOption():', stub, 'controlledStub:', controlledStub, 'props.initialNativeLangValue:', currentPropValue);
-                        
-                        // Use state.selectedOption() as per Kobalte docs, but ensure reactivity
                         if (!stub) return '...';
                         const name = getLangName(stub.value, props.messages);
                         return `${name} ${stub.emoji}`.trim(); 

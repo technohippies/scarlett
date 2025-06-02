@@ -1,9 +1,10 @@
-import { Component, For, createEffect, createSignal } from 'solid-js';
+import { Component, For, createEffect, createSignal, Show } from 'solid-js';
 import { Plus, X } from 'phosphor-solid';
 import { Button } from '../../components/ui/button'; // Assuming Button component path
 import type { Thread } from './types';
 import { Spinner } from '../../components/ui/spinner';
 import { parseThinkingContent } from './utils';
+import { EmbeddingProcessingPanel } from '../embedding/EmbeddingProcessingPanel';
 
 interface ChatSidebarProps {
   threads: Thread[];
@@ -13,7 +14,14 @@ interface ChatSidebarProps {
   onGenerateRoleplay: () => void;
   onDeleteThread: (threadId: string) => void;
   isRoleplayLoading: boolean;
-  // Add any other props needed, e.g., for generating roleplays or other actions
+  // Embedding props
+  pendingEmbeddingCount?: () => number;
+  isEmbedding?: () => boolean;
+  embedStatusMessage?: () => string | null;
+  processedCount?: () => number;
+  totalCount?: () => number;
+  onEmbedClick?: () => void;
+  showEmbeddingPanel?: boolean;
 }
 
 export const ChatSidebar: Component<ChatSidebarProps> = (props) => {
@@ -80,7 +88,20 @@ export const ChatSidebar: Component<ChatSidebarProps> = (props) => {
           )}
         </For>
       </div>
-      <div class="p-2 border-t border-border/40">
+      <div class="p-2 border-t border-border/40 space-y-2">
+        {/* Update Memory Button */}
+        <Show when={props.showEmbeddingPanel && props.onEmbedClick && props.pendingEmbeddingCount && props.isEmbedding && props.embedStatusMessage && props.processedCount && props.totalCount}>
+          <EmbeddingProcessingPanel
+            pendingEmbeddingCount={props.pendingEmbeddingCount!}
+            isEmbedding={props.isEmbedding!}
+            embedStatusMessage={props.embedStatusMessage!}
+            processedCount={props.processedCount!}
+            totalCount={props.totalCount!}
+            onProcessClick={props.onEmbedClick!}
+            class="w-full"
+          />
+        </Show>
+        
         {/* Generate Roleplay action */}
         <Button
           variant="outline"

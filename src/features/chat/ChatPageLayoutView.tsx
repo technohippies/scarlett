@@ -1,4 +1,4 @@
-import { Component, Show, createEffect, onCleanup, createSignal, createResource, createRenderEffect } from 'solid-js';
+import { Component, Show, createEffect, onCleanup, createSignal, createResource, createRenderEffect, onMount } from 'solid-js';
 import { CaretLeft } from 'phosphor-solid';
 import { Switch, SwitchControl, SwitchThumb, SwitchLabel } from '../../components/ui/switch';
 import { ChatSidebar } from './ChatSidebar';
@@ -38,7 +38,14 @@ export interface ChatPageLayoutViewProps {
   onStartVoiceConversation: () => void;
   onStartVAD: () => void;
   onStopVAD: () => void;
+  // New props for pagination
+  onLoadOlderMessages?: () => void;
+  hasOlderMessages?: boolean;
+  isLoadingOlderMessages?: boolean;
 }
+
+const MESSAGES_PER_PAGE = 50;
+const SCROLL_THRESHOLD = 100; // px from top to trigger loading older messages
 
 export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
   createEffect(() => {
@@ -56,13 +63,61 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
 
   // Scroll container ref for auto-scrolling
   let mainScrollRef!: HTMLElement;
+  
+  // Track if this is the initial load to force scroll to bottom
+  const [isInitialLoad, setIsInitialLoad] = createSignal(true);
+  const [shouldScrollToBottom, setShouldScrollToBottom] = createSignal(false);
 
-  // Auto-scroll to bottom when messages change - on the main element that actually scrolls
+  // Handle initial scroll to bottom when messages first load
+  onMount(() => {
+    if (mainScrollRef && props.messages.length > 0) {
+      // Use setTimeout to ensure DOM is fully rendered
+      setTimeout(() => {
+        if (mainScrollRef) {
+          mainScrollRef.scrollTop = mainScrollRef.scrollHeight;
+          console.log('[ChatPageLayoutView] Initial scroll to bottom completed');
+          setIsInitialLoad(false);
+        }
+      }, 100);
+    } else {
+      setIsInitialLoad(false);
+    }
+  });
+
+  // Handle scroll events for loading older messages
+  const handleScroll = () => {
+    if (!mainScrollRef || !props.onLoadOlderMessages || props.isLoadingOlderMessages) return;
+    
+    const scrollTop = mainScrollRef.scrollTop;
+    
+    // If user scrolls near the top and there are older messages, load them
+    if (scrollTop < SCROLL_THRESHOLD && props.hasOlderMessages) {
+      console.log('[ChatPageLayoutView] Loading older messages...');
+      
+      // Store current scroll position to maintain it after loading
+      const previousScrollHeight = mainScrollRef.scrollHeight;
+      const previousScrollTop = mainScrollRef.scrollTop;
+      
+      props.onLoadOlderMessages();
+      
+      // After loading, restore scroll position
+      setTimeout(() => {
+        if (mainScrollRef) {
+          const newScrollHeight = mainScrollRef.scrollHeight;
+          const heightDifference = newScrollHeight - previousScrollHeight;
+          mainScrollRef.scrollTop = previousScrollTop + heightDifference;
+          console.log('[ChatPageLayoutView] Restored scroll position after loading older messages');
+        }
+      }, 50);
+    }
+  };
+
+  // Auto-scroll to bottom when messages change
   createRenderEffect(() => {
     const messageCount = props.messages.length;
     const hasStreamingMessage = props.messages.some(m => m.isStreaming);
     
-    console.log('[ChatPageLayoutView] Auto-scroll trigger - messageCount:', messageCount, 'hasStreaming:', hasStreamingMessage);
+    console.log('[ChatPageLayoutView] Auto-scroll trigger - messageCount:', messageCount, 'hasStreaming:', hasStreamingMessage, 'isInitialLoad:', isInitialLoad());
     
     if (mainScrollRef && (messageCount > 0 || hasStreamingMessage)) {
       queueMicrotask(() => {
@@ -72,18 +127,27 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
         
         console.log('[ChatPageLayoutView] Scroll metrics - scrollHeight:', scrollHeight, 'clientHeight:', clientHeight, 'currentScrollTop:', currentScrollTop);
         
-        // For streaming messages, be more aggressive about auto-scrolling to prevent cutoff
-        // Only auto-scroll if user is near the bottom (within 150px) or when streaming
+        // Always scroll to bottom on initial load, or when streaming, or when user is near bottom
         const isNearBottom = (scrollHeight - clientHeight - currentScrollTop) < 150;
         
-        if (isNearBottom || hasStreamingMessage) {
+        if (isInitialLoad() || hasStreamingMessage || isNearBottom || shouldScrollToBottom()) {
           // Scroll to bottom with a small buffer to ensure content isn't cut off
           mainScrollRef.scrollTop = scrollHeight;
           console.log('[ChatPageLayoutView] Auto-scrolled to bottom - new scrollTop:', mainScrollRef.scrollTop);
+          setShouldScrollToBottom(false);
         } else {
           console.log('[ChatPageLayoutView] Skipped auto-scroll - user scrolled up');
         }
       });
+    }
+  });
+
+  // Watch for thread changes to scroll to bottom
+  createEffect(() => {
+    const currentThreadId = props.currentThreadId;
+    if (currentThreadId) {
+      console.log('[ChatPageLayoutView] Thread changed, scheduling scroll to bottom');
+      setShouldScrollToBottom(true);
     }
   });
 
@@ -94,6 +158,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
       props.onStopVAD();
     }
   });
+  
   // Ensure VAD stops when component unmounts
   onCleanup(() => {
     if (props.isVADListening) {
@@ -174,17 +239,6 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
         <button onClick={props.onNavigateBack} class="mr-2 p-2 hover:cursor-pointer">
           <CaretLeft class="size-6" />
         </button>
-        <Show when={(pendingEmbeddingData()?.count || 0) > 0 || isEmbedding()} fallback={<></>}>
-          <EmbeddingProcessingPanel
-            pendingEmbeddingCount={() => pendingEmbeddingData()?.count || 0}
-            isEmbedding={isEmbedding}
-            embedStatusMessage={embedStatusMessage}
-            processedCount={processedCount}
-            totalCount={totalCount}
-            onProcessClick={handleEmbedClick}
-            class="ml-4"
-          />
-        </Show>
         {/* Flexible spacer to always push Switch to the right */}
         <div class="flex-1"></div>
         <Switch
@@ -210,12 +264,20 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
                 onGenerateRoleplay={props.onGenerateRoleplay}
                 onDeleteThread={props.onDeleteThread}
                 isRoleplayLoading={props.isRoleplayLoading}
+                // Embedding props
+                pendingEmbeddingCount={() => pendingEmbeddingData()?.count || 0}
+                isEmbedding={isEmbedding}
+                embedStatusMessage={embedStatusMessage}
+                processedCount={processedCount}
+                totalCount={totalCount}
+                onEmbedClick={handleEmbedClick}
+                showEmbeddingPanel={(pendingEmbeddingData()?.count || 0) > 0 || isEmbedding()}
               />
             );
           })()}
         </Show>
         <div class="flex flex-col flex-1 overflow-hidden">
-          <main ref={mainScrollRef} class="flex-1 overflow-y-auto">
+          <main ref={mainScrollRef} class="flex-1 overflow-y-auto" onScroll={handleScroll}>
             <div class="max-w-4xl mx-auto px-2 md:px-4">
               <Show when={!props.isSpeechModeActive} fallback={
                 <div class="flex items-center justify-center h-full pt-24">
@@ -227,6 +289,15 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
                   />
                 </div>
               }>
+                {/* Loading indicator for older messages */}
+                <Show when={props.isLoadingOlderMessages}>
+                  <div class="flex justify-center py-4">
+                    <div class="text-sm text-muted-foreground flex items-center">
+                      <span class="mr-2 animate-spin">⟳</span>
+                      Loading older messages...
+                    </div>
+                  </div>
+                </Show>
                 <ChatMessageArea messages={props.messages} description={props.threadSystemPrompt} />
               </Show>
             </div>
