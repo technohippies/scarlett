@@ -22,7 +22,7 @@ import { useSettings } from '../../context/SettingsContext';
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
 
 // Pagination constants for testing
-const INITIAL_MESSAGES_LIMIT = 10; // Load only last 10 messages initially
+const INITIAL_MESSAGES_LIMIT = 20; // Load only last 10 messages initially
 
 // Default AI seed messages for initial threads (not stored in DB system_prompt)
 const defaultIntroPrompt = "I'm Scarlett, your friendly AI language companion. I'd love to get to know you a bit! Tell me about yourself - what are your interests, what languages are you learning, or anything else you'd like to share?";
