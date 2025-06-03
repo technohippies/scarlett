@@ -17,7 +17,7 @@ import { enhanceMessageWithThinking, parseThinkingContent } from './utils';
 import { trackMilestone } from '../../utils/analytics';
 import { isPersonalityEmbedded } from '../../services/llm/personalityService';
 import { useSettings } from '../../context/SettingsContext';
-import { getChatSeedContent, getAdaptiveChatSeedContent, type AdaptiveSeedingContext } from '../../services/chat/seedingService';
+import { getAdaptiveChatSeedContent, type AdaptiveSeedingContext } from '../../services/chat/seedingService';
 
 // RPC client for background storage
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();

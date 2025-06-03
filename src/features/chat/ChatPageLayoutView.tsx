@@ -5,12 +5,12 @@ import { ChatSidebar } from './ChatSidebar';
 import { ChatMessageArea } from './ChatMessageArea';
 import { TextInputControls } from './TextInputControls';
 import { SpeechInputControls } from './SpeechInputControls';
-import { MicVisualizer } from '../../components/ui/MicVisualizer';
+// import { MicVisualizer } from '../../components/ui/MicVisualizer';
 import { SpeechVisualizer } from '../../components/ui/SpeechVisualizer';
 import type { Thread, ChatMessage } from './types';
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import type { BackgroundProtocolMap } from '../../shared/messaging-types';
-import { EmbeddingProcessingPanel } from '../embedding/EmbeddingProcessingPanel';
+// import { EmbeddingProcessingPanel } from '../embedding/EmbeddingProcessingPanel';
 import { getEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
 import { useSettings } from '../../context/SettingsContext';
 import type { Messages } from '../../types/i18n';
@@ -47,7 +47,7 @@ export interface ChatPageLayoutViewProps {
   i18nMessages?: Messages;
 }
 
-const MESSAGES_PER_PAGE = 50;
+// const MESSAGES_PER_PAGE = 50;
 const SCROLL_THRESHOLD = 100; // px from top to trigger loading older messages
 
 export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {

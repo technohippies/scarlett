@@ -1,8 +1,8 @@
 import { getDbInstance } from '../db/init';
 import type { DueLearningItem } from './types';
 import { FSRS, Card, Grade, State, generatorParameters, RecordLogItem } from 'ts-fsrs';
-import { getOrInitDailyStudyStats, incrementNewItemsStudiedToday } from '../db/study_session';
-import { recordStudyActivityToday } from '../db/streaks';
+// import { getOrInitDailyStudyStats, incrementNewItemsStudiedToday } from '../db/study_session';
+// import { recordStudyActivityToday } from '../db/streaks';
 import { trackMilestone } from '../../utils/analytics';
 
 // Create a single FSRS instance (can be reused)

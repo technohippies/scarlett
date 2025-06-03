@@ -430,12 +430,20 @@ export default defineContentScript({
                 if (word.translatedText) {
                     translatedTextMap.set(word.translatedText.toLowerCase(), word);
                 }
+                console.log(`[Scarlett CS Debug] Learning word: "${word.sourceText}" (${word.sourceLang}) -> "${word.translatedText}" (${word.targetLang})`);
             });
 
             console.log('[Scarlett CS] Starting highlight. Source map size:', sourceTextMap.size, 'Translated map size:', translatedTextMap.size);
+            console.log('[Scarlett CS Debug] Source words:', Array.from(sourceTextMap.keys()));
+            console.log('[Scarlett CS Debug] Translated words:', Array.from(translatedTextMap.keys()));
 
             const targetElement = getHighlightTargetElement();
             console.log('[Scarlett CS Highlight] Using target element:', targetElement.tagName + (targetElement.id ? `#${targetElement.id}` : '') + (targetElement.className ? `.${targetElement.className.split(' ').join('.')}`: ''));
+            
+            // Log first 500 characters of target element text content for debugging
+            const elementText = targetElement.textContent || '';
+            console.log(`[Scarlett CS Debug] Target element text sample (first 500 chars): "${elementText.substring(0, 500)}"`);
+            console.log(`[Scarlett CS Debug] Target element total text length: ${elementText.length}`);
 
             const walker = document.createTreeWalker(
                 targetElement,
@@ -453,14 +461,20 @@ export default defineContentScript({
             );
 
             const replacementsToMake: ReplacementInfo[] = [];
-            const wordRegex = /(\b[a-zA-Z'-]+(?:\s+[a-zA-Z'-]+)*\b)|([\u4e00-\u9fff]+)|([^\s\w]+)/g; // More robust regex for words and CJK characters + punctuation
+            const wordRegex = /([a-zA-ZÀ-ỿ'-]+(?:\s+[a-zA-ZÀ-ỿ'-]+)*)|(\b[a-zA-Z'-]+(?:\s+[a-zA-Z'-]+)*\b)|([\u4e00-\u9fff]+)|([^\s\w]+)/g; // Updated to handle Vietnamese diacritics
 
+            let textNodeCount = 0;
+            let totalTextLength = 0;
+            let wordsAnalyzed = 0;
 
             // --- Pass 1: Collect replacements ---
             let currentNode: Node | null;
             while (currentNode = walker.nextNode()) {
                 const textNode = currentNode as Text;
                 const textContent = textNode.nodeValue || '';
+                textNodeCount++;
+                totalTextLength += textContent.length;
+                
                 let match;
 
                  // Reset regex lastIndex for each new node
@@ -471,6 +485,8 @@ export default defineContentScript({
                     const start = match.index;
                     const end = start + part.length;
                     const lowerCasePart = part.toLowerCase();
+                    
+                    wordsAnalyzed++;
 
                     let wordInfo: LearningWordData | undefined;
                     let foundAs: 'source' | 'translated' | null = null;
@@ -478,9 +494,11 @@ export default defineContentScript({
                     if (sourceTextMap.has(lowerCasePart)) {
                         wordInfo = sourceTextMap.get(lowerCasePart);
                         foundAs = 'source';
+                        console.log(`[Scarlett CS Debug] MATCH FOUND! Source word "${part}" matches learning word "${wordInfo?.sourceText}"`);
                     } else if (translatedTextMap.has(lowerCasePart)) { // Also check for translated words if needed
                         wordInfo = translatedTextMap.get(lowerCasePart);
                         foundAs = 'translated';
+                        console.log(`[Scarlett CS Debug] MATCH FOUND! Translated word "${part}" matches learning word "${wordInfo?.translatedText}"`);
                     }
 
                     if (wordInfo && foundAs) {
@@ -495,6 +513,12 @@ export default defineContentScript({
                     }
                 }
             }
+
+            console.log(`[Scarlett CS Debug] Text analysis complete:`);
+            console.log(`[Scarlett CS Debug] - Text nodes processed: ${textNodeCount}`);
+            console.log(`[Scarlett CS Debug] - Total text length: ${totalTextLength}`);
+            console.log(`[Scarlett CS Debug] - Words/tokens analyzed: ${wordsAnalyzed}`);
+            console.log(`[Scarlett CS Debug] - Sample words from page: ${elementText.split(/\s+/).slice(0, 20).join(', ')}`);
 
             // --- Pass 2: Apply replacements in reverse ---
             console.log(`[Scarlett CS Highlight] Found ${replacementsToMake.length} potential highlight locations.`);
@@ -551,6 +575,7 @@ export default defineContentScript({
                         span.dataset.sourceLang = wordInfo.sourceLang;
                         span.dataset.targetLang = wordInfo.targetLang;
                         span.dataset.originalWord = wordInfo.sourceText; // The 'dictionary' word
+                        console.log(`[Scarlett CS Debug] Applied source word replacement: "${originalPart}" -> "${wordInfo.translatedText}"`);
                     } else { // foundAs === 'translated'
                         // Found target word (e.g., "茶"), display source (e.g., "tea")
                         span.textContent = wordInfo.sourceText;
@@ -558,6 +583,7 @@ export default defineContentScript({
                         span.dataset.sourceLang = wordInfo.sourceLang;
                         span.dataset.targetLang = wordInfo.targetLang;
                         span.dataset.originalWord = wordInfo.translatedText || ''; // The 'dictionary' word (which was the target lang)
+                        console.log(`[Scarlett CS Debug] Applied translated word replacement: "${originalPart}" -> "${wordInfo.sourceText}"`);
                     }
 
                     // Add event listeners directly here if needed, or rely on delegation
@@ -599,6 +625,10 @@ export default defineContentScript({
                 const userConfig: UserConfiguration | null = await userConfigurationStorage.getValue();
                 const sourceLanguage = userConfig?.nativeLanguage;
                 const targetLanguage = userConfig?.targetLanguage;
+
+                console.log(`[Scarlett CS Debug] User configuration: nativeLanguage="${sourceLanguage}", targetLanguage="${targetLanguage}"`);
+                console.log(`[Scarlett CS Debug] Current page URL: ${window.location.href}`);
+                console.log(`[Scarlett CS Debug] Current page language (if detected): ${document.documentElement.lang || 'not set'}`);
 
                 if (!sourceLanguage || !targetLanguage) {
                     console.warn('[Scarlett CS] Native or target language not set in config. Skipping learning word highlighting.');

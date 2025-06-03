@@ -24,7 +24,7 @@ export const ChatMessageArea: Component<ChatMessageAreaProps> = (props) => {
   createEffect(() => {
     console.log('[ChatMessageArea] description prop:', props.description);
   });
-  const [state, actions] = useChat();
+  const [, actions] = useChat();
 
   // Removed conflicting scroll logic - parent handles scrolling
 

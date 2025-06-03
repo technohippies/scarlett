@@ -1,6 +1,21 @@
-import { Component, createContext, useContext, createSignal, onMount } from 'solid-js';
+import { createContext, useContext, createSignal, onMount, ParentComponent } from 'solid-js';
 import { ethers } from 'ethers';
-import { authService, AuthResult } from '../services/AuthService';
+// import { authService, AuthResult } from '../services/AuthService'; // TODO: AuthService not implemented yet
+
+// TODO: Temporary mock for AuthService
+const authService = {
+  initialize: async () => {},
+  isConnected: () => false,
+  getUserAddress: () => null,
+  getSigner: () => null,
+  connectWithSelector: async () => ({ success: false }),
+  disconnect: () => {}
+};
+
+interface AuthResult {
+  success: boolean;
+  address?: string;
+}
 
 export interface WalletContextValue {
   isConnected: boolean;
@@ -12,7 +27,7 @@ export interface WalletContextValue {
 
 const WalletContext = createContext<WalletContextValue>(null!);
 
-export const WalletProvider: Component = (props) => {
+export const WalletProvider: ParentComponent = (props) => {
   const [isConnected, setIsConnected] = createSignal(false);
   const [address, setAddress] = createSignal<string | null>(null);
   const [signer, setSigner] = createSignal<ethers.Signer | null>(null);

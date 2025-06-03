@@ -1,4 +1,4 @@
-import { Component, createSignal, onMount, Show, Switch, Match } from 'solid-js';
+import { Component, Show, Switch, Match } from 'solid-js';
 import { Callout, CalloutContent } from '../../components/ui/callout';
 import { CodeBlock } from '../../components/ui/CodeBlock';
 import { Label } from '../../components/ui/label';
@@ -58,20 +58,20 @@ const getLocalizedString = (messages: Messages | undefined, key: string, fallbac
 };
 
 // === OS Detection Logic ===
-type OS = 'linux' | 'macos' | 'windows' | 'unknown';
+// type OS = 'linux' | 'macos' | 'windows' | 'unknown';
 
-const detectOS = (): OS => {
-  if (typeof navigator === 'undefined') return 'unknown';
-  
-  const userAgent = navigator.userAgent.toLowerCase();
-  const platform = navigator.platform?.toLowerCase() || '';
-  
-  if (userAgent.includes('mac') || platform.includes('mac')) return 'macos';
-  if (userAgent.includes('win') || platform.includes('win')) return 'windows';
-  if (userAgent.includes('linux') || platform.includes('linux')) return 'linux';
-  
-  return 'unknown';
-};
+// const detectOS = (): OS => {
+//   if (typeof navigator === 'undefined') return 'unknown';
+//   
+//   const userAgent = navigator.userAgent.toLowerCase();
+//   const platform = navigator.platform?.toLowerCase() || '';
+//   
+//   if (userAgent.includes('mac') || platform.includes('mac')) return 'macos';
+//   if (userAgent.includes('win') || platform.includes('win')) return 'windows';
+//   if (userAgent.includes('linux') || platform.includes('linux')) return 'linux';
+//   
+//   return 'unknown';
+// };
 
 // --- Ollama CORS Instructions Component (Remove this internal definition) ---
 // interface OllamaCorsInstructionsProps {

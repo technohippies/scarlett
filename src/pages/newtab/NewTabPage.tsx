@@ -8,7 +8,7 @@ import type { Messages } from '../../types/i18n'; // Import Messages type
 import { useSettings } from '../../context/SettingsContext'; // <-- Import useSettings
 import { type Mood } from '../../features/mood/MoodSelector';
 import { addMoodEntry } from '../../services/db/mood';
-import { getEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
+// import { getEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
 
 const messaging = defineExtensionMessaging<BackgroundProtocolMap>();
 
@@ -80,12 +80,12 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
     }
   };
 
-  const i18n = () => {
-    const msgs = props.messages;
-    return {
-      get: (key: string, fallback: string) => msgs?.[key]?.message || fallback,
-    };
-  };
+  // const i18n = () => {
+  //   const msgs = props.messages;
+  //   return {
+  //     get: (key: string, fallback: string) => msgs?.[key]?.message || fallback,
+  //   };
+  // };
 
   const [summaryData] = createResource<StudySummary | null>(async () => {
     console.log('[NewTabPage] Fetching study summary...');
@@ -103,17 +103,17 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
     }
   }, { initialValue: { dueCount: 0, reviewCount: 0, newCount: 0 } });
 
-  const [embeddingCountData, { refetch: refetchEmbeddingCount }] = createResource<{ count: number }>(async () => {
-    console.log('[NewTabPage] Fetching pending embedding count...');
-    try {
-      const result = await messaging.sendMessage('getPendingEmbeddingCount', undefined);
-      console.log('[NewTabPage] Received pending count:', result);
-      return result || { count: 0 };
-    } catch (error) {
-      console.error('[NewTabPage] Error fetching pending embedding count:', error);
-      return { count: 0 };
-    }
-  }, { initialValue: { count: 0 } });
+  // const [embeddingCountData, { refetch: refetchEmbeddingCount }] = createResource<{ count: number }>(async () => {
+  //   console.log('[NewTabPage] Fetching pending embedding count...');
+  //   try {
+  //     const result = await messaging.sendMessage('getPendingEmbeddingCount', undefined);
+  //     console.log('[NewTabPage] Received pending count:', result);
+  //     return result || { count: 0 };
+  //   } catch (error) {
+  //     console.error('[NewTabPage] Error fetching pending embedding count:', error);
+  //     return { count: 0 };
+  //   }
+  // }, { initialValue: { count: 0 } });
 
   const [streakData] = createResource<GetStudyStreakDataResponse>(async () => {
     console.log('[NewTabPage] Fetching study streak data...');
@@ -140,71 +140,71 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
     }
   }, { initialValue: { newItemsStudiedToday: 0, lastResetDate: '', success: true } });
 
-  const [isEmbedding, setIsEmbedding] = createSignal(false);
-  const [embedStatusMessage, setEmbedStatusMessage] = createSignal<string | null>(null);
-  const [processedCount, setProcessedCount] = createSignal(0);
-  const [totalCount, setTotalCount] = createSignal(0);
+  // const [isEmbedding, setIsEmbedding] = createSignal(false);
+  // const [embedStatusMessage, setEmbedStatusMessage] = createSignal<string | null>(null);
+  // const [processedCount, setProcessedCount] = createSignal(0);
+  // const [totalCount, setTotalCount] = createSignal(0);
 
-  const handleEmbedClick = async () => {
-    console.log('[NewTabPage] handleEmbedClick triggered.');
-    setIsEmbedding(true);
-    setEmbedStatusMessage(i18n().get('newTabPageEmbeddingStarting', 'Starting embedding process...'));
-    try {
-      // Fetch items (pages + bookmarks) needing embedding
-      const res = await messaging.sendMessage('getItemsNeedingEmbedding', undefined);
-      const items = res.items ?? [];
-      const total = items.length;
-      setTotalCount(total);
-      setProcessedCount(0);
-      // Ensure in-browser embedding config is available
-      const embedCfg = settings.config.embeddingConfig;
-      if (!embedCfg) {
-        console.error('[NewTabPage] Embedding configuration is missing.');
-        setEmbedStatusMessage(i18n().get('newTabPageEmbeddingConfigMissing', 'Embedding not configured.'));
-        setIsEmbedding(false);
-        return;
-      }
-      for (const [idx, item] of items.entries()) {
-        const current = idx + 1;
-        setProcessedCount(current);
-        const itemType = item.type === 'page' ? 'page' : 'bookmark';
-        setEmbedStatusMessage(
-          i18n().get('newTabPageEmbeddingProgress', 'Embedding {current} of {total}...')
-            .replace('{current}', current.toString())
-            .replace('{total}', total.toString())
-        );
-        try {
-          const embeddingResult: EmbeddingResult | null = await getEmbedding(
-            item.content,
-            embedCfg
-          );
-          if (embeddingResult) {
-            await messaging.sendMessage('finalizeItemEmbedding', {
-              type: item.type,
-              id: item.id,
-              embeddingInfo: embeddingResult
-            });
-            console.log(`[NewTabPage] Successfully embedded ${itemType} ${item.id}`);
-          } else {
-            console.error(`[NewTabPage] Embedding returned null for ${itemType}:`, item.id);
-          }
-        } catch (e) {
-          console.error(`[NewTabPage] Error during embedding for ${itemType}:`, item.id, e);
-        }
-      }
-      setEmbedStatusMessage(i18n().get('newTabPageEmbeddingComplete', 'Embedding complete.'));
-      refetchEmbeddingCount();
-    } catch (err: any) {
-      console.error('[NewTabPage] Error in embedding pipeline:', err);
-      setEmbedStatusMessage(
-        `${i18n().get('newTabPageEmbeddingErrorPrefix', 'Error:')} ${err.message || err}`
-      );
-    } finally {
-      setIsEmbedding(false);
-      // Clear status after delay
-      setTimeout(() => setEmbedStatusMessage(null), 5000);
-    }
-  };
+  // const handleEmbedClick = async () => {
+  //   console.log('[NewTabPage] handleEmbedClick triggered.');
+  //   setIsEmbedding(true);
+  //   setEmbedStatusMessage(i18n().get('newTabPageEmbeddingStarting', 'Starting embedding process...'));
+  //   try {
+  //     // Fetch items (pages + bookmarks) needing embedding
+  //     const res = await messaging.sendMessage('getItemsNeedingEmbedding', undefined);
+  //     const items = res.items ?? [];
+  //     const total = items.length;
+  //     setTotalCount(total);
+  //     setProcessedCount(0);
+  //     // Ensure in-browser embedding config is available
+  //     const embedCfg = settings.config.embeddingConfig;
+  //     if (!embedCfg) {
+  //       console.error('[NewTabPage] Embedding configuration is missing.');
+  //       setEmbedStatusMessage(i18n().get('newTabPageEmbeddingConfigMissing', 'Embedding not configured.'));
+  //       setIsEmbedding(false);
+  //       return;
+  //     }
+  //     for (const [idx, item] of items.entries()) {
+  //       const current = idx + 1;
+  //       setProcessedCount(current);
+  //       const itemType = item.type === 'page' ? 'page' : 'bookmark';
+  //       setEmbedStatusMessage(
+  //         i18n().get('newTabPageEmbeddingProgress', 'Embedding {current} of {total}...')
+  //           .replace('{current}', current.toString())
+  //           .replace('{total}', total.toString())
+  //       );
+  //       try {
+  //         const embeddingResult: EmbeddingResult | null = await getEmbedding(
+  //           item.content,
+  //           embedCfg
+  //         );
+  //         if (embeddingResult) {
+  //           await messaging.sendMessage('finalizeItemEmbedding', {
+  //             type: item.type,
+  //             id: item.id,
+  //             embeddingInfo: embeddingResult
+  //           });
+  //           console.log(`[NewTabPage] Successfully embedded ${itemType} ${item.id}`);
+  //         } else {
+  //           console.error(`[NewTabPage] Embedding returned null for ${itemType}:`, item.id);
+  //         }
+  //       } catch (e) {
+  //         console.error(`[NewTabPage] Error during embedding for ${itemType}:`, item.id, e);
+  //       }
+  //     }
+  //     setEmbedStatusMessage(i18n().get('newTabPageEmbeddingComplete', 'Embedding complete.'));
+  //     // refetchEmbeddingCount();
+  //   } catch (err: any) {
+  //     console.error('[NewTabPage] Error in embedding pipeline:', err);
+  //     setEmbedStatusMessage(
+  //       `${i18n().get('newTabPageEmbeddingErrorPrefix', 'Error:')} ${err.message || err}`
+  //     );
+  //   } finally {
+  //     setIsEmbedding(false);
+  //     // Clear status after delay
+  //     setTimeout(() => setEmbedStatusMessage(null), 5000);
+  //   }
+  // };
 
   // --- Focus Mode --- 
   const isFocusModeActive = () => settings.config.enableFocusMode ?? false;
@@ -237,14 +237,8 @@ const NewTabPage: Component<NewTabPageProps> = (props) => {
     <NewTabPageView
       summary={summaryData}
       summaryLoading={() => summaryData.loading || props.messagesLoading}
-      pendingEmbeddingCount={() => embeddingCountData()?.count || 0}
-      isEmbedding={isEmbedding}
-      embedStatusMessage={embedStatusMessage}
-      processedCount={processedCount}
-      totalCount={totalCount}
       currentStreak={createMemo(() => streakData()?.currentStreak)}
       streakLoading={createMemo(() => streakData.loading)}
-      onEmbedClick={handleEmbedClick}
       onNavigateToBookmarks={props.onNavigateToBookmarks}
       onNavigateToStudy={props.onNavigateToStudy}
       onNavigateToSettings={props.onNavigateToSettings}

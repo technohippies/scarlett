@@ -876,6 +876,12 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         try {
             const words = await getActiveLearningWordsFromDb(sourceLanguage, targetLanguage);
             console.log(`[Message Handlers] REQUEST_ACTIVE_LEARNING_WORDS: Found ${words.length} words.`);
+            
+            // Log detailed information about each word for debugging
+            words.forEach((word, index) => {
+                console.log(`[Message Handlers Debug] Word ${index + 1}: "${word.sourceText}" (${word.sourceLang}) -> "${word.translatedText}" (${word.targetLang})`);
+            });
+            
             return { success: true, words: words };
         } catch (error: any) {
             console.error('[Message Handlers] Error fetching active learning words:', error);
@@ -1174,7 +1180,7 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
     });
 
     // --- PERSONALITY PROGRESS HANDLER ---
-    messaging.onMessage('getPersonalityProgress', async (message) => {
+    messaging.onMessage('getPersonalityProgress', async (_message) => {
         try {
             const db = await getDbInstance();
             
@@ -1230,7 +1236,7 @@ export function registerMessageHandlers(messaging: ReturnType<typeof defineExten
         }
     });
 
-    messaging.onMessage('requestHistoryPermission', async (message) => {
+    messaging.onMessage('requestHistoryPermission', async (_message) => {
         try {
             console.log('[Background] Requesting history permission...');
             const granted: boolean = await requestHistoryPermissionHandler();

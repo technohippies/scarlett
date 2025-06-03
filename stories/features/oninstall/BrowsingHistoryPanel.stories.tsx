@@ -1,4 +1,4 @@
-import { createSignal, Accessor, Setter, Component } from 'solid-js';
+import { Component } from 'solid-js';
 import BrowsingHistoryPanel, { type CategoryData, type DomainInfo } from '../../../src/features/oninstall/BrowsingHistoryPanel';
 import { action } from '@storybook/addon-actions';
 

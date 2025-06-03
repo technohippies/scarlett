@@ -1,4 +1,4 @@
-import { Component, JSX } from 'solid-js';
+import { Component } from 'solid-js';
 import SubscriptionPlanPanel, { SubscriptionPlan } from './SubscriptionPlanPanel';
 
 export interface ProSubscriptionPanelProps {
@@ -51,8 +51,13 @@ const ProSubscriptionPanel: Component<ProSubscriptionPanelProps> = (props) => {
       )}
       {/* Plan selector */}
       <SubscriptionPlanPanel
-        selectedPlan={() => props.selectedPlan}
+        selectedPlan={props.selectedPlan}
         onSelectPlan={props.onSelectPlan}
+        isConnected={props.isConnected}
+        onConnect={props.onConnect}
+        onSubscribe={props.onSubscribe}
+        isSubscribing={props.isSubscribing}
+        isSubscribed={props.isSubscribed}
       />
       {/* Action button for hosted plan */}
       {props.selectedPlan === 'hosted' && (

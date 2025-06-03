@@ -1,4 +1,4 @@
-import { Component, createSignal, Match, Switch, createResource, createEffect, Show, JSX } from 'solid-js';
+import { Component, createSignal, Match, Switch, createResource, Show, JSX } from 'solid-js';
 import NewTabPage from '../../src/pages/newtab/NewTabPage';
 import BookmarksPage from '../../src/pages/bookmarks/BookmarksPage';
 import StudyPage from '../../src/pages/study/StudyPage';

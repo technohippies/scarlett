@@ -1,6 +1,6 @@
 import { getDbInstance } from '../db/init';
 import { getEmbedding } from './embedding';
-import type { UserConfiguration, FunctionConfig } from '../storage/types';
+// import type { UserConfiguration, FunctionConfig } from '../storage/types';
 import { userConfigurationStorage } from '../storage/storage';
 
 // Model context window configurations

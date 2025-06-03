@@ -5,7 +5,6 @@ import type { UserConfiguration, FunctionConfig, RedirectSettings, RedirectServi
 import type { ProviderOption } from '../features/models/ProviderSelectionPanel'; // Use types from panels where appropriate
 import type { ModelOption } from '../features/models/ModelSelectionPanel'; // Need ModelOption too
 import { getAllBlockedDomains } from '../services/db/domains'; // <-- IMPORT DB FUNCTION
-import { browser } from 'wxt/browser';
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import type { BackgroundProtocolMap } from '../shared/messaging-types';
 
