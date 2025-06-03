@@ -55,14 +55,14 @@ create_zip_files() {
     print_color $BLUE "Creating Firefox zip file..."
     npm run zip:firefox
     
-    # Rename zip files to include version
-    if [ -f ".output/chrome-mv3.zip" ]; then
-        mv ".output/chrome-mv3.zip" ".output/scarlett-chrome-v${version}.zip"
+    # Rename zip files to include version (WXT creates files with package name)
+    if [ -f ".output/scarlett-supercoach-${version}-chrome.zip" ]; then
+        mv ".output/scarlett-supercoach-${version}-chrome.zip" ".output/scarlett-chrome-v${version}.zip"
         print_color $GREEN "Created: .output/scarlett-chrome-v${version}.zip"
     fi
     
-    if [ -f ".output/firefox-mv2.zip" ]; then
-        mv ".output/firefox-mv2.zip" ".output/scarlett-firefox-v${version}.zip"
+    if [ -f ".output/scarlett-supercoach-${version}-firefox.zip" ]; then
+        mv ".output/scarlett-supercoach-${version}-firefox.zip" ".output/scarlett-firefox-v${version}.zip"
         print_color $GREEN "Created: .output/scarlett-firefox-v${version}.zip"
     fi
 }
