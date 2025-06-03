@@ -4,23 +4,41 @@ The chat seeding service provides language-aware onboarding content for specific
 
 ## Supported Learning Scenarios
 
-We focus on 4 specific learning directions:
+We focus on 4 distinct learning scenarios:
 
-### 1. **English → Chinese/Japanese Learning**
-- Interface Language: English
-- Target Language: Chinese (`zh`) or Japanese (`ja`)
+### 1. **English → Chinese Learning**
+- Interface Language: English (`en`)
+- Target Language: Chinese (`zh`)
 - **Threads Created:**
   - **Mandarin Learning Goals**: Personal introduction with mixed English/Chinese
-  - **Roleplay: Flying to Thailand**: Airport roleplay scenario (includes `systemPrompt` for LLM behavior)
+  - **Roleplay: Flying to Thailand**: Airport roleplay from Shanghai (includes `systemPrompt`)
   - **Understanding Crypto**: Educational conversation about cryptocurrency
   - **dVPN and Handshake Domains**: Tech education about privacy tools
 
-### 2. **Chinese/Vietnamese → English Learning**
-- Interface Language: Chinese (`zh`) or Vietnamese (`vi`)
+### 2. **English → Japanese Learning**
+- Interface Language: English (`en`)
+- Target Language: Japanese (`ja`)
+- **Threads Created:**
+  - **Japanese Learning Goals**: Personal introduction with mixed English/Japanese
+  - **Roleplay: Flying to Thailand**: Airport roleplay from Tokyo Narita (includes `systemPrompt`)
+  - **Understanding Crypto**: Educational conversation about cryptocurrency
+  - **dVPN and Handshake Domains**: Tech education about privacy tools
+
+### 3. **Chinese → English Learning**
+- Interface Language: Chinese (`zh`)
 - Target Language: English (`en`)
 - **Threads Created:**
   - **English Learning Goals**: Focused on English practice and improvement
-  - **Roleplay: Flying to Thailand**: Same airport scenario, adapted for English learners
+  - **Roleplay: Flying to Thailand**: Airport roleplay from Shanghai (includes `systemPrompt`)
+  - **Understanding Crypto**: Crypto education delivered in English for practice
+  - **dVPN and Handshake Domains**: Privacy tech explanation for English practice
+
+### 4. **Vietnamese → English Learning**
+- Interface Language: Vietnamese (`vi`)
+- Target Language: English (`en`)
+- **Threads Created:**
+  - **English Learning Goals**: Focused on English practice and improvement
+  - **Roleplay: Flying to Thailand**: Airport roleplay from Ho Chi Minh City (includes `systemPrompt`)
   - **Understanding Crypto**: Crypto education delivered in English for practice
   - **dVPN and Handshake Domains**: Privacy tech explanation for English practice
 
@@ -49,15 +67,17 @@ const context = {
 };
 
 const seedContent = getAdaptiveChatSeedContent(context);
-// Returns enLearningAsian content with 4 specialized threads
+// Returns enLearningChinese content with 4 specialized threads
 ```
 
 ## Adding Content
 
 To modify seeded conversations, edit the `SPECIFIC_LEARNING_SEEDS` object:
 
-- `enLearningAsian`: For English speakers learning Chinese/Japanese
-- `asianLearningEn`: For Chinese/Vietnamese speakers learning English
+- `enLearningChinese`: For English speakers learning Chinese
+- `enLearningJapanese`: For English speakers learning Japanese  
+- `chineseLearningEnglish`: For Chinese speakers learning English
+- `vietnameseLearningEnglish`: For Vietnamese speakers learning English
 
 Each thread needs:
 - `id`: Unique identifier

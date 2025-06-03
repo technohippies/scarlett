@@ -28,33 +28,7 @@ import ConnectionTestPanel from "../../features/models/ConnectionTestPanel";
 import { TtsProviderPanel, type TtsProviderOption } from "../../features/models/TtsProviderPanel";
 import { VadPanel, type VadOption } from "../../features/models/VadPanel";
 import { Header } from '../../components/layout/Header';
-
-// Menu Items
-const settingsMenuItems = [
-  { title: "LLM", url: "/settings/models/llm", icon: Brain, sectionKey: 'llm' },
-  { title: "TTS", url: "/settings/models/tts", icon: SpeakerHigh, sectionKey: 'tts' },
-  { title: "STT & VAD", url: "/settings/models/vad", icon: Microphone, sectionKey: 'vad' },
-];
-
-const censorshipMenuItems = [
-  { title: "Redirects", url: "/settings/redirects", icon: TrendUp, sectionKey: 'redirects' }
-];
-
-const productivityMenuItems = [
-  { title: "Focus Mode", url: "/settings/focus", icon: EyeSlash, sectionKey: 'focusmode' }
-];
-
-// --- Type Definitions for Transient State (Assuming structure from getTransientState) ---
-// Could also be imported from context if exported
-interface TransientStateAccessors {
-  localModels: Accessor<ModelOption[]>;
-  remoteModels: Accessor<ModelOption[]>;
-  fetchStatus: Accessor<FetchStatus>;
-  fetchError: Accessor<Error | null>;
-  testStatus: Accessor<TestStatus>;
-  testError: Accessor<Error | null>;
-  showSpinner: Accessor<boolean>;
-}
+import type { Messages } from '../../types/i18n';
 
 // --- Define Props Interface --- 
 interface SettingsPageViewProps {
@@ -117,11 +91,45 @@ interface SettingsPageViewProps {
   transcribedText: Accessor<string | null>;
   isTranscribing: Accessor<boolean>;
   sttError: Accessor<Error | null>;
+
+  // Localization
+  messages?: Messages;
 }
 
+// --- Type Definitions for Transient State (Assuming structure from getTransientState) ---
+// Could also be imported from context if exported
+interface TransientStateAccessors {
+  localModels: Accessor<ModelOption[]>;
+  remoteModels: Accessor<ModelOption[]>;
+  fetchStatus: Accessor<FetchStatus>;
+  fetchError: Accessor<Error | null>;
+  testStatus: Accessor<TestStatus>;
+  testError: Accessor<Error | null>;
+  showSpinner: Accessor<boolean>;
+}
 
 // --- SettingsPageView Component (Now Presentational) --- 
 const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
+  // Localization helper
+  const getLocalizedString = (key: string, fallback: string) => {
+    return props.messages?.[key]?.message || fallback;
+  };
+
+  // Menu Items with localized titles
+  const settingsMenuItems = [
+    { title: getLocalizedString('settingsPageMenuLLM', 'LLM'), url: "/settings/models/llm", icon: Brain, sectionKey: 'llm' },
+    { title: getLocalizedString('settingsPageMenuTTS', 'TTS'), url: "/settings/models/tts", icon: SpeakerHigh, sectionKey: 'tts' },
+    { title: getLocalizedString('settingsPageMenuSTTVAD', 'STT & VAD'), url: "/settings/models/vad", icon: Microphone, sectionKey: 'vad' },
+  ];
+
+  const censorshipMenuItems = [
+    { title: getLocalizedString('settingsPageMenuRedirects', 'Redirects'), url: "/settings/redirects", icon: TrendUp, sectionKey: 'redirects' }
+  ];
+
+  const productivityMenuItems = [
+    { title: getLocalizedString('settingsPageMenuFocusMode', 'Focus Mode'), url: "/settings/focus", icon: EyeSlash, sectionKey: 'focusmode' }
+  ];
+
   // --- Debug Log --- 
   console.log('[SettingsPageView] Received props.activeSection:', props.activeSection);
   console.log('[SettingsPageView] typeof props.activeSection:', typeof props.activeSection);
@@ -140,7 +148,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
               <Sidebar collapsible="icon" variant="sidebar">
                   <SidebarContent class="pt-24">
                       <SidebarGroup>
-                          <SidebarGroupLabel>MODELS</SidebarGroupLabel>
+                          <SidebarGroupLabel>{getLocalizedString('settingsPageSectionModels', 'MODELS')}</SidebarGroupLabel>
                           <SidebarGroupContent>
                               <SidebarMenu>
                                   <For each={settingsMenuItems}>
@@ -163,7 +171,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                       </SidebarGroup>
                       
                       <SidebarGroup>
-                          <SidebarGroupLabel>CENSORSHIP</SidebarGroupLabel>
+                          <SidebarGroupLabel>{getLocalizedString('settingsPageSectionCensorship', 'CENSORSHIP')}</SidebarGroupLabel>
                           <SidebarGroupContent>
                               <SidebarMenu>
                                   <For each={censorshipMenuItems}>
@@ -187,7 +195,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
 
                       {/* New Productivity Group */}
                       <SidebarGroup>
-                          <SidebarGroupLabel>PRODUCTIVITY</SidebarGroupLabel>
+                          <SidebarGroupLabel>{getLocalizedString('settingsPageSectionProductivity', 'PRODUCTIVITY')}</SidebarGroupLabel>
                           <SidebarGroupContent>
                               <SidebarMenu>
                                   <For each={productivityMenuItems}>
@@ -215,13 +223,13 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
               <main class="flex-1 p-6 overflow-y-auto"> {/* Allows main content to scroll */} 
                   <Show when={props.loadStatus() === 'pending'}>
                       <div class="flex items-center justify-center h-full">
-                          <p class="text-muted-foreground">Loading settings...</p>
+                          <p class="text-muted-foreground">{getLocalizedString('settingsPageLoadingSettings', 'Loading settings...')}</p>
                       </div>
                   </Show>
 
                   <Show when={props.loadStatus() === 'errored'}>
                       <div class="flex items-center justify-center h-full">
-                          <p class="text-destructive">Error loading settings.</p>
+                          <p class="text-destructive">{getLocalizedString('settingsPageErrorLoadingSettings', 'Error loading settings.')}</p>
                       </div>
                   </Show>
 
@@ -245,6 +253,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                             remoteModels={props.llmTransientState.remoteModels}
                             selectedModelId={() => props.config.llmConfig?.modelId}
                             onSelectModel={props.onLlmSelectModel}
+                            messages={props.messages}
                           />
                           <Show when={props.llmTransientState.fetchStatus() === 'success' && props.config.llmConfig?.modelId}>
                             <ConnectionTestPanel
@@ -252,6 +261,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                               testError={props.llmTransientState.testError}
                               functionName="LLM"
                               selectedProvider={() => props.llmProviderOptions.find(p => p.id === props.config.llmConfig?.providerId)}
+                              messages={props.messages}
                             />
                             <div class="flex space-x-4 mt-6">
                               <Button 
@@ -283,13 +293,14 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                         testAudioData={props.ttsTestAudioData}
                         onPlayTestAudio={props.onTtsPlayAudio}
                         testError={props.ttsTestError}
+                        messages={props.messages}
                       />
                     </Show>
 
                     {/* --- VAD Section --- */}
                     <Show when={props.activeSection() === 'vad'}>
                       <div class="space-y-4">
-                        <h2 class="text-xl font-semibold text-foreground">Speech to Text & Voice Activity Detection</h2>
+                        <h2 class="text-xl font-semibold text-foreground">{getLocalizedString('settingsPageVADSectionTitle', 'Speech to Text & Voice Activity Detection')}</h2>
                         <VadPanel
                           availableVadOptions={props.availableVadOptions}
                           selectedVadId={props.selectedVadId}
@@ -307,6 +318,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
                           transcribedText={props.transcribedText}
                           isTranscribing={props.isTranscribing}
                           sttError={props.sttError}
+                          messages={props.messages}
                         />
                       </div>
                     </Show>
@@ -340,7 +352,7 @@ const SettingsPageView: Component<SettingsPageViewProps> = (props) => {
 
                     {/* --- Default / No Selection --- */} 
                     <Show when={props.activeSection() === null && props.loadStatus() === 'ready'}>
-                       <p class="text-muted-foreground mt-2">Select a category from the sidebar to configure.</p>
+                       <p class="text-muted-foreground mt-2">{getLocalizedString('settingsPageSelectCategory', 'Select a category from the sidebar to configure.')}</p>
                     </Show>
                   </Show> 
               </main>

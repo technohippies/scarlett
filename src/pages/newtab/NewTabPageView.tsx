@@ -107,7 +107,7 @@ const NewTabPageView: Component<NewTabPageViewProps> = (props) => {
         {/* Chat / Roleplay button */}
         <Button onClick={props.onNavigateToChat} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">
           <Chat weight="fill" size={18} />
-          Chat
+          {i18n().get('newTabPageButtonChat', 'Chat')}
         </Button>
         {/* Focus Button first in this stack */}
         <Button onClick={props.onToggleFocusMode} variant="outline" size="xl" class="flex items-center justify-center gap-2 max-w-xs min-w-[280px]">

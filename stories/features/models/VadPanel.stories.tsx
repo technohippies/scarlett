@@ -172,7 +172,7 @@ const BaseRender = (args: VadPanelProps) => {
 
     return (
         <div class="p-4 bg-background max-w-xl mx-auto">
-            <VadPanel
+                            <VadPanel
                 availableVadOptions={args.availableVadOptions}
                 selectedVadId={selectedVad} 
                 onSelectVad={handleSelectVad}
@@ -191,6 +191,7 @@ const BaseRender = (args: VadPanelProps) => {
                 sttError={sttErrorSignal}
                 // Pass hideAudioLabel to the component
                 hideAudioLabel={getHideAudioLabel}
+                messages={{}}
             />
         </div>
     );

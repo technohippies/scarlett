@@ -59,8 +59,16 @@ type ActiveView = 'newtab' | 'bookmarks' | 'study' | 'settings' | 'unifiedChat';
 
 const AppContent: Component = (): JSX.Element => {
   const [activeView, setActiveView] = createSignal<ActiveView>('newtab');
-  const [effectiveLangCode] = createSignal<string>(getBestInitialLangCode());
   const settings = useSettings();
+  
+  // Use user's stored native language, fallback to browser detection
+  const effectiveLangCode = () => {
+    const userLang = settings.config.nativeLanguage;
+    const browserLang = getBestInitialLangCode();
+    const finalLang = userLang || browserLang;
+    console.log(`[NewTabApp] Language selection - User: ${userLang}, Browser: ${browserLang}, Final: ${finalLang}`);
+    return finalLang;
+  };
 
   const [messagesData] = createResource(effectiveLangCode, fetchMessages);
 
@@ -89,18 +97,21 @@ const AppContent: Component = (): JSX.Element => {
         />
       </Match>
       <Match when={activeView() === 'bookmarks'}>
-        <BookmarksPage onNavigateBack={() => navigateTo('newtab')} />
+        <BookmarksPage onNavigateBack={() => navigateTo('newtab')} messages={messagesData()} />
       </Match>
       <Match when={activeView() === 'study'}>
         <StudyPage onNavigateBack={() => navigateTo('newtab')} messages={messagesData()} />
       </Match>
       <Match when={activeView() === 'settings'}>
-        <SettingsPage onNavigateBack={() => navigateTo('newtab')} /> 
+        <SettingsPage onNavigateBack={() => navigateTo('newtab')} messages={messagesData()} /> 
       </Match>
       <Match when={activeView() === 'unifiedChat'}>
         <Show when={settings.loadStatus() === 'ready'} fallback={<div>Loading chats and configuration...</div>}>
-          <ChatProvider initialUserConfig={settings.config}>
-            <ChatPageLayout onNavigateBack={() => navigateTo('newtab')} />
+          <ChatProvider>
+            <ChatPageLayout 
+              onNavigateBack={() => navigateTo('newtab')} 
+              messages={messagesData() || {}}
+            />
           </ChatProvider>
         </Show>
       </Match>

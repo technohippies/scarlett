@@ -6,6 +6,7 @@ import { TextField, TextFieldInput, TextFieldLabel } from '../../components/ui/t
 import { Label } from '../../components/ui/label';
 import { SpeakerSimpleHigh } from 'phosphor-solid';
 import { cn } from '../../lib/utils'; // Import cn utility
+import type { Messages } from '../../types/i18n'; // Import Messages type
 
 // --- Prop Types ---
 
@@ -14,6 +15,11 @@ export interface TtsProviderOption {
     name: string;
     logoUrl?: string;
 }
+
+// Helper function to get translated string or fallback
+const getLocalizedString = (messages: Messages | undefined, key: string, fallback: string): string => {
+  return messages?.[key]?.message || fallback;
+};
 
 export interface TtsProviderPanelProps {
     availableProviders: TtsProviderOption[];
@@ -30,6 +36,9 @@ export interface TtsProviderPanelProps {
     testAudioData: Accessor<Blob | null>;
     onPlayTestAudio: () => void;
     testError: Accessor<Error | null>;
+    
+    // Messages for i18n
+    messages?: Messages;
 }
 
 
@@ -47,7 +56,7 @@ export const TtsProviderPanel: Component<TtsProviderPanelProps> = (props) => {
         <div class="w-full max-w-lg space-y-6">
             {/* --- Provider Selection Cards (Updated Styling & Image Paths) --- */}
             <div>
-                <Label class="mb-2 block">TTS Provider</Label>
+                <Label class="mb-2 block">{getLocalizedString(props.messages, 'ttsProviderLabel', 'TTS Provider')}</Label>
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-4"> 
                     <For each={props.availableProviders}>
                         {(provider) => {
@@ -100,11 +109,11 @@ export const TtsProviderPanel: Component<TtsProviderPanelProps> = (props) => {
                 <div class="space-y-4">
                     {/* API Key Input */}
                     <TextField>
-                        <TextFieldLabel for="elevenlabs-api-key">API Key</TextFieldLabel>
+                        <TextFieldLabel for="elevenlabs-api-key">{getLocalizedString(props.messages, 'ttsApiKeyLabel', 'API Key')}</TextFieldLabel>
                         <TextFieldInput 
                             id="elevenlabs-api-key" 
                             type="password" 
-                            placeholder="Enter your ElevenLabs API Key"
+                            placeholder={getLocalizedString(props.messages, 'ttsElevenLabsApiKeyPlaceholder', 'Enter your ElevenLabs API Key')}
                             value={props.elevenLabsApiKey()}
                             onInput={(e) => props.onElevenLabsApiKeyChange(e.currentTarget.value)}
                         />
@@ -119,7 +128,7 @@ export const TtsProviderPanel: Component<TtsProviderPanelProps> = (props) => {
                                 disabled={props.isElevenLabsTesting() || !props.elevenLabsApiKey()}
                             >
                                 <SpeakerSimpleHigh class="h-4 w-4 mr-1" />
-                                {props.isElevenLabsTesting() ? 'Testing...' : 'Test Connection'}
+                                {props.isElevenLabsTesting() ? getLocalizedString(props.messages, 'ttsTesting', 'Testing...') : getLocalizedString(props.messages, 'ttsTestConnection', 'Test Connection')}
                             </Button>
                         </div>
                     </Show>
@@ -128,14 +137,14 @@ export const TtsProviderPanel: Component<TtsProviderPanelProps> = (props) => {
                     <Show when={props.testAudioData() && selectedProvider() === 'elevenlabs'}>
                         <div class="flex items-center gap-4 mt-2">
                             <Button onClick={props.onPlayTestAudio} variant="outline" >
-                                <SpeakerSimpleHigh class="h-4 w-4 mr-1" /> Play Test Audio
+                                <SpeakerSimpleHigh class="h-4 w-4 mr-1" /> {getLocalizedString(props.messages, 'ttsPlayTestAudio', 'Play Test Audio')}
                             </Button>
                         </div>
                     </Show>
                     
                     {/* General Error Display */}
                     <Show when={props.testError() && selectedProvider() === 'elevenlabs'}>
-                        <p class="text-destructive">Error: {props.testError()?.message}</p>
+                        <p class="text-destructive">{getLocalizedString(props.messages, 'ttsErrorPrefix', 'Error:')} {props.testError()?.message}</p>
                     </Show>
                 </div>
             </Show>

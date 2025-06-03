@@ -208,10 +208,10 @@
     "message": "Đang phân tích..."
   },
   "onboardingSetupVADTitle": {
-    "message": "Kiểm tra Đầu vào Giọng nói & Chuyển đổi"
+    "message": "Kiểm tra Giọng nói thành Văn bản"
   },
   "onboardingSetupVADDescription": {
-    "message": "Kiểm tra micrô và chuyển đổi giọng nói thành văn bản ElevenLabs của bạn."
+    "message": "Kiểm tra micrô và chuyển đổi giọng nói thành văn bản của bạn."
   },
   "onboardingVADNoApiKeyForSTT": {
     "message": "Khóa API ElevenLabs không được cung cấp trong bước TTS; việc chuyển đổi sẽ bị vô hiệu hóa."
@@ -237,5 +237,313 @@
   "chatSpeechModeLabel": {
     "message": "Chế độ Giọng nói",
     "description": "Nhãn cho công tắc chế độ giọng nói trong trang chat"
+  },
+  "onboardingElevenLabsTestText": {
+    "message": "Xin chào từ Scarlett! Đây là bài kiểm tra giới thiệu."
+  },
+  "onboardingEmbeddingPersonalityMessage": {
+    "message": "Đang nhúng tính cách của Scarlett... Điều này có thể mất một phút"
+  },
+  "onboardingVADErrorSttDisabled": {
+    "message": "STT đã bị vô hiệu hóa: thiếu khóa API."
+  },
+  "onboardingVADErrorNoAudio": {
+    "message": "Không có âm thanh nào được ghi để chuyển đổi."
+  },
+  "onboardingVADErrorElevenLabsNotSet": {
+    "message": "Khóa API ElevenLabs chưa được đặt. Vui lòng cấu hình trong bước TTS."
+  },
+  "onboardingVADTranscribingAudio": {
+    "message": "Đang chuyển đổi âm thanh..."
+  },
+  "onboardingVADTranscriptionSuccessful": {
+    "message": "Chuyển đổi thành công."
+  },
+  "onboardingVADTranscriptionFailed": {
+    "message": "Chuyển đổi thất bại."
+  },
+  "onboardingVADInitializing": {
+    "message": "Đang khởi tạo VAD..."
+  },
+  "onboardingVADListening": {
+    "message": "Đang lắng nghe..."
+  },
+  "onboardingVADSpeechEnded": {
+    "message": "Giọng nói đã kết thúc. Đang xử lý âm thanh..."
+  },
+  "onboardingVADAudioCaptured": {
+    "message": "Âm thanh đã được thu. Bắt đầu chuyển đổi..."
+  },
+  "onboardingVADMisfire": {
+    "message": "VAD hoạt động nhầm."
+  },
+  "onboardingVADErrorPrefix": {
+    "message": "Lỗi VAD: "
+  },
+  "onboardingVADErrorMediaDevices": {
+    "message": "MediaDevices API hoặc getUserMedia không được hỗ trợ."
+  },
+  "onboardingVADErrorFailedToInit": {
+    "message": "Khởi tạo VAD thất bại: "
+  },
+  "onboardingVADTestStopped": {
+    "message": "Kiểm tra đã dừng."
+  },
+  "onboardingVADListeningForSpeech": {
+    "message": "Đang lắng nghe giọng nói..."
+  },
+  "onboardingVADErrorStarting": {
+    "message": "Lỗi khởi động VAD: "
+  },
+  "onboardingVADTestExplicitlyStopped": {
+    "message": "Kiểm tra đã được dừng rõ ràng."
+  },
+  "onboardingVADErrorSileroNotSelected": {
+    "message": "Silero VAD chưa được chọn."
+  },
+  "onboardingBrowsingHistoryRequestingPermission": {
+    "message": "Đang yêu cầu quyền lịch sử trình duyệt..."
+  },
+  "onboardingBrowsingHistoryPermissionDenied": {
+    "message": "Quyền lịch sử bị từ chối"
+  },
+  "onboardingBrowsingHistoryPermissionDeniedMessage": {
+    "message": "Không thể phân tích lịch sử duyệt web - quyền không được cấp. Bạn có thể tiếp tục mà không cần bước này."
+  },
+  "onboardingBrowsingHistoryFetching": {
+    "message": "Đang lấy lịch sử trình duyệt của bạn..."
+  },
+  "onboardingBrowsingHistoryCategorizing": {
+    "message": "Đang phân loại tên miền..."
+  },
+  "onboardingBrowsingHistoryAnalyzing": {
+    "message": "Đang phân tích..."
+  },
+  "onboardingBrowsingHistoryNoHistory": {
+    "message": "Chúng tôi không thể tìm thấy nhiều lịch sử duyệt web để phân tích. Điều này bình thường nếu bạn đang sử dụng trình duyệt mới hoặc đã xóa lịch sử gần đây."
+  },
+  "onboardingBrowsingHistoryAnalysisFailed": {
+    "message": "Phân tích thất bại"
+  },
+  "onboardingBrowsingHistoryAnalysisFailedMessage": {
+    "message": "Không thể phân tích lịch sử duyệt web. Bạn có thể tiếp tục với việc cài đặt."
+  },
+  "onboardingBrowsingHistoryNoHistoryFallback": {
+    "message": "Chúng tôi không thể phân tích lịch sử duyệt web của bạn. Điều này có thể do bạn có lịch sử hạn chế hoặc sử dụng duyệt web riêng tư."
+  },
+  "onboardingBrowsingHistoryProductiveFocus": {
+    "message": "Bạn dường như tập trung vào các hoạt động hiệu quả trực tuyến! Bạn thường xuyên truy cập {count} trang web liên quan đến công việc."
+  },
+  "onboardingBrowsingHistoryBalancedHabits": {
+    "message": "Bạn có sự cân bằng tốt giữa công việc và giải trí trong thói quen duyệt web."
+  },
+  "onboardingBrowsingHistoryModerateUsage": {
+    "message": "Mẫu duyệt web của bạn cho thấy việc sử dụng internet vừa phải trên {count} trang web khác nhau."
+  },
+  "onboardingTranscriptionFailedPrefix": {
+    "message": "Chuyển đổi thất bại: "
+  },
+  "onboardingErrorFetchingBrowserHistory": {
+    "message": "Lấy lịch sử trình duyệt thất bại"
+  },
+  "modelSelectionSelectModel": {
+    "message": "Chọn mô hình",
+    "description": "Văn bản giữ chỗ cho danh sách thả xuống chọn mô hình."
+  },
+  "modelSelectionSearchDownloadableLLMs": {
+    "message": "Tìm kiếm LLM có thể tải xuống...",
+    "description": "Văn bản giữ chỗ để tìm kiếm mô hình LLM từ xa/có thể tải xuống."
+  },
+  "modelSelectionLocalLabel": {
+    "message": "Cục bộ",
+    "description": "Tiền tố nhãn cho phần chọn mô hình cục bộ."
+  },
+  "modelSelectionRemoteLLMLabel": {
+    "message": "LLM Từ xa",
+    "description": "Nhãn cho phần chọn mô hình LLM từ xa."
+  },
+  "modelSelectionSelectRemoteLLMAriaLabel": {
+    "message": "Chọn LLM từ xa",
+    "description": "Nhãn trợ năng cho việc chọn LLM từ xa."
+  },
+  "connectionTestConnecting": {
+    "message": "Đang kết nối...",
+    "description": "Thông báo trạng thái hiển thị khi kiểm tra kết nối."
+  },
+  "connectionTestSuccess": {
+    "message": "Thành công!",
+    "description": "Thông báo trạng thái hiển thị khi kiểm tra kết nối thành công."
+  },
+  "connectionTestPlayTestAudio": {
+    "message": "Phát Âm thanh Kiểm tra",
+    "description": "Văn bản nút để phát âm thanh kiểm tra sau khi kiểm tra TTS thành công."
+  },
+  "connectionTestError403": {
+    "message": "Lỗi: Kết nối thất bại (403 Cấm truy cập). Kiểm tra khóa API hoặc CORS.",
+    "description": "Thông báo lỗi cho phản hồi 403 Cấm truy cập."
+  },
+  "connectionTestErrorTimeout": {
+    "message": "Kết nối thất bại: Hết thời gian.",
+    "description": "Thông báo lỗi cho lỗi hết thời gian."
+  },
+  "connectionTestErrorGeneric": {
+    "message": "Kiểm tra kết nối thất bại:",
+    "description": "Tiền tố thông báo lỗi chung cho các lỗi kiểm tra kết nối."
+  },
+  "connectionTestCorsGenericHelp": {
+    "message": "Đảm bảo CORS được bật trên máy chủ của bạn.",
+    "description": "Thông báo trợ giúp CORS chung."
+  },
+  "ttsProviderLabel": {
+    "message": "Nhà cung cấp TTS",
+    "description": "Nhãn cho phần chọn nhà cung cấp TTS."
+  },
+  "ttsApiKeyLabel": {
+    "message": "Khóa API",
+    "description": "Nhãn cho trường nhập khóa API."
+  },
+  "ttsElevenLabsApiKeyPlaceholder": {
+    "message": "Nhập khóa API ElevenLabs của bạn",
+    "description": "Văn bản giữ chỗ cho trường nhập khóa API ElevenLabs."
+  },
+  "ttsTesting": {
+    "message": "Đang kiểm tra...",
+    "description": "Văn bản nút hiển thị khi kiểm tra kết nối TTS."
+  },
+  "ttsTestConnection": {
+    "message": "Kiểm tra Kết nối",
+    "description": "Văn bản nút để kiểm tra kết nối TTS."
+  },
+  "ttsPlayTestAudio": {
+    "message": "Phát Âm thanh Kiểm tra",
+    "description": "Văn bản nút để phát âm thanh kiểm tra sau khi kiểm tra TTS thành công."
+  },
+  "ttsErrorPrefix": {
+    "message": "Lỗi:",
+    "description": "Tiền tố cho thông báo lỗi TTS."
+  },
+  "vadSpeechToTextLabel": {
+    "message": "Giọng nói thành Văn bản",
+    "description": "Nhãn cho phần giọng nói thành văn bản trong bảng VAD."
+  },
+  "vadInitializing": {
+    "message": "Đang khởi tạo...",
+    "description": "Văn bản nút hiển thị khi VAD đang khởi tạo."
+  },
+  "vadTranscribing": {
+    "message": "Đang chuyển đổi...",
+    "description": "Văn bản nút hiển thị khi đang chuyển đổi âm thanh."
+  },
+  "vadListening": {
+    "message": "Đang lắng nghe...",
+    "description": "Văn bản nút hiển thị khi VAD đang lắng nghe giọng nói."
+  },
+  "vadTest": {
+    "message": "Kiểm tra",
+    "description": "Văn bản nút để bắt đầu kiểm tra VAD."
+  },
+  "vadStatusPrefix": {
+    "message": "Trạng thái:",
+    "description": "Tiền tố cho thông báo trạng thái VAD."
+  },
+  "vadSttErrorPrefix": {
+    "message": "Lỗi STT:",
+    "description": "Tiền tố cho thông báo lỗi giọng nói thành văn bản."
+  },
+  "vadErrorPrefix": {
+    "message": "Lỗi:",
+    "description": "Tiền tố cho thông báo lỗi VAD."
+  },
+  "newTabPageButtonChat": {
+    "message": "Trò chuyện",
+    "description": "Văn bản nút để điều hướng đến trang trò chuyện từ tab mới."
+  },
+  "chatPageSpeechMode": {
+    "message": "Chế độ Giọng nói",
+    "description": "Nhãn cho công tắc chuyển đổi chế độ giọng nói trong header trang chat."
+  },
+  "chatPageGenerateRoleplay": {
+    "message": "Tạo Kịch bản Nhập vai",
+    "description": "Văn bản nút để tạo kịch bản nhập vai mới."
+  },
+  "chatPageInputPlaceholder": {
+    "message": "Hỏi bất cứ điều gì...",
+    "description": "Văn bản placeholder cho trường nhập chat."
+  },
+  "chatPageStartVoiceChat": {
+    "message": "Bắt đầu Chat Giọng nói",
+    "description": "Văn bản nút để bắt đầu cuộc trò chuyện bằng giọng nói trong chế độ speech."
+  },
+  "chatPageStopVoiceChat": {
+    "message": "Dừng Chat Giọng nói",
+    "description": "Văn bản nút để dừng cuộc trò chuyện bằng giọng nói trong chế độ speech."
+  },
+  "chatPageListening": {
+    "message": "Đang nghe...",
+    "description": "Văn bản trạng thái hiển thị khi ứng dụng đang nghe đầu vào giọng nói."
+  },
+  "chatPageResponding": {
+    "message": "Đang phản hồi...",
+    "description": "Văn bản trạng thái hiển thị khi AI đang tạo phản hồi giọng nói."
+  },
+  "chatPageLoadingOlderMessages": {
+    "message": "Đang tải...",
+    "description": "Văn bản hiển thị khi tải tin nhắn chat cũ hơn."
+  },
+  "chatPageNoMessagesYet": {
+    "message": "Chưa có tin nhắn nào.",
+    "description": "Văn bản hiển thị khi không có tin nhắn chat trong cuộc trò chuyện."
+  },
+  "bookmarksPageNoBookmarksYet": {
+    "message": "Chưa có dấu trang nào được lưu.",
+    "description": "Văn bản hiển thị khi người dùng chưa lưu dấu trang nào."
+  },
+  "settingsPageLoadingSettings": {
+    "message": "Đang tải cài đặt...",
+    "description": "Văn bản hiển thị khi đang tải cài đặt."
+  },
+  "settingsPageErrorLoadingSettings": {
+    "message": "Lỗi khi tải cài đặt.",
+    "description": "Văn bản hiển thị khi có lỗi tải cài đặt."
+  },
+  "settingsPageSelectCategory": {
+    "message": "Chọn một danh mục từ thanh bên để cấu hình.",
+    "description": "Văn bản hướng dẫn hiển thị khi chưa chọn danh mục cài đặt nào."
+  },
+  "settingsPageSectionModels": {
+    "message": "MÔ HÌNH",
+    "description": "Nhãn cho phần mô hình trong thanh bên cài đặt."
+  },
+  "settingsPageSectionCensorship": {
+    "message": "KIỂM DUYỆT",
+    "description": "Nhãn cho phần kiểm duyệt trong thanh bên cài đặt."
+  },
+  "settingsPageSectionProductivity": {
+    "message": "NĂNG SUẤT",
+    "description": "Nhãn cho phần năng suất trong thanh bên cài đặt."
+  },
+  "settingsPageMenuLLM": {
+    "message": "LLM",
+    "description": "Văn bản mục menu cho cài đặt LLM."
+  },
+  "settingsPageMenuTTS": {
+    "message": "TTS",
+    "description": "Văn bản mục menu cho cài đặt TTS."
+  },
+  "settingsPageMenuSTTVAD": {
+    "message": "STT & VAD",
+    "description": "Văn bản mục menu cho cài đặt Giọng nói thành Văn bản và Phát hiện Hoạt động Giọng nói."
+  },
+  "settingsPageMenuRedirects": {
+    "message": "Chuyển hướng",
+    "description": "Văn bản mục menu cho cài đặt chuyển hướng."
+  },
+  "settingsPageMenuFocusMode": {
+    "message": "Chế độ Tập trung",
+    "description": "Văn bản mục menu cho cài đặt chế độ tập trung."
+  },
+  "settingsPageVADSectionTitle": {
+    "message": "Giọng nói thành Văn bản & Phát hiện Hoạt động Giọng nói",
+    "description": "Tiêu đề cho phần cài đặt VAD."
   }
 }

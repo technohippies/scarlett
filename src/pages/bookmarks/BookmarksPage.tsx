@@ -2,6 +2,7 @@ import { Component, createResource, createSignal } from 'solid-js';
 import { defineExtensionMessaging } from '@webext-core/messaging';
 import type { LoadBookmarksResponse } from '../../shared/messaging-types';
 import { BookmarksPageView } from './BookmarksPageView';
+import type { Messages } from '../../types/i18n';
 
 // Define the protocol map for messages SENT TO the background
 // Only include messages this component uses
@@ -12,6 +13,7 @@ interface BackgroundProtocol {
 // Props for BookmarksPage
 export interface BookmarksPageProps {
   onNavigateBack: () => void;
+  messages?: Messages;
 }
 
 // Initialize messaging client
@@ -46,6 +48,7 @@ const BookmarksPage: Component<BookmarksPageProps> = (props) => {
       isLoading={bookmarksResource.loading}
       error={error()}
       onNavigateBack={props.onNavigateBack}
+      messages={props.messages}
     />
   );
 };

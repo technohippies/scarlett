@@ -211,10 +211,10 @@
     "message": "正在分析..."
   },
   "onboardingSetupVADTitle": {
-    "message": "测试语音输入和转录"
+    "message": "测试语音转文本"
   },
   "onboardingSetupVADDescription": {
-    "message": "测试您的麦克风和 ElevenLabs 语音转文本功能。"
+    "message": "测试您的麦克风和语音转文本功能。"
   },
   "onboardingVADNoApiKeyForSTT": {
     "message": "TTS 步骤中未提供 ElevenLabs API 密钥；转录功能将被禁用。"
@@ -239,5 +239,313 @@
   },
   "chatSpeechModeLabel": {
     "message": "语音模式"
+  },
+  "onboardingElevenLabsTestText": {
+    "message": "Scarlett 的问候！这是入职测试。"
+  },
+  "onboardingEmbeddingPersonalityMessage": {
+    "message": "正在嵌入 Scarlett 的个性... 这可能需要一分钟"
+  },
+  "onboardingVADErrorSttDisabled": {
+    "message": "STT 已禁用：缺少 API 密钥。"
+  },
+  "onboardingVADErrorNoAudio": {
+    "message": "没有录制音频进行转录。"
+  },
+  "onboardingVADErrorElevenLabsNotSet": {
+    "message": "未设置 ElevenLabs API 密钥。请在 TTS 步骤中配置。"
+  },
+  "onboardingVADTranscribingAudio": {
+    "message": "正在转录音频..."
+  },
+  "onboardingVADTranscriptionSuccessful": {
+    "message": "转录成功。"
+  },
+  "onboardingVADTranscriptionFailed": {
+    "message": "转录失败。"
+  },
+  "onboardingVADInitializing": {
+    "message": "正在初始化 VAD..."
+  },
+  "onboardingVADListening": {
+    "message": "正在监听..."
+  },
+  "onboardingVADSpeechEnded": {
+    "message": "语音结束。正在处理音频..."
+  },
+  "onboardingVADAudioCaptured": {
+    "message": "音频已捕获。开始转录..."
+  },
+  "onboardingVADMisfire": {
+    "message": "VAD 误触发。"
+  },
+  "onboardingVADErrorPrefix": {
+    "message": "VAD 错误："
+  },
+  "onboardingVADErrorMediaDevices": {
+    "message": "不支持 MediaDevices API 或 getUserMedia。"
+  },
+  "onboardingVADErrorFailedToInit": {
+    "message": "初始化 VAD 失败："
+  },
+  "onboardingVADTestStopped": {
+    "message": "测试已停止。"
+  },
+  "onboardingVADListeningForSpeech": {
+    "message": "正在监听语音..."
+  },
+  "onboardingVADErrorStarting": {
+    "message": "启动 VAD 错误："
+  },
+  "onboardingVADTestExplicitlyStopped": {
+    "message": "测试已明确停止。"
+  },
+  "onboardingVADErrorSileroNotSelected": {
+    "message": "未选择 Silero VAD。"
+  },
+  "onboardingBrowsingHistoryRequestingPermission": {
+    "message": "正在请求浏览器历史记录权限..."
+  },
+  "onboardingBrowsingHistoryPermissionDenied": {
+    "message": "历史记录权限被拒绝"
+  },
+  "onboardingBrowsingHistoryPermissionDeniedMessage": {
+    "message": "无法分析浏览历史记录 - 未授予权限。您可以跳过此步骤继续。"
+  },
+  "onboardingBrowsingHistoryFetching": {
+    "message": "正在获取您的浏览器历史记录..."
+  },
+  "onboardingBrowsingHistoryCategorizing": {
+    "message": "正在分类域名..."
+  },
+  "onboardingBrowsingHistoryAnalyzing": {
+    "message": "正在分析..."
+  },
+  "onboardingBrowsingHistoryNoHistory": {
+    "message": "找不到太多浏览历史记录可供分析。如果您使用新浏览器或最近清除了历史记录，这是正常的。"
+  },
+  "onboardingBrowsingHistoryAnalysisFailed": {
+    "message": "分析失败"
+  },
+  "onboardingBrowsingHistoryAnalysisFailedMessage": {
+    "message": "无法分析浏览历史记录。您可以继续设置。"
+  },
+  "onboardingBrowsingHistoryNoHistoryFallback": {
+    "message": "我们无法分析您的浏览历史记录。这可能是因为您的历史记录有限或使用隐私浏览。"
+  },
+  "onboardingBrowsingHistoryProductiveFocus": {
+    "message": "您似乎专注于在线生产活动！您经常访问 {count} 个与工作相关的网站。"
+  },
+  "onboardingBrowsingHistoryBalancedHabits": {
+    "message": "您在工作和娱乐的浏览习惯方面保持了良好的平衡。"
+  },
+  "onboardingBrowsingHistoryModerateUsage": {
+    "message": "您的浏览模式表明在 {count} 个不同网站上的互联网使用是适度的。"
+  },
+  "onboardingTranscriptionFailedPrefix": {
+    "message": "转录失败："
+  },
+  "onboardingErrorFetchingBrowserHistory": {
+    "message": "获取浏览器历史记录失败"
+  },
+  "modelSelectionSelectModel": {
+    "message": "选择模型",
+    "description": "模型选择下拉菜单的占位符文本。"
+  },
+  "modelSelectionSearchDownloadableLLMs": {
+    "message": "搜索可下载的 LLM...",
+    "description": "搜索远程/可下载 LLM 模型的占位符文本。"
+  },
+  "modelSelectionLocalLabel": {
+    "message": "本地",
+    "description": "本地模型选择部分的标签前缀。"
+  },
+  "modelSelectionRemoteLLMLabel": {
+    "message": "远程 LLM",
+    "description": "远程 LLM 模型选择部分的标签。"
+  },
+  "modelSelectionSelectRemoteLLMAriaLabel": {
+    "message": "选择远程 LLM",
+    "description": "远程 LLM 选择的无障碍标签。"
+  },
+  "connectionTestConnecting": {
+    "message": "连接中...",
+    "description": "测试连接时显示的状态消息。"
+  },
+  "connectionTestSuccess": {
+    "message": "成功！",
+    "description": "连接测试成功时显示的状态消息。"
+  },
+  "connectionTestPlayTestAudio": {
+    "message": "播放测试音频",
+    "description": "在成功 TTS 测试后播放测试音频的按钮文本。"
+  },
+  "connectionTestError403": {
+    "message": "错误：连接失败（403 禁止访问）。请检查 API 密钥或 CORS。",
+    "description": "403 禁止访问响应的错误消息。"
+  },
+  "connectionTestErrorTimeout": {
+    "message": "连接失败：超时。",
+    "description": "超时错误的错误消息。"
+  },
+  "connectionTestErrorGeneric": {
+    "message": "连接测试失败：",
+    "description": "连接测试失败的通用错误消息前缀。"
+  },
+  "connectionTestCorsGenericHelp": {
+    "message": "确保您的服务器启用了 CORS。",
+    "description": "通用 CORS 帮助消息。"
+  },
+  "ttsProviderLabel": {
+    "message": "TTS 提供商",
+    "description": "TTS 提供商选择部分的标签。"
+  },
+  "ttsApiKeyLabel": {
+    "message": "API 密钥",
+    "description": "API 密钥输入字段的标签。"
+  },
+  "ttsElevenLabsApiKeyPlaceholder": {
+    "message": "输入您的 ElevenLabs API 密钥",
+    "description": "ElevenLabs API 密钥输入字段的占位符文本。"
+  },
+  "ttsTesting": {
+    "message": "测试中...",
+    "description": "测试 TTS 连接时显示的按钮文本。"
+  },
+  "ttsTestConnection": {
+    "message": "测试连接",
+    "description": "测试 TTS 连接的按钮文本。"
+  },
+  "ttsPlayTestAudio": {
+    "message": "播放测试音频",
+    "description": "在成功 TTS 测试后播放测试音频的按钮文本。"
+  },
+  "ttsErrorPrefix": {
+    "message": "错误：",
+    "description": "TTS 错误消息的前缀。"
+  },
+  "vadSpeechToTextLabel": {
+    "message": "语音转文本",
+    "description": "VAD 面板中语音转文本部分的标签。"
+  },
+  "vadInitializing": {
+    "message": "正在初始化...",
+    "description": "VAD 初始化时显示的按钮文本。"
+  },
+  "vadTranscribing": {
+    "message": "正在转录...",
+    "description": "转录音频时显示的按钮文本。"
+  },
+  "vadListening": {
+    "message": "正在监听...",
+    "description": "VAD 监听语音时显示的按钮文本。"
+  },
+  "vadTest": {
+    "message": "测试",
+    "description": "开始 VAD 测试的按钮文本。"
+  },
+  "vadStatusPrefix": {
+    "message": "状态：",
+    "description": "VAD 状态消息的前缀。"
+  },
+  "vadSttErrorPrefix": {
+    "message": "STT 错误：",
+    "description": "语音转文本错误消息的前缀。"
+  },
+  "vadErrorPrefix": {
+    "message": "错误：",
+    "description": "VAD 错误消息的前缀。"
+  },
+  "newTabPageButtonChat": {
+    "message": "聊天",
+    "description": "从新标签页导航到聊天页面的按钮文本。"
+  },
+  "chatPageSpeechMode": {
+    "message": "语音模式",
+    "description": "聊天页面标题中语音模式切换开关的标签。"
+  },
+  "chatPageGenerateRoleplay": {
+    "message": "生成角色扮演",
+    "description": "生成新角色扮演场景的按钮文本。"
+  },
+  "chatPageInputPlaceholder": {
+    "message": "问我任何问题...",
+    "description": "聊天输入框的占位符文本。"
+  },
+  "chatPageStartVoiceChat": {
+    "message": "开始语音聊天",
+    "description": "在语音模式下开始语音对话的按钮文本。"
+  },
+  "chatPageStopVoiceChat": {
+    "message": "停止语音聊天",
+    "description": "在语音模式下停止语音对话的按钮文本。"
+  },
+  "chatPageListening": {
+    "message": "正在聆听...",
+    "description": "应用正在聆听语音输入时显示的状态文本。"
+  },
+  "chatPageResponding": {
+    "message": "正在回应...",
+    "description": "AI 正在生成语音回应时显示的状态文本。"
+  },
+  "chatPageLoadingOlderMessages": {
+    "message": "加载中...",
+    "description": "加载较早聊天消息时显示的文本。"
+  },
+  "chatPageNoMessagesYet": {
+    "message": "还没有消息。",
+    "description": "对话中没有聊天消息时显示的文本。"
+  },
+  "bookmarksPageNoBookmarksYet": {
+    "message": "还没有保存书签。",
+    "description": "用户没有保存书签时显示的文本。"
+  },
+  "settingsPageLoadingSettings": {
+    "message": "加载设置中...",
+    "description": "加载设置时显示的文本。"
+  },
+  "settingsPageErrorLoadingSettings": {
+    "message": "加载设置时出错。",
+    "description": "加载设置出错时显示的文本。"
+  },
+  "settingsPageSelectCategory": {
+    "message": "从侧边栏选择一个类别进行配置。",
+    "description": "未选择设置类别时显示的指导文本。"
+  },
+  "settingsPageSectionModels": {
+    "message": "模型",
+    "description": "设置侧边栏中模型部分的标签。"
+  },
+  "settingsPageSectionCensorship": {
+    "message": "审查规避",
+    "description": "设置侧边栏中审查部分的标签。"
+  },
+  "settingsPageSectionProductivity": {
+    "message": "生产力",
+    "description": "设置侧边栏中生产力部分的标签。"
+  },
+  "settingsPageMenuLLM": {
+    "message": "LLM",
+    "description": "LLM 设置的菜单项文本。"
+  },
+  "settingsPageMenuTTS": {
+    "message": "TTS",
+    "description": "TTS 设置的菜单项文本。"
+  },
+  "settingsPageMenuSTTVAD": {
+    "message": "STT 和 VAD",
+    "description": "语音转文本和语音活动检测设置的菜单项文本。"
+  },
+  "settingsPageMenuRedirects": {
+    "message": "重定向",
+    "description": "重定向设置的菜单项文本。"
+  },
+  "settingsPageMenuFocusMode": {
+    "message": "专注模式",
+    "description": "专注模式设置的菜单项文本。"
+  },
+  "settingsPageVADSectionTitle": {
+    "message": "语音转文本和语音活动检测",
+    "description": "VAD 设置部分的标题。"
   }
 } 

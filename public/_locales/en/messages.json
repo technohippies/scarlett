@@ -204,10 +204,10 @@
     "message": "Analyzing..."
   },
   "onboardingSetupVADTitle": {
-    "message": "Test Voice Input & Transcription"
+    "message": "Test Speech to Text"
   },
   "onboardingSetupVADDescription": {
-    "message": "Test your microphone and ElevenLabs speech to text."
+    "message": "Test your microphone and speech to text conversion."
   },
   "onboardingVADNoApiKeyForSTT": {
     "message": "ElevenLabs API key not provided in TTS step; transcription will be disabled."
@@ -241,5 +241,313 @@
   },
   "chatSpeechModeLabel": {
     "message": "Speech Mode"
+  },
+  "onboardingElevenLabsTestText": {
+    "message": "Hello from Scarlett! This is an onboarding test."
+  },
+  "onboardingEmbeddingPersonalityMessage": {
+    "message": "Embedding Scarlett's personality... This might take a minute"
+  },
+  "onboardingVADErrorSttDisabled": {
+    "message": "STT disabled: API key missing."
+  },
+  "onboardingVADErrorNoAudio": {
+    "message": "No audio has been recorded to transcribe."
+  },
+  "onboardingVADErrorElevenLabsNotSet": {
+    "message": "ElevenLabs API key is not set. Please configure it in the TTS step."
+  },
+  "onboardingVADTranscribingAudio": {
+    "message": "Transcribing audio..."
+  },
+  "onboardingVADTranscriptionSuccessful": {
+    "message": "Transcription successful."
+  },
+  "onboardingVADTranscriptionFailed": {
+    "message": "Transcription failed."
+  },
+  "onboardingVADInitializing": {
+    "message": "Initializing VAD..."
+  },
+  "onboardingVADListening": {
+    "message": "Listening..."
+  },
+  "onboardingVADSpeechEnded": {
+    "message": "Speech ended. Processing audio..."
+  },
+  "onboardingVADAudioCaptured": {
+    "message": "Audio captured. Starting transcription..."
+  },
+  "onboardingVADMisfire": {
+    "message": "VAD misfire."
+  },
+  "onboardingVADErrorPrefix": {
+    "message": "VAD Error: "
+  },
+  "onboardingVADErrorMediaDevices": {
+    "message": "MediaDevices API or getUserMedia not supported."
+  },
+  "onboardingVADErrorFailedToInit": {
+    "message": "Failed to initialize VAD: "
+  },
+  "onboardingVADTestStopped": {
+    "message": "Test stopped."
+  },
+  "onboardingVADListeningForSpeech": {
+    "message": "Listening for speech..."
+  },
+  "onboardingVADErrorStarting": {
+    "message": "Error starting VAD: "
+  },
+  "onboardingVADTestExplicitlyStopped": {
+    "message": "Test explicitly stopped."
+  },
+  "onboardingVADErrorSileroNotSelected": {
+    "message": "Silero VAD not selected."
+  },
+  "onboardingBrowsingHistoryRequestingPermission": {
+    "message": "Requesting browser history permission..."
+  },
+  "onboardingBrowsingHistoryPermissionDenied": {
+    "message": "History permission denied"
+  },
+  "onboardingBrowsingHistoryPermissionDeniedMessage": {
+    "message": "Unable to analyze browsing history - permission was not granted. You can continue without this step."
+  },
+  "onboardingBrowsingHistoryFetching": {
+    "message": "Fetching your browser history..."
+  },
+  "onboardingBrowsingHistoryCategorizing": {
+    "message": "Categorizing domains..."
+  },
+  "onboardingBrowsingHistoryAnalyzing": {
+    "message": "Analyzing.."
+  },
+  "onboardingBrowsingHistoryNoHistory": {
+    "message": "We couldn't find much browsing history to analyze. This is normal if you're using a new browser or have recently cleared your history."
+  },
+  "onboardingBrowsingHistoryAnalysisFailed": {
+    "message": "Analysis failed"
+  },
+  "onboardingBrowsingHistoryAnalysisFailedMessage": {
+    "message": "Unable to analyze browsing history. You can continue with the setup."
+  },
+  "onboardingBrowsingHistoryNoHistoryFallback": {
+    "message": "We couldn't analyze your browsing history. This might be because you have limited history or use private browsing."
+  },
+  "onboardingBrowsingHistoryProductiveFocus": {
+    "message": "You seem to focus on productive activities online! You visit {count} work-related sites regularly."
+  },
+  "onboardingBrowsingHistoryBalancedHabits": {
+    "message": "You have a good balance of work and entertainment in your browsing habits."
+  },
+  "onboardingBrowsingHistoryModerateUsage": {
+    "message": "Your browsing patterns suggest moderate internet usage across {count} different sites."
+  },
+  "onboardingTranscriptionFailedPrefix": {
+    "message": "Transcription failed: "
+  },
+  "onboardingErrorFetchingBrowserHistory": {
+    "message": "Failed to fetch browser history"
+  },
+  "modelSelectionSelectModel": {
+    "message": "Select model",
+    "description": "Placeholder text for model selection dropdown."
+  },
+  "modelSelectionSearchDownloadableLLMs": {
+    "message": "Search downloadable LLMs...",
+    "description": "Placeholder text for searching remote/downloadable LLM models."
+  },
+  "modelSelectionLocalLabel": {
+    "message": "Local",
+    "description": "Label prefix for local model selection section."
+  },
+  "modelSelectionRemoteLLMLabel": {
+    "message": "Remote LLM",
+    "description": "Label for remote LLM model selection section."
+  },
+  "modelSelectionSelectRemoteLLMAriaLabel": {
+    "message": "Select remote LLM",
+    "description": "Aria label for remote LLM selection."
+  },
+  "connectionTestConnecting": {
+    "message": "Connecting...",
+    "description": "Status message shown while testing connection."
+  },
+  "connectionTestSuccess": {
+    "message": "Success!",
+    "description": "Status message shown when connection test succeeds."
+  },
+  "connectionTestPlayTestAudio": {
+    "message": "Play Test Audio",
+    "description": "Button text to play test audio after successful TTS test."
+  },
+  "connectionTestError403": {
+    "message": "Error: Connection failed (403 Forbidden). Check API key or CORS.",
+    "description": "Error message for 403 Forbidden response."
+  },
+  "connectionTestErrorTimeout": {
+    "message": "Connection failed: Timed out.",
+    "description": "Error message for timeout errors."
+  },
+  "connectionTestErrorGeneric": {
+    "message": "Connection test failed:",
+    "description": "Generic error message prefix for connection test failures."
+  },
+  "connectionTestCorsGenericHelp": {
+    "message": "Ensure CORS is enabled on your server.",
+    "description": "Generic CORS help message."
+  },
+  "ttsProviderLabel": {
+    "message": "TTS Provider",
+    "description": "Label for TTS provider selection section."
+  },
+  "ttsApiKeyLabel": {
+    "message": "API Key",
+    "description": "Label for API key input field."
+  },
+  "ttsElevenLabsApiKeyPlaceholder": {
+    "message": "Enter your ElevenLabs API Key",
+    "description": "Placeholder text for ElevenLabs API key input field."
+  },
+  "ttsTesting": {
+    "message": "Testing...",
+    "description": "Button text shown while testing TTS connection."
+  },
+  "ttsTestConnection": {
+    "message": "Test Connection",
+    "description": "Button text to test TTS connection."
+  },
+  "ttsPlayTestAudio": {
+    "message": "Play Test Audio",
+    "description": "Button text to play test audio after successful TTS test."
+  },
+  "ttsErrorPrefix": {
+    "message": "Error:",
+    "description": "Prefix for TTS error messages."
+  },
+  "vadSpeechToTextLabel": {
+    "message": "Speech to Text",
+    "description": "Label for the speech to text section in VAD panel."
+  },
+  "vadInitializing": {
+    "message": "Initializing...",
+    "description": "Button text shown while VAD is initializing."
+  },
+  "vadTranscribing": {
+    "message": "Transcribing...",
+    "description": "Button text shown while transcribing audio."
+  },
+  "vadListening": {
+    "message": "Listening...",
+    "description": "Button text shown while VAD is listening for speech."
+  },
+  "vadTest": {
+    "message": "Test",
+    "description": "Button text to start VAD test."
+  },
+  "vadStatusPrefix": {
+    "message": "Status:",
+    "description": "Prefix for VAD status messages."
+  },
+  "vadSttErrorPrefix": {
+    "message": "STT Error:",
+    "description": "Prefix for speech-to-text error messages."
+  },
+  "vadErrorPrefix": {
+    "message": "Error:",
+    "description": "Prefix for VAD error messages."
+  },
+  "newTabPageButtonChat": {
+    "message": "Chat",
+    "description": "Button text to navigate to the chat page from new tab."
+  },
+  "chatPageSpeechMode": {
+    "message": "Speech Mode",
+    "description": "Label for the speech mode toggle switch in chat page header."
+  },
+  "chatPageGenerateRoleplay": {
+    "message": "Generate Roleplay",
+    "description": "Button text to generate a new roleplay scenario."
+  },
+  "chatPageInputPlaceholder": {
+    "message": "Ask anything...",
+    "description": "Placeholder text for the chat input field."
+  },
+  "chatPageStartVoiceChat": {
+    "message": "Start Voice Chat",
+    "description": "Button text to start voice conversation in speech mode."
+  },
+  "chatPageStopVoiceChat": {
+    "message": "Stop Voice Chat",
+    "description": "Button text to stop voice conversation in speech mode."
+  },
+  "chatPageListening": {
+    "message": "Listening...",
+    "description": "Status text shown when the app is listening for voice input."
+  },
+  "chatPageResponding": {
+    "message": "Responding...",
+    "description": "Status text shown when the AI is generating a voice response."
+  },
+  "chatPageLoadingOlderMessages": {
+    "message": "Loading...",
+    "description": "Text shown when loading older chat messages."
+  },
+  "chatPageNoMessagesYet": {
+    "message": "No messages yet.",
+    "description": "Text shown when there are no chat messages in the conversation."
+  },
+  "bookmarksPageNoBookmarksYet": {
+    "message": "No bookmarks saved yet.",
+    "description": "Text shown when user has no bookmarks saved."
+  },
+  "settingsPageLoadingSettings": {
+    "message": "Loading settings...",
+    "description": "Text shown while settings are being loaded."
+  },
+  "settingsPageErrorLoadingSettings": {
+    "message": "Error loading settings.",
+    "description": "Text shown when there's an error loading settings."
+  },
+  "settingsPageSelectCategory": {
+    "message": "Select a category from the sidebar to configure.",
+    "description": "Instruction text shown when no settings category is selected."
+  },
+  "settingsPageSectionModels": {
+    "message": "MODELS",
+    "description": "Label for the models section in settings sidebar."
+  },
+  "settingsPageSectionCensorship": {
+    "message": "CENSORSHIP",
+    "description": "Label for the censorship section in settings sidebar."
+  },
+  "settingsPageSectionProductivity": {
+    "message": "PRODUCTIVITY",
+    "description": "Label for the productivity section in settings sidebar."
+  },
+  "settingsPageMenuLLM": {
+    "message": "LLM",
+    "description": "Menu item text for LLM settings."
+  },
+  "settingsPageMenuTTS": {
+    "message": "TTS",
+    "description": "Menu item text for TTS settings."
+  },
+  "settingsPageMenuSTTVAD": {
+    "message": "STT & VAD",
+    "description": "Menu item text for Speech-to-Text and Voice Activity Detection settings."
+  },
+  "settingsPageMenuRedirects": {
+    "message": "Redirects",
+    "description": "Menu item text for redirects settings."
+  },
+  "settingsPageMenuFocusMode": {
+    "message": "Focus Mode",
+    "description": "Menu item text for focus mode settings."
+  },
+  "settingsPageVADSectionTitle": {
+    "message": "Speech to Text & Voice Activity Detection",
+    "description": "Title for the VAD settings section."
   }
 } 

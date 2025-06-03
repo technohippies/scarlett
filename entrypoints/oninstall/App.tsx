@@ -275,7 +275,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
 
   // --- VAD & STT State for Onboarding ---
   const availableVadOptionsOnboarding: VadOption[] = [
-    { id: 'silero_vad', name: 'Silero VAD (Local)' }
+    { id: 'silero_vad', name: 'ElevenLabs Speech to Text', logoUrl: '/images/11-labs.png' }
   ];
   const [selectedVadIdOnboarding, setSelectedVadIdOnboarding] = createSignal<string | undefined>(availableVadOptionsOnboarding[0].id);
   const [vadInstanceOnboarding, setVadInstanceOnboarding] = createSignal<MicVAD | null>(null);
@@ -1412,6 +1412,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
                   remoteModels={transientState.remoteModels}
                   selectedModelId={() => config?.modelId}
                   onSelectModel={(modelId) => settingsContext.handleSelectModel(funcType, modelId)}
+                  messages={messagesData() || {}}
                 />
                 <Show when={transientState.fetchStatus() === 'success' && config?.modelId}>
                   <ConnectionTestPanel
@@ -1419,6 +1420,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
                     testError={transientState.testError}
                     functionName={funcType}
                     selectedProvider={() => availableLLMProviders.find(p => p.id === config?.providerId)}
+                    messages={messagesData() || {}}
                   />
                 </Show>
               </div>
@@ -1457,6 +1459,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
                   remoteModels={transientState.remoteModels}
                   selectedModelId={() => config?.modelId}
                   onSelectModel={(modelId) => settingsContext.handleSelectModel(funcType, modelId)}
+                  messages={messagesData() || {}}
                 />
                 <Show when={transientState.fetchStatus() === 'success' && config?.modelId}>
                   <ConnectionTestPanel
@@ -1464,12 +1467,13 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
                     testError={transientState.testError}
                     functionName={funcType}
                     selectedProvider={() => availableEmbeddingProviders.find(p => p.id === config?.providerId)}
+                    messages={messagesData() || {}}
                   />
                   {/* Simple progress bar for embedding */}
                   <Show when={transientState.testStatus() === 'testing'}>
                     <div class="mt-4">
                       <div class="flex justify-between text-sm text-muted-foreground mb-1">
-                        <span>Embedding Scarlett's personality... This might take a minute</span>
+                        <span>{i18n().get('onboardingEmbeddingPersonalityMessage', "Embedding Scarlett's personality... This might take a minute")}</span>
                         <span id="embedding-progress-text">{Math.round(embeddingProgress())}%</span>
                       </div>
                       <Progress value={embeddingProgress()} maxValue={100} class="w-full h-2" />
@@ -1501,6 +1505,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
               testAudioData={ttsTestAudio}
               onPlayTestAudio={() => playAudioBlob(ttsTestAudio())}
               testError={ttsErrorOnboarding}
+              messages={messagesData() || {}}
             />
           </div>
         );
@@ -1510,7 +1515,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
         return (
           <div class="w-full max-w-lg">
             <p class="text-xl md:text-2xl mb-2">
-              {i18n().get('onboardingSetupVADTitle', 'Test Voice Input & Transcription')}
+              {i18n().get('onboardingSetupVADTitle', 'Test Speech to Text')}
             </p>
             <p class="text-lg text-muted-foreground mb-6">
               {i18n().get('onboardingSetupVADDescription', 'Test your microphone and ElevenLabs speech to text.')}
@@ -1536,6 +1541,9 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
               transcribedText={transcribedTextOnboarding}
               isTranscribing={isTranscribingOnboarding}
               sttError={sttErrorOnboarding}
+              hideSelector={() => true}
+              hideTestHeader={() => false}
+              messages={messagesData() || {}}
             />
           </div>
         );

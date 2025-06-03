@@ -9,9 +9,11 @@ import { DEFAULT_ELEVENLABS_MODEL_ID } from '../../shared/constants';
 import { browser } from "wxt/browser";
 import { pcmToWavBlob } from '../../lib/utils'; // Import the new utility
 import { transcribeElevenLabsAudio, type ElevenLabsTranscriptionResponse } from '../../services/stt/elevenLabsSttService'; // Import STT service
+import type { Messages } from '../../types/i18n';
 
 interface SettingsPageProps {
   onNavigateBack?: () => void;
+  messages?: Messages;
 }
 
 const SettingsPage: Component<SettingsPageProps> = (props) => {
@@ -373,6 +375,7 @@ const SettingsPage: Component<SettingsPageProps> = (props) => {
       transcribedText={transcribedText}
       isTranscribing={isTranscribing}
       sttError={sttError}
+      messages={props.messages}
     />
   );
 };

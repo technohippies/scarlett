@@ -3,15 +3,21 @@ import type { Bookmark } from '../../services/db/types'; // Import Bookmark type
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'; // Use Card for structure
 import { Spinner } from '../../components/ui/spinner';
 import { Header } from '../../components/layout/Header'; // Import Header
+import type { Messages } from '../../types/i18n';
 
 export interface BookmarksPageViewProps {
   bookmarks: Bookmark[] | null;
   isLoading: boolean;
   error: string | null;
   onNavigateBack: () => void; // Add navigation prop
+  messages?: Messages;
 }
 
 export const BookmarksPageView: Component<BookmarksPageViewProps> = (props) => {
+  // Localization helper
+  const getLocalizedString = (key: string, fallback: string) => {
+    return props.messages?.[key]?.message || fallback;
+  };
 
   const formatTags = (tagsString: string | null | undefined): string[] => {
     if (!tagsString) return [];
@@ -45,7 +51,7 @@ export const BookmarksPageView: Component<BookmarksPageViewProps> = (props) => {
 
         <Show when={!props.isLoading && !props.error && props.bookmarks}>
           {(bookmarks) => (
-            <Show when={bookmarks().length > 0} fallback={<p class="text-muted-foreground text-center mt-10">No bookmarks saved yet.</p>}>
+            <Show when={bookmarks().length > 0} fallback={<p class="text-muted-foreground text-center mt-10">{getLocalizedString('bookmarksPageNoBookmarksYet', 'No bookmarks saved yet.')}</p>}>
               {/* Scrollable content within the main area */}
               {/* Adjust height calculation based on header height (approx h-16 or 4rem) */}
               <div class="h-[calc(100vh-4rem-4rem)] md:h-[calc(100vh-4rem-6rem)] overflow-y-auto"> {/* Adjusted height, consider header/padding */}

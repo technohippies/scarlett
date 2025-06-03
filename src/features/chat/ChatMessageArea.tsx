@@ -2,6 +2,7 @@ import { Component, For, createEffect, Show } from 'solid-js';
 import { useChat } from './chatStore';
 import type { ChatMessage, WordInfo } from './types';
 import { ChatMessageItem } from './ChatMessageItem'; // Assuming this component is reusable
+import type { Messages } from '../../types/i18n';
 
 interface ChatMessageAreaProps {
   messages: ChatMessage[];
@@ -11,9 +12,15 @@ interface ChatMessageAreaProps {
   ttsWordMap?: WordInfo[];
   currentTTSHighlightIndex?: number | null;
   // Potentially, a ref to the scroll host if managed here
+  i18nMessages?: Messages;
 }
 
 export const ChatMessageArea: Component<ChatMessageAreaProps> = (props) => {
+  // Localization helper
+  const getLocalizedString = (key: string, fallback: string) => {
+    return props.i18nMessages?.[key]?.message || fallback;
+  };
+
   createEffect(() => {
     console.log('[ChatMessageArea] description prop:', props.description);
   });
@@ -28,7 +35,7 @@ export const ChatMessageArea: Component<ChatMessageAreaProps> = (props) => {
           {props.description}
         </div>
       )}
-      <Show when={props.messages.length > 0} fallback={<div class="text-center text-muted-foreground p-8">No messages yet.</div>}>
+      <Show when={props.messages.length > 0} fallback={<div class="text-center text-muted-foreground p-8">{getLocalizedString('chatPageNoMessagesYet', 'No messages yet.')}</div>}>
         <For each={props.messages}>
           {(message) => (
             <ChatMessageItem

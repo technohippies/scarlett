@@ -3,13 +3,18 @@ import { Button } from '../../components/ui/button';
 import { cn } from '../../lib/utils';
 import { Microphone } from 'phosphor-solid';
 import { Spinner } from '../../components/ui/spinner';
-
+import type { Messages } from '../../types/i18n';
 
 export interface VadOption {
     id: string;
     name: string;
     logoUrl?: string;
 }
+
+// Helper function to get translated string or fallback
+const getLocalizedString = (messages: Messages | undefined, key: string, fallback: string): string => {
+  return messages?.[key]?.message || fallback;
+};
 
 export interface VadPanelProps {
     availableVadOptions: VadOption[];
@@ -42,6 +47,9 @@ export interface VadPanelProps {
     hideTestButtonIcon?: Accessor<boolean>;
     statusMessageClass?: Accessor<string>;
     hideAudioLabel?: Accessor<boolean>;
+    
+    // Messages for i18n
+    messages?: Messages;
 }
 
 
@@ -108,7 +116,7 @@ export const VadPanel: Component<VadPanelProps> = (props) => {
                 <div class="space-y-4 rounded-md">
                     <Show when={showTestHeader()}>
                         <div class="flex justify-between items-center">
-                            <h3 class="text-lg font-medium text-foreground">Speech to Text</h3>
+                            <h3 class="text-lg font-medium text-foreground">{getLocalizedString(props.messages, 'vadSpeechToTextLabel', 'Speech to Text')}</h3>
                             <Show when={isLoading()}>
                                 <Spinner class="h-4 w-4" />
                             </Show>
@@ -138,10 +146,10 @@ export const VadPanel: Component<VadPanelProps> = (props) => {
                             <Show when={showTestButtonIcon()}>
                                 <Microphone class="h-4 w-4 mr-1.5" />
                             </Show>
-                            {isLoading() ? 'Initializing...' 
-                                : props.isTranscribing() ? 'Transcribing...' 
-                                : props.isVadTesting() ? 'Listening...' 
-                                : 'Test'}
+                            {isLoading() ? getLocalizedString(props.messages, 'vadInitializing', 'Initializing...') 
+                                : props.isTranscribing() ? getLocalizedString(props.messages, 'vadTranscribing', 'Transcribing...') 
+                                : props.isVadTesting() ? getLocalizedString(props.messages, 'vadListening', 'Listening...') 
+                                : getLocalizedString(props.messages, 'vadTest', 'Test')}
                         </Button>
                     </div>
 
@@ -149,7 +157,7 @@ export const VadPanel: Component<VadPanelProps> = (props) => {
                         <p class={cn(
                             "text-sm text-muted-foreground",
                             props.statusMessageClass ? props.statusMessageClass() : ""
-                        )}>Status: {props.vadStatusMessage()}</p>
+                        )}>{getLocalizedString(props.messages, 'vadStatusPrefix', 'Status:')} {props.vadStatusMessage()}</p>
                     </Show>
                     
                     <Show when={canPlayRecording() && !props.isVadTesting() && !isLoading() && !props.isTranscribing()}>
@@ -166,7 +174,7 @@ export const VadPanel: Component<VadPanelProps> = (props) => {
                     </Show>
 
                     <Show when={props.sttError() && !props.isTranscribing()}> 
-                        <p class="text-destructive mt-2">STT Error: {props.sttError()?.message}</p>
+                        <p class="text-destructive mt-2">{getLocalizedString(props.messages, 'vadSttErrorPrefix', 'STT Error:')} {props.sttError()?.message}</p>
                     </Show>
 
                     {/* Show only VAD test errors directly. Other statuses are on button or implicit. */}
@@ -174,7 +182,7 @@ export const VadPanel: Component<VadPanelProps> = (props) => {
                         <p class={cn(
                             "text-sm text-destructive", // Make it clear it's an error
                             props.statusMessageClass ? props.statusMessageClass() : "" // Allow override if needed, but default to error styling
-                        )}>Error: {props.vadTestError()?.message}</p>
+                        )}>{getLocalizedString(props.messages, 'vadErrorPrefix', 'Error:')} {props.vadTestError()?.message}</p>
                     </Show>
                 </div>
             </Show>

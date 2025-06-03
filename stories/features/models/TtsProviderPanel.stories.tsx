@@ -143,6 +143,7 @@ const BaseRender = (args: any) => {
                 testAudioData={audio} // Pass signal accessor
                 onPlayTestAudio={handlePlayAudio}
                 testError={error} // Pass signal accessor
+                messages={{}}
             />
         </div>
     );

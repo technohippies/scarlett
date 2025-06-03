@@ -5,6 +5,7 @@ import type { ProviderOption } from './ProviderSelectionPanel'; // Import from s
 // Import OllamaCorsInstructions from ModelSelectionPanel
 import OllamaCorsInstructions from './OllamaCorsInstructions';
 import { Button } from '../../components/ui/button'; // Added Button
+import type { Messages } from '../../types/i18n'; // Import Messages type
 
 // Helper type
 type TestStatus = 'idle' | 'testing' | 'success' | 'error';
@@ -20,6 +21,11 @@ const shouldShowCorsHelp = (error: Error | null): boolean => {
   );
 };
 
+// Helper function to get translated string or fallback
+const getLocalizedString = (messages: Messages | undefined, key: string, fallback: string): string => {
+  return messages?.[key]?.message || fallback;
+};
+
 export interface ConnectionTestPanelProps {
   testStatus: () => TestStatus; // Accessor
   testError: () => Error | null; // Accessor
@@ -29,8 +35,8 @@ export interface ConnectionTestPanelProps {
   onPlayAudio?: () => void; // Optional: Handler to play audio
    // Prop specifically for Storybook control
   _forceOSForOllamaInstructions?: 'linux' | 'macos' | 'windows' | 'unknown';
-  // Optional i18n messages
-  // messages?: Accessor<Messages | undefined>;
+  // Messages for i18n
+  messages?: Messages;
 }
 
 export const ConnectionTestPanel: Component<ConnectionTestPanelProps> = (props) => {
@@ -52,7 +58,7 @@ export const ConnectionTestPanel: Component<ConnectionTestPanelProps> = (props) 
               <div class="flex items-center text-muted-foreground">
               {/* Use functionName in testing message */}
               <Spinner class="mr-2 h-4 w-4 animate-spin" />
-              <span>Connecting...</span>
+              <span>{getLocalizedString(props.messages, 'connectionTestConnecting', 'Connecting...')}</span>
               </div>
           </Show>
           
@@ -65,14 +71,14 @@ export const ConnectionTestPanel: Component<ConnectionTestPanelProps> = (props) 
                           {(() => {
                               const error = props.testError();
                               const status = (error as any)?.status;
-                              if (status === 403) {
-                                  return 'Error: Connection failed (403 Forbidden). Check API key or CORS.';
-                              } else if (error?.name === 'TimeoutError') {
-                                  return 'Connection failed: Timed out.';
-                              } else {
-                                  // Provide a more generic message but include the error text
-                                  return `Connection test failed: ${error?.message || 'Unknown error'}`;
-                              }
+                                                              if (status === 403) {
+                                    return getLocalizedString(props.messages, 'connectionTestError403', 'Error: Connection failed (403 Forbidden). Check API key or CORS.');
+                                } else if (error?.name === 'TimeoutError') {
+                                    return getLocalizedString(props.messages, 'connectionTestErrorTimeout', 'Connection failed: Timed out.');
+                                } else {
+                                    // Provide a more generic message but include the error text
+                                    return `${getLocalizedString(props.messages, 'connectionTestErrorGeneric', 'Connection test failed:')} ${error?.message || 'Unknown error'}`;
+                                }
                           })()}
                       </span>
                   </div>
@@ -80,7 +86,7 @@ export const ConnectionTestPanel: Component<ConnectionTestPanelProps> = (props) 
                   {/* CORS Help (if applicable) */}
                   {shouldShowCorsHelp(props.testError()) && (
                       <div class="mt-2 pl-6"> {/* Indent CORS help slightly */}
-                          <Switch fallback={<p class="text-xs text-muted-foreground">Ensure CORS is enabled on your server.</p>}>
+                          <Switch fallback={<p class="text-xs text-muted-foreground">{getLocalizedString(props.messages, 'connectionTestCorsGenericHelp', 'Ensure CORS is enabled on your server.')}</p>}>
                               <Match when={props.selectedProvider()?.id === 'ollama'}>
                                   <OllamaCorsInstructions _forceOS={props._forceOSForOllamaInstructions} />
                               </Match>
@@ -107,7 +113,7 @@ export const ConnectionTestPanel: Component<ConnectionTestPanelProps> = (props) 
           <Show when={props.testStatus() === 'success'}>
               <div class="text-green-500 flex items-center">
                   <CheckCircle class="mr-2 h-4 w-4" />
-                  <span>Success!</span>
+                  <span>{getLocalizedString(props.messages, 'connectionTestSuccess', 'Success!')}</span>
                   {/* Conditionally show Play button for TTS */}
                   <Show when={props.functionName === 'TTS' && props.testAudioData && props.testAudioData()}> 
                      <Button 
@@ -116,7 +122,7 @@ export const ConnectionTestPanel: Component<ConnectionTestPanelProps> = (props) 
                        class="ml-4"
                        onClick={props.onPlayAudio} 
                      >
-                        <SpeakerSimpleHigh class="h-4 w-4 mr-1" /> Play Test Audio
+                        <SpeakerSimpleHigh class="h-4 w-4 mr-1" /> {getLocalizedString(props.messages, 'connectionTestPlayTestAudio', 'Play Test Audio')}
                      </Button>
                   </Show>
               </div>

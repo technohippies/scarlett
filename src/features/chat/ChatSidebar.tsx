@@ -5,6 +5,7 @@ import type { Thread } from './types';
 import { Spinner } from '../../components/ui/spinner';
 import { parseThinkingContent } from './utils';
 import { EmbeddingProcessingPanel } from '../embedding/EmbeddingProcessingPanel';
+import type { Messages } from '../../types/i18n';
 
 interface ChatSidebarProps {
   threads: Thread[];
@@ -22,10 +23,17 @@ interface ChatSidebarProps {
   totalCount?: () => number;
   onEmbedClick?: () => void;
   showEmbeddingPanel?: boolean;
+  // Localization
+  messages?: Messages;
 }
 
 export const ChatSidebar: Component<ChatSidebarProps> = (props) => {
   const [hoveredThreadId, setHoveredThreadId] = createSignal<string | null>(null);
+
+  // Localization helper
+  const getLocalizedString = (key: string, fallback: string) => {
+    return props.messages?.[key]?.message || fallback;
+  };
 
   createEffect(() => {
     console.log('[ChatSidebar] isRoleplayLoading:', props.isRoleplayLoading);
@@ -99,6 +107,7 @@ export const ChatSidebar: Component<ChatSidebarProps> = (props) => {
             totalCount={props.totalCount!}
             onProcessClick={props.onEmbedClick!}
             class="w-full"
+            messages={props.messages}
           />
         </Show>
         
@@ -109,7 +118,7 @@ export const ChatSidebar: Component<ChatSidebarProps> = (props) => {
           onClick={props.onGenerateRoleplay}
           disabled={props.isRoleplayLoading}
         >
-          {props.isRoleplayLoading ? <Spinner class="animate-spin size-5" /> : 'Generate Roleplay'}
+          {props.isRoleplayLoading ? <Spinner class="animate-spin size-5" /> : getLocalizedString('chatPageGenerateRoleplay', 'Generate Roleplay')}
         </Button>
       </div>
     </aside>

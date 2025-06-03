@@ -13,6 +13,7 @@ import type { BackgroundProtocolMap } from '../../shared/messaging-types';
 import { EmbeddingProcessingPanel } from '../embedding/EmbeddingProcessingPanel';
 import { getEmbedding, type EmbeddingResult } from '../../services/llm/embedding';
 import { useSettings } from '../../context/SettingsContext';
+import type { Messages } from '../../types/i18n';
 
 export interface ChatPageLayoutViewProps {
   threads: Thread[];
@@ -42,12 +43,19 @@ export interface ChatPageLayoutViewProps {
   onLoadOlderMessages?: () => void;
   hasOlderMessages?: boolean;
   isLoadingOlderMessages?: boolean;
+  // Localization
+  i18nMessages?: Messages;
 }
 
 const MESSAGES_PER_PAGE = 50;
 const SCROLL_THRESHOLD = 100; // px from top to trigger loading older messages
 
 export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) => {
+  // Localization helper
+  const getLocalizedString = (key: string, fallback: string) => {
+    return props.i18nMessages?.[key]?.message || fallback;
+  };
+
   createEffect(() => {
     console.log('[ChatPageLayoutView EFFECT] isRoleplayLoading prop:', props.isRoleplayLoading);
   });
@@ -272,7 +280,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
           class="flex items-center space-x-2"
         >
           <SwitchControl class="relative"><SwitchThumb /></SwitchControl>
-          <SwitchLabel>{/* TODO: Add i18n for Speech Mode */}Speech Mode</SwitchLabel>
+          <SwitchLabel>{getLocalizedString('chatPageSpeechMode', 'Speech Mode')}</SwitchLabel>
         </Switch>
       </header>
 
@@ -297,6 +305,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
                 totalCount={totalCount}
                 onEmbedClick={handleEmbedClick}
                 showEmbeddingPanel={(pendingEmbeddingData()?.count || 0) > 0 || isEmbedding()}
+                messages={props.i18nMessages}
               />
             );
           })()}
@@ -319,11 +328,11 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
                   <div class="flex justify-center py-4 animate-in fade-in duration-200">
                     <div class="text-sm text-muted-foreground flex items-center bg-background/80 backdrop-blur-sm px-3 py-2 rounded-full border border-border/40">
                       <span class="mr-2 animate-spin">⟳</span>
-                      Loading...
+                      {getLocalizedString('chatPageLoadingOlderMessages', 'Loading...')}
                     </div>
                   </div>
                 </Show>
-                <ChatMessageArea messages={props.messages} description={props.threadSystemPrompt} />
+                <ChatMessageArea messages={props.messages} description={props.threadSystemPrompt} i18nMessages={props.i18nMessages} />
               </Show>
             </div>
           </main>
@@ -336,6 +345,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
                   isSpeaking={props.isSpeaking}
                   onStartVoiceConversation={props.onStartVoiceConversation}
                   onStopVAD={props.onStopVAD}
+                  messages={props.i18nMessages}
                 />
               }>
                 <TextInputControls
@@ -343,6 +353,7 @@ export const ChatPageLayoutView: Component<ChatPageLayoutViewProps> = (props) =>
                   onInputChange={props.onInputChange}
                   onSendMessage={props.onSendText}
                   isDisabled={!props.isIdle}
+                  messages={props.i18nMessages}
                 />
               </Show>
             </div>

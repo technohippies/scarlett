@@ -1,4 +1,4 @@
-import { Component, Show, Switch, Match } from 'solid-js';
+import { Component, createSignal, onMount, Show, Switch, Match } from 'solid-js';
 import { Callout, CalloutContent } from '../../components/ui/callout';
 import { CodeBlock } from '../../components/ui/CodeBlock';
 import { Label } from '../../components/ui/label';
@@ -16,6 +16,7 @@ import {
 } from '../../components/ui/combobox';
 import type { ProviderOption } from './ProviderSelectionPanel'; // Import from sibling
 import { Motion, Presence } from 'solid-motionone';
+import type { Messages } from '../../types/i18n'; // Import Messages type
 
 // --- Import the new external component --- 
 import OllamaCorsInstructions from './OllamaCorsInstructions';
@@ -34,21 +35,42 @@ type FetchStatus = 'idle' | 'loading' | 'success' | 'error';
 // Helper function (can be imported or defined locally)
 const shouldShowCorsHelp = (error: Error | null): boolean => {
   if (!error) return false;
-  const status = (error as any)?.status;
-  return (
-    error instanceof TypeError ||
-    error.message?.includes('fetch') ||
-    status === 403 // Explicitly include 403 Forbidden
-  );
+  const errorMessage = error.message?.toLowerCase() || '';
+  const errorString = error.toString().toLowerCase();
+  return errorMessage.includes('cors') || 
+         errorMessage.includes('fetch') || 
+         errorMessage.includes('network') ||
+         errorString.includes('typeerror') ||
+         errorString.includes('failed to fetch');
 };
 
 // Helper function (can be placed inside the component or outside)
 const getModelTypeLabel = (funcName: string): string => {
-  switch (funcName) {
-    case 'Embedding': return 'Embedding Model';
-    case 'LLM': // Fallthrough intended
-    default: return 'LLM'; // Default to LLM
-  }
+  return funcName === 'LLM' ? 'LLM' : 
+         funcName === 'Embedding' ? 'Embedding' :
+         funcName === 'Reader' ? 'Reader' :
+         'Model';
+};
+
+// Helper function to get translated string or fallback
+const getLocalizedString = (messages: Messages | undefined, key: string, fallback: string): string => {
+  return messages?.[key]?.message || fallback;
+};
+
+// === OS Detection Logic ===
+type OS = 'linux' | 'macos' | 'windows' | 'unknown';
+
+const detectOS = (): OS => {
+  if (typeof navigator === 'undefined') return 'unknown';
+  
+  const userAgent = navigator.userAgent.toLowerCase();
+  const platform = navigator.platform?.toLowerCase() || '';
+  
+  if (userAgent.includes('mac') || platform.includes('mac')) return 'macos';
+  if (userAgent.includes('win') || platform.includes('win')) return 'windows';
+  if (userAgent.includes('linux') || platform.includes('linux')) return 'linux';
+  
+  return 'unknown';
 };
 
 // --- Ollama CORS Instructions Component (Remove this internal definition) ---
@@ -117,8 +139,8 @@ export interface ModelSelectionPanelProps {
   onSelectModel: (modelId: string | undefined) => void;
   // Prop specifically for Storybook control
   _forceOSForOllamaInstructions?: 'linux' | 'macos' | 'windows' | 'unknown'; 
-  // Messages for i18n - can be optional or required based on needs
-  // messages?: Accessor<Messages | undefined>;
+  // Messages for i18n
+  messages?: Messages;
 }
 
 export const ModelSelectionPanel: Component<ModelSelectionPanelProps> = (props) => {
@@ -198,7 +220,7 @@ export const ModelSelectionPanel: Component<ModelSelectionPanelProps> = (props) 
                   
                   {/* --- Local Model Selection --- */}
                   <Show when={props.fetchedModels().length > 0}>
-                    <Label for="local-model-select" class="mb-2">Local {getModelTypeLabel(props.functionName)}</Label>
+                    <Label for="local-model-select" class="mb-2">{getLocalizedString(props.messages, 'modelSelectionLocalLabel', 'Local')} {getModelTypeLabel(props.functionName)}</Label>
                     <Select<ModelOption>
                       id="local-model-select"
                       value={props.fetchedModels().find(m => m.id === props.selectedModelId())}
@@ -208,7 +230,7 @@ export const ModelSelectionPanel: Component<ModelSelectionPanelProps> = (props) 
                       options={props.fetchedModels()}
                       optionValue="id"
                       optionTextValue="name"
-                      placeholder="Select model"
+                      placeholder={getLocalizedString(props.messages, 'modelSelectionSelectModel', 'Select model')}
                       itemComponent={(itemProps) => (
                         <SelectItem item={itemProps.item}>{itemProps.item.rawValue.name}</SelectItem>
                       )}
@@ -224,13 +246,13 @@ export const ModelSelectionPanel: Component<ModelSelectionPanelProps> = (props) 
 
                   {/* --- Remote Model Selection (Jan specific) --- */}
                   <Show when={props.remoteModels().length > 0}>
-                      <Label for="remote-model-combobox" class="mb-2">Remote LLM</Label>
+                      <Label for="remote-model-combobox" class="mb-2">{getLocalizedString(props.messages, 'modelSelectionRemoteLLMLabel', 'Remote LLM')}</Label>
                       <Combobox<ModelOption>
                           id="remote-model-combobox"
                           options={props.remoteModels()}
                           optionValue="id"
                           optionTextValue="name"
-                          placeholder={`Search downloadable LLMs...`}
+                          placeholder={getLocalizedString(props.messages, 'modelSelectionSearchDownloadableLLMs', 'Search downloadable LLMs...')}
                           onChange={(selectedOption: ModelOption | null) => {
                             console.log(`[ModelSelectionPanel] Remote model selected via Combobox: ${selectedOption?.id}`);
                             props.onSelectModel(selectedOption?.id);
@@ -243,7 +265,7 @@ export const ModelSelectionPanel: Component<ModelSelectionPanelProps> = (props) 
                           )}
                       >
                           <ComboboxControl<ModelOption>
-                              aria-label={`Select remote LLM`}>
+                              aria-label={getLocalizedString(props.messages, 'modelSelectionSelectRemoteLLMAriaLabel', 'Select remote LLM')}>
                               {(state) => (
                                   <>
                                       <ComboboxInput value={state.selectedOptions().length > 0 ? state.selectedOptions()[0].name : ''} />

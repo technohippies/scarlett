@@ -1,9 +1,11 @@
 import { Component } from 'solid-js';
 import { useChat } from './chatStore';
 import { ChatPageLayoutView } from './ChatPageLayoutView';
+import type { Messages } from '../../types/i18n';
 
 interface ChatPageLayoutProps {
   onNavigateBack: () => void;
+  messages?: Messages;
 }
 
 export const ChatPageLayout: Component<ChatPageLayoutProps> = (props) => {
@@ -38,6 +40,7 @@ export const ChatPageLayout: Component<ChatPageLayoutProps> = (props) => {
       onLoadOlderMessages={() => actions.loadOlderMessages?.()}
       hasOlderMessages={state.hasOlderMessages ?? false}
       isLoadingOlderMessages={state.isLoadingOlderMessages ?? false}
+      i18nMessages={props.messages}
     />
   );
 }; 

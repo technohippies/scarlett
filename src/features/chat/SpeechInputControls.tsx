@@ -2,6 +2,7 @@ import { Component, Show } from 'solid-js';
 import { Button } from '../../components/ui/button';
 import { Microphone, Stop } from 'phosphor-solid';
 import { MicVisualizer } from '../../components/ui/MicVisualizer';
+import type { Messages } from '../../types/i18n';
 
 interface SpeechInputControlsProps {
   isVADListening: boolean;
@@ -11,9 +12,15 @@ interface SpeechInputControlsProps {
   sttError?: string | null;
   onStartVoiceConversation: () => void;
   onStopVAD: () => void;
+  messages?: Messages;
 }
 
 export const SpeechInputControls: Component<SpeechInputControlsProps> = (props) => {
+  // Localization helper
+  const getLocalizedString = (key: string, fallback: string) => {
+    return props.messages?.[key]?.message || fallback;
+  };
+
   const isVADListening = () => props.isVADListening;
   const isVoiceConversationActive = () => props.isVoiceConversationActive;
   const isSpeaking = () => props.isSpeaking;
@@ -25,9 +32,9 @@ export const SpeechInputControls: Component<SpeechInputControlsProps> = (props) 
   // Button text is ONLY Start/Stop - never changes based on internal states
   const getButtonText = () => {
     if (!isVoiceConversationActive()) {
-      return 'Start Voice Chat';
+      return getLocalizedString('chatPageStartVoiceChat', 'Start Voice Chat');
     }
-    return 'Stop Voice Chat';
+    return getLocalizedString('chatPageStopVoiceChat', 'Stop Voice Chat');
   };
 
   // Status text shows the internal conversation state
@@ -40,8 +47,8 @@ export const SpeechInputControls: Component<SpeechInputControlsProps> = (props) 
     }
     
     // Show current conversation state
-    if (isSpeaking()) return 'Responding...';
-    return 'Listening...'; // Always show listening when voice conversation active and not responding
+    if (isSpeaking()) return getLocalizedString('chatPageResponding', 'Responding...');
+    return getLocalizedString('chatPageListening', 'Listening...'); // Always show listening when voice conversation active and not responding
   };
 
   // Show mic visualizer when status says "Listening..."

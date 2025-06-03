@@ -2,15 +2,22 @@ import { Component } from 'solid-js';
 import { TextField, TextFieldInput } from '../../components/ui/text-field'; // Assuming path
 import { Button } from '../../components/ui/button'; // Assuming path
 import { PaperPlaneTilt } from 'phosphor-solid';
+import type { Messages } from '../../types/i18n';
 
 interface TextInputControlsProps {
   userInput: string;
   onInputChange: (value: string) => void;
   onSendMessage: () => void;
   isDisabled?: boolean;
+  messages?: Messages;
 }
 
 export const TextInputControls: Component<TextInputControlsProps> = (props) => {
+  // Localization helper
+  const getLocalizedString = (key: string, fallback: string) => {
+    return props.messages?.[key]?.message || fallback;
+  };
+
   const handleKeyPress = (e: KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -26,7 +33,7 @@ export const TextInputControls: Component<TextInputControlsProps> = (props) => {
       <TextField class="w-full">
         <TextFieldInput
           type="text"
-          placeholder="Ask anything..."
+          placeholder={getLocalizedString('chatPageInputPlaceholder', 'Ask anything...')}
           value={props.userInput}
           onInput={(e) => props.onInputChange(e.currentTarget.value)}
           onKeyPress={handleKeyPress}
