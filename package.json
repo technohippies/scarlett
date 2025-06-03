@@ -17,7 +17,11 @@
     "build-storybook": "storybook build",
     "chromatic": "npx chromatic --project-token=chpt_91b2a3b8b536944",
     "e2e": "bunx playwright test",
-    "e2e:ui": "bunx playwright test --ui"
+    "e2e:ui": "bunx playwright test --ui",
+    "release": "./scripts/release.sh",
+    "version:patch": "./scripts/release.sh $(npm version patch --no-git-tag-version | tr -d 'v')",
+    "version:minor": "./scripts/release.sh $(npm version minor --no-git-tag-version | tr -d 'v')",
+    "version:major": "./scripts/release.sh $(npm version major --no-git-tag-version | tr -d 'v')"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.3.1",

@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      
+      - name: Install dependencies
+        run: bun install
+      
+      - name: Build Chrome extension
+        run: bun run build
+      
+      - name: Build Firefox extension
+        run: bun run build:firefox
+      
+      - name: Create Chrome zip
+        run: bun run zip
+      
+      - name: Create Firefox zip
+        run: bun run zip:firefox
+      
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      
+      - name: Rename zip files
+        run: |
+          mv .output/chrome-mv3.zip .output/scarlett-chrome-v${{ steps.version.outputs.VERSION }}.zip
+          mv .output/firefox-mv2.zip .output/scarlett-firefox-v${{ steps.version.outputs.VERSION }}.zip
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: ${{ contains(steps.version.outputs.VERSION, '-') }}
+          files: |
+            .output/scarlett-chrome-v${{ steps.version.outputs.VERSION }}.zip
+            .output/scarlett-firefox-v${{ steps.version.outputs.VERSION }}.zip
+          body: |
+            ## What's New in v${{ steps.version.outputs.VERSION }}
+            
+            [Add release notes here]
+            
+            ## Downloads
+            
+            - **Chrome Extension**: scarlett-chrome-v${{ steps.version.outputs.VERSION }}.zip
+            - **Firefox Extension**: scarlett-firefox-v${{ steps.version.outputs.VERSION }}.zip
+            
+            ## Installation
+            
+            ### Chrome
+            1. Download the Chrome zip file
+            2. Open Chrome and go to `chrome://extensions/`
+            3. Enable "Developer mode"
+            4. Click "Load unpacked" and select the extracted folder
+            
+            ### Firefox
+            1. Download the Firefox zip file
+            2. Open Firefox and go to `about:debugging`
+            3. Click "This Firefox"
+            4. Click "Load Temporary Add-on" and select the zip file
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

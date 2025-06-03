@@ -24,6 +24,26 @@ A browser extension designed to enhance language learning and productivity, feat
 
 ## Installation
 
+### Latest Release
+
+Download the latest release from [GitHub Releases](https://github.com/technohippies/scarlett/releases):
+
+- **Chrome Extension**: Download `scarlett-chrome-v[version].zip`
+- **Firefox Extension**: Download `scarlett-firefox-v[version].zip`
+
+#### Chrome Installation
+1. Download the Chrome zip file
+2. Extract the zip file
+3. Open Chrome and go to `chrome://extensions/`
+4. Enable "Developer mode" (toggle in top right)
+5. Click "Load unpacked" and select the extracted folder
+
+#### Firefox Installation
+1. Download the Firefox zip file
+2. Open Firefox and go to `about:debugging`
+3. Click "This Firefox"
+4. Click "Load Temporary Add-on" and select the zip file
+
 ### From Source
 
 1.  Clone the repository:
