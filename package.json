@@ -2,7 +2,7 @@
   "name": "scarlett-supercoach",
   "description": "Meet Scarlett, your personal AI tutor and lifecoach.",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.3.1",
   "type": "module",
   "scripts": {
     "dev": "wxt",
