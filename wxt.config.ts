@@ -52,8 +52,7 @@ export default defineConfig({
       "declarativeNetRequest",
       "declarativeNetRequestFeedback",
       "webNavigation",
-      "contextMenus",
-      "tts" // Added tts permission
+      "contextMenus"
     ],
     // --- Add Optional Host Permissions ---
     optional_host_permissions: [
