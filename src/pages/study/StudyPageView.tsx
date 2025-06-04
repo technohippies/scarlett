@@ -110,7 +110,7 @@ export const StudyPageView: Component<StudyPageViewProps> = (props) => {
                         <img 
                             src="/images/scarlett-extending-handshake.png" 
                             alt="Scarlett Proud" 
-                            class="w-128 h-128" // Respecting user-defined size
+                            class="h-128" // Respecting user-defined size
                         />
                      </div>
                 </Show>

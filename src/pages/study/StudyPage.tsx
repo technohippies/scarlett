@@ -309,7 +309,17 @@ const StudyPage: Component<StudyPageProps> = (props) => {
             console.warn('[StudyPage Distractors] Could not fetch user settings for DB fallback language, using default.', settingsError);
         }
 
-        const correctAnswerForFiltering = direction === 'EN_TO_NATIVE' ? item.targetText : item.sourceText;
+        // Determine correct answer for filtering based on actual language content and direction
+        const isTargetEnglish = item.targetLang === 'en';
+        let correctAnswerForFiltering: string;
+        
+        if (direction === 'EN_TO_NATIVE') {
+            // Answer should be native language
+            correctAnswerForFiltering = isTargetEnglish ? item.sourceText : item.targetText;
+        } else { // NATIVE_TO_EN  
+            // Answer should be English
+            correctAnswerForFiltering = isTargetEnglish ? item.targetText : item.sourceText;
+        }
         const requiredDistractors = 3;
         let llmGeneratedDistractors: string[] = [];
         let generationError: string | null = null;
@@ -322,6 +332,13 @@ const StudyPage: Component<StudyPageProps> = (props) => {
         console.log(`[StudyPage Distractors] Generating/fetching ${optionsLangForLog} distractors for [${direction}]: ${questionWordForLog}`);
         
         console.log(`[StudyPage Distractors] Attempting LLM generation...`);
+        console.log(`[StudyPage DEBUG] Direction: ${direction}`);
+        console.log(`[StudyPage DEBUG] item.sourceText: "${item.sourceText}"`);
+        console.log(`[StudyPage DEBUG] item.targetText: "${item.targetText}"`);
+        console.log(`[StudyPage DEBUG] item.targetLang: "${item.targetLang}"`);
+        console.log(`[StudyPage DEBUG] correctAnswerForFiltering: "${correctAnswerForFiltering}"`);
+        console.log(`[StudyPage DEBUG] userNativeLangCode: "${userNativeLangCode}"`);
+        
         try {
           const llmResponse = await messaging.sendMessage('generateLLMDistractors', {
             sourceText: item.sourceText,    
@@ -348,11 +365,17 @@ const StudyPage: Component<StudyPageProps> = (props) => {
             console.log('[StudyPage Distractors] LLM provided insufficient. Using DB fallback...');
             try {
                 const neededFromDb = requiredDistractors - finalDistractorsPool.length;
+                
+                // FIXED: DB distractors should also be in the same language as the correct answer options
                 let dbDistractorLangCode: string;
-                if (direction === 'NATIVE_TO_EN') {
-                    dbDistractorLangCode = item.targetLang; 
-                } else { 
-                    dbDistractorLangCode = userNativeLangCode; 
+                const isTargetEnglish = item.targetLang === 'en';
+                
+                if (direction === 'EN_TO_NATIVE') {
+                    // Question: English, Options: All in native language
+                    dbDistractorLangCode = isTargetEnglish ? userNativeLangCode : item.targetLang; // Same as correct answer
+                } else { // NATIVE_TO_EN
+                    // Question: Native, Options: All in English
+                    dbDistractorLangCode = 'en'; // Same as correct answer
                 }
                 
                 console.log(`[StudyPage Distractors] DB Fallback: Requesting ${neededFromDb} in lang: ${dbDistractorLangCode} for targetLexemeId: ${item.targetLexemeId}`);
@@ -454,12 +477,31 @@ const StudyPage: Component<StudyPageProps> = (props) => {
     let sentenceToTranslateDisplay: string;
     let correctAnswerForOptionsList: string;
 
+    // Determine which text is English vs Native based on targetLang field and direction
+    const isTargetEnglish = itemData.targetLang === 'en';
+    
     if (direction === 'EN_TO_NATIVE') {
-        sentenceToTranslateDisplay = itemData.targetText;
-        correctAnswerForOptionsList = itemData.sourceText;
-    } else { 
-        sentenceToTranslateDisplay = itemData.sourceText;
-        correctAnswerForOptionsList = itemData.targetText;
+        // Question: English word, Correct Answer: Native word
+        if (isTargetEnglish) {
+            // sourceText is native, targetText is English
+            sentenceToTranslateDisplay = itemData.targetText; // English (question)
+            correctAnswerForOptionsList = itemData.sourceText; // Native (answer)
+        } else {
+            // sourceText is English, targetText is native  
+            sentenceToTranslateDisplay = itemData.sourceText; // English (question)
+            correctAnswerForOptionsList = itemData.targetText; // Native (answer)
+        }
+    } else { // NATIVE_TO_EN
+        // Question: Native word, Correct Answer: English word
+        if (isTargetEnglish) {
+            // sourceText is native, targetText is English
+            sentenceToTranslateDisplay = itemData.sourceText; // Native (question)
+            correctAnswerForOptionsList = itemData.targetText; // English (answer)
+        } else {
+            // sourceText is English, targetText is native
+            sentenceToTranslateDisplay = itemData.targetText; // Native (question)  
+            correctAnswerForOptionsList = itemData.sourceText; // English (answer)
+        }
     }
 
     const receivedDistractors = distractorInfo.distractors;
