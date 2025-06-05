@@ -1391,7 +1391,7 @@ const OnboardingContent: Component<OnboardingContentProps> = (props) => {
               {i18n().get('onboardingSetupLLMTitle', 'Choose an LLM')}
             </p>
             <p class="text-lg text-muted-foreground mb-6">
-              {i18n().get('onboardingSetupLLMDescription', 'Can\'t run a 4B+ model locally like Gemma3 or Qwen3? Use Jan with an OpenRouter model, many are free!')}
+              {i18n().get('onboardingSetupLLMDescription', 'Can\'t run a 4B+ model locally like Qwen3, Gemma3, or DeepSeek R1? Use Jan with an OpenRouter model, many are free!')}
             </p>
             <div class="mb-6">
               <ProviderSelectionPanel

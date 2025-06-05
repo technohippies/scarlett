@@ -181,14 +181,22 @@ async function lmStudioEmbed(
   }
 }
 
-// Test connection - Reuse chat/completions or a dedicated endpoint if available
+// Test connection - Use appropriate endpoint for each function type
 async function testConnection(
   config: LLMConfig,
   funcType: 'LLM' | 'Embedding' | 'TTS'
 ): Promise<void> {
   const baseUrl = config.baseUrl || DEFAULT_LMSTUDIO_URL;
   const validatedBaseUrl = /^https?:\/\//.test(baseUrl) ? baseUrl : DEFAULT_LMSTUDIO_URL;
-  const apiUrl = funcType === 'TTS' ? `${validatedBaseUrl}/tts` : `${validatedBaseUrl}/api/v0/chat/completions`;
+  
+  let apiUrl: string;
+  if (funcType === 'TTS') {
+    apiUrl = `${validatedBaseUrl}/tts`;
+  } else if (funcType === 'Embedding') {
+    apiUrl = `${validatedBaseUrl}/api/v0/embeddings`;
+  } else {
+    apiUrl = `${validatedBaseUrl}/api/v0/chat/completions`;
+  }
 
   console.log(`[LMStudio testConnection] Testing ${funcType} at ${apiUrl}...`);
 
@@ -210,12 +218,13 @@ async function testConnection(
           'Content-Type': 'application/json',
           ...(config.apiKey ? { 'Authorization': `Bearer ${config.apiKey}` } : {})
         },
-        body: JSON.stringify({ text: testText, model: config.model }), // Re-added model parameter
+        body: JSON.stringify({ text: testText, model: config.model }),
         signal: controller.signal
       });
-    } else {
-      // Test LLM/Embedding by sending a minimal chat request
-      console.log("[LMStudio testConnection] POSTing minimal chat request to test LLM/Embedding");
+    } else if (funcType === 'Embedding') {
+      // Test Embedding by sending a sample text to embeddings endpoint
+      const testText = "Test embedding";
+      console.log(`[LMStudio testConnection] POSTing to embeddings endpoint with text: "${testText}"`);
       response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -223,7 +232,22 @@ async function testConnection(
           ...(config.apiKey ? { 'Authorization': `Bearer ${config.apiKey}` } : {})
         },
         body: JSON.stringify({
-          model: config.model, // Use the selected model for the test
+          model: config.model,
+          input: [testText]
+        }),
+        signal: controller.signal
+      });
+    } else {
+      // Test LLM by sending a minimal chat request
+      console.log("[LMStudio testConnection] POSTing minimal chat request to test LLM");
+      response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(config.apiKey ? { 'Authorization': `Bearer ${config.apiKey}` } : {})
+        },
+        body: JSON.stringify({
+          model: config.model,
           messages: [{ role: "user", content: "Test" }],
           max_tokens: 1
         }),
@@ -252,8 +276,22 @@ async function testConnection(
         console.error("[LMStudio testConnection] TTS test failed: Received empty or non-audio response.");
         throw new Error('Received empty or non-audio response from TTS endpoint.');
       }
+    } else if (funcType === 'Embedding') {
+      // For Embedding, validate the response structure
+      try {
+        const data = await response.json();
+        if (data?.object === 'list' && Array.isArray(data?.data) && data.data.length > 0 && data.data[0]?.embedding) {
+          console.log(`[LMStudio testConnection] Embedding test successful: Received embedding with ${data.data[0].embedding.length} dimensions.`);
+        } else {
+          console.error("[LMStudio testConnection] Embedding test failed: Invalid response structure.", data);
+          throw new Error('Received invalid embedding response structure.');
+        }
+      } catch (parseError) {
+        console.error("[LMStudio testConnection] Embedding test failed: Could not parse response as JSON.", parseError);
+        throw new Error('Could not parse embedding response as JSON.');
+      }
     } else {
-      // For LLM/Embedding, just log success
+      // For LLM, just log success
       console.log(`[LMStudio testConnection] ${funcType} test successful.`);
     }
 

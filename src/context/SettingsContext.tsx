@@ -41,6 +41,27 @@ const EMBEDDING_KEYWORDS = [
     // Add other relevant keywords or model name fragments here if needed
 ];
 
+// Modern LLM keywords prioritizing latest model versions
+const RECOMMENDED_LLM_KEYWORDS = [
+    // Prioritize newest model families
+    'qwen3',       // Latest Qwen family
+    'gemma3',      // Latest Gemma family
+    'gemma-3',     // Alternative naming
+    'qwen-3',      // Alternative naming
+    // Include latest DeepSeek models
+    'deepseek-r1', // Latest DeepSeek reasoning model
+    'deepseek-v3', // Latest DeepSeek v3
+    // Include QwQ reasoning model
+    'qwq',
+    // Fallback to qwen2.5 (still relatively recent)
+    'qwen2.5',
+    'qwen-2.5',
+    // Only include gemma2 for larger models
+    'gemma2:27b',
+    'gemma-2-27b',
+    // Exclude older versions like qwen2:7b, gemma:7b, etc.
+];
+
 // --- Define Provider Options Here ---
 const llmProviderOptions: ProviderOption[] = [
     { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/ollama.png' },
@@ -593,7 +614,30 @@ export const SettingsProvider: ParentComponent = (props) => {
                 EMBEDDING_KEYWORDS.some(keyword => model.id.toLowerCase().includes(keyword))
             );
             remoteModels = []; // No remote embedding models assumed
-        } 
+        } else if (funcType === 'LLM' && provider.id === 'jan') {
+            // Filter Jan LLM models to only show modern recommended models
+            const modernModels = (model: ModelOption) => {
+                const id = model.id.toLowerCase();
+                const name = model.name.toLowerCase();
+                
+                // Only include Qwen3, Gemma3, and latest DeepSeek models
+                return (
+                    // Qwen3 models only
+                    id.includes('qwen3') || name.includes('qwen3') ||
+                    // Gemma3 models only  
+                    id.includes('gemma3') || name.includes('gemma3') || id.includes('gemma-3') || name.includes('gemma-3') ||
+                    // Latest DeepSeek models (R1, V3, and specific new ones)
+                    id.includes('deepseek-r1') || name.includes('deepseek-r1') ||
+                    id.includes('deepseek-v3') || name.includes('deepseek-v3') ||
+                    id.includes('deepseek-prover-v2') || name.includes('deepseek-prover-v2') ||
+                    // QwQ models
+                    id.includes('qwq') || name.includes('qwq')
+                );
+            };
+            
+            localModels = localModels.filter(modernModels);
+            remoteModels = remoteModels.filter(modernModels);
+        }
         console.log(`[SettingsContext filterModels] Filtered models for ${funcType}. Local: ${localModels.length}, Remote: ${remoteModels.length}`);
         return { localModels, remoteModels };
     };

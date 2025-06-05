@@ -7,12 +7,50 @@ import { userConfigurationStorage } from '../../services/storage/storage';
 import type { FunctionConfig } from '../../services/storage/types';
 import { getLLMDistractorsPrompt, validateDistractorLanguage } from '../../services/llm/prompts/exercises';
 import { ollamaChat } from '../../services/llm/providers/ollama/chat'; // Assuming dynamicChat might be simplified or replaced
+import { janChat } from '../../services/llm/providers/jan/chat';
+import { LMStudioProvider } from '../../services/llm/providers/lmstudio';
 import type { LLMConfig, LLMChatResponse, LLMProviderId, ChatMessage } from '../../services/llm/types';
 import { lookup } from '../../shared/languages';
 
 // Moved from message-handlers.ts
 function getFullLanguageName(code: string): string {
     return lookup(code).fullName;
+}
+
+// Helper function to convert LM Studio streaming to non-streaming for distractor generation
+async function lmStudioChatNonStream(messages: ChatMessage[], config: LLMConfig): Promise<LLMChatResponse> {
+    // LM Studio only has streaming, so we need to collect all chunks into a single response
+    const generator = LMStudioProvider.chat(messages, config) as AsyncGenerator<any>;
+    let fullContent = '';
+    
+    for await (const part of generator) {
+        if (part.type === 'content') {
+            fullContent += part.content;
+        } else if (part.type === 'error') {
+            throw new Error(part.error);
+        }
+    }
+    
+    // Convert to standard LLMChatResponse format
+    return {
+        id: `chatcmpl-${Date.now()}`,
+        object: 'chat.completion',
+        created: Math.floor(Date.now() / 1000),
+        model: config.model,
+        choices: [{
+            index: 0,
+            message: {
+                role: 'assistant',
+                content: fullContent
+            },
+            finish_reason: 'stop'
+        }],
+        usage: {
+            prompt_tokens: 0, // LM Studio doesn't provide token counts
+            completion_tokens: 0,
+            total_tokens: 0
+        }
+    };
 }
 
 // Moved and potentially simplified from message-handlers.ts
@@ -39,6 +77,10 @@ async function dynamicChatForDistractors(messages: ChatMessage[], config: Functi
     switch (providerId) {
         case 'ollama':
             return ollamaChat(messages, chatConfig);
+        case 'jan':
+            return janChat(messages, chatConfig) as Promise<LLMChatResponse>;
+        case 'lmstudio':
+            return lmStudioChatNonStream(messages, chatConfig);
         // Add other cases if generateLLMDistractors directly supported other providers
         // For now, matching the structure it seemed to imply.
         default:

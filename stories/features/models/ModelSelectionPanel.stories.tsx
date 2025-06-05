@@ -17,9 +17,18 @@ const mockJanLocalModels: ModelOption[] = [
     { id: 'jan-local-bge-base', name: 'BGE Base EN v1.5 (Local)' }, // Embedding
 ];
 const mockJanRemoteModels: ModelOption[] = [
+    // Recommended models (would be shown)
+    { id: 'google/gemma-2-2b-it', name: 'Gemma 2 2B Instruct (Remote)' },
+    { id: 'google/gemma-2-9b-it', name: 'Gemma 2 9B Instruct (Remote)' },
+    { id: 'deepseek-ai/deepseek-coder-6.7b-instruct', name: 'DeepSeek Coder 6.7B Instruct (Remote)' },
+    { id: 'deepseek-ai/deepseek-llm-7b-chat', name: 'DeepSeek LLM 7B Chat (Remote)' },
+    { id: 'qwen/qwen2.5-7b-instruct', name: 'Qwen 2.5 7B Instruct (Remote)' },
+    { id: 'qwen/qwen2.5-14b-instruct', name: 'Qwen 2.5 14B Instruct (Remote)' },
+    { id: 'qwq/qwq-32b-preview', name: 'QwQ 32B Preview (Remote)' },
+    // Non-recommended models (would be filtered out)
     { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo (Remote)' },
     { id: 'mistralai/mixtral-8x7b', name: 'Mixtral 8x7B (Remote)' },
-     { id: 'jan-remote-llama-8b', name: 'Llama3 8B Instruct (Remote)' },
+    { id: 'jan-remote-llama-8b', name: 'Llama3 8B Instruct (Remote)' },
 ];
 
 // --- Story Definition ---
@@ -169,6 +178,30 @@ export const JanSuccessLLM = {
         // For Jan LLM, show local non-embedding models + remote models
         fetchedModels: mockJanLocalModels.filter(m => !m.id.includes('bge')),
         remoteModels: mockJanRemoteModels,
+    },
+    render: BaseRender,
+};
+
+// Story showing filtered Jan models (simulating the SettingsContext filtering)
+export const JanFilteredLLM = {
+    args: {
+        functionName: 'LLM',
+        selectedProvider: mockJanProvider,
+        fetchStatus: 'success',
+        showSpinner: false,
+        fetchError: null,
+        // Simulate our SettingsContext filtering - only show recommended models
+        fetchedModels: mockJanLocalModels.filter(m => 
+            !m.id.includes('bge') && // Remove embeddings
+            ['gemma', 'deepseek', 'qwq', 'qwen'].some(keyword => 
+                m.id.toLowerCase().includes(keyword) || m.name.toLowerCase().includes(keyword)
+            )
+        ),
+        remoteModels: mockJanRemoteModels.filter(m => 
+            ['gemma', 'deepseek', 'qwq', 'qwen'].some(keyword => 
+                m.id.toLowerCase().includes(keyword) || m.name.toLowerCase().includes(keyword)
+            )
+        ),
     },
     render: BaseRender,
 };

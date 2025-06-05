@@ -1,5 +1,7 @@
 import type { FunctionConfig } from '../storage/types'; // Import FunctionConfig
 import { loadJanModel } from './providers/jan'; // Import the Jan model loading function
+import { LMStudioProvider } from './providers/lmstudio'; // Import LM Studio provider for embeddings
+import type { LLMConfig } from './types'; // Import LLMConfig type for provider calls
 // import type { LLMProviderId } from './types'; // Keep this for casting if needed -- Removed as unused
 
 // REMOVED hardcoded config
@@ -142,10 +144,41 @@ export async function getEmbedding(text: string, config: FunctionConfig): Promis
           throw new Error('Invalid response format from Jan embedding API.');
         }
       }
-      case 'lmstudio':
-        // TODO: Implement LMStudio embedding logic
-        console.error(`[getEmbedding] LMStudio embedding provider not yet implemented.`);
-        throw new Error('LMStudio embedding provider not yet implemented.');
+      case 'lmstudio': {
+        // Use the LM Studio provider implementation
+        console.log(`[getEmbedding LMStudio] Generating embedding for model ${modelId}...`);
+        
+        // Convert FunctionConfig to LLMConfig format expected by provider
+        const llmConfig: LLMConfig = {
+          provider: 'lmstudio',
+          model: modelId,
+          baseUrl: baseUrl!,
+          apiKey: config.apiKey ?? undefined,
+          stream: false,
+          options: {}
+        };
+        
+        try {
+          const response = await LMStudioProvider.embed!(text, llmConfig);
+          
+          if (response.data && Array.isArray(response.data) && response.data.length > 0 && response.data[0].embedding && Array.isArray(response.data[0].embedding)) {
+            const embedding = response.data[0].embedding;
+            const dimension = embedding.length;
+            // Embedding successful
+            return {
+                embedding: embedding,
+                modelName: modelId,
+                dimension: dimension
+            };
+          } else {
+            console.warn('[getEmbedding LMStudio] Invalid response format from LM Studio embedding API:', response);
+            throw new Error('Invalid response format from LM Studio embedding API.');
+          }
+        } catch (providerError) {
+          console.error(`[getEmbedding LMStudio] LM Studio provider error:`, providerError);
+          throw new Error(`LM Studio embedding error: ${providerError instanceof Error ? providerError.message : String(providerError)}`);
+        }
+      }
       default:
         console.error(`[getEmbedding] Unsupported embedding provider: ${providerId}`);
         throw new Error(`Unsupported embedding provider: ${providerId}`);
