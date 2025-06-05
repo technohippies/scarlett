@@ -3,6 +3,7 @@ import { _ollamaChatStream } from './providers/ollama/chat'; // Import specific 
 import { _janChatStream } from './providers/jan/chat'; // Import specific stream function
 import { ollamaChat } from './providers/ollama/chat';
 import { janChat } from './providers/jan/chat';
+import { LMStudioProvider } from './providers/lmstudio'; // Import LM Studio provider
 // Import other provider chat functions as they are created/verified
 // import { lmStudioChat } from './providers/lmstudio/chat';
 
@@ -25,6 +26,80 @@ import { userConfigurationStorage } from '../storage/storage'; // Import userCon
 import { lookup } from '../../shared/languages'; // Use centralized language lookup
 
 const baseSystemPrompt = personality.system;
+
+// Helper function to convert LM Studio streaming to non-streaming
+async function lmStudioChatNonStream(messages: ChatMessage[], config: LLMConfig): Promise<LLMChatResponse> {
+    // Filter out empty assistant messages and ensure proper role alternation for LM Studio
+    const filteredMessages = messages.filter(msg => {
+        // Keep all user messages and system messages
+        if (msg.role === 'user' || msg.role === 'system') return true;
+        // Only keep assistant messages that have content
+        if (msg.role === 'assistant') return msg.content && msg.content.trim() !== '';
+        return true;
+    });
+    
+    // Ensure the conversation doesn't have consecutive messages from the same role
+    const cleanMessages: ChatMessage[] = [];
+    let lastRole: string | null = null;
+    
+    for (const msg of filteredMessages) {
+        // Always keep system messages
+        if (msg.role === 'system') {
+            cleanMessages.push(msg);
+            continue;
+        }
+        
+        // Skip consecutive messages from the same role
+        if (msg.role === lastRole) {
+            continue;
+        }
+        
+        cleanMessages.push(msg);
+        lastRole = msg.role;
+    }
+    
+    // Ensure conversation starts with user message after system
+    // Find the first non-system message
+    let firstNonSystemIndex = cleanMessages.findIndex(msg => msg.role !== 'system');
+    if (firstNonSystemIndex !== -1 && cleanMessages[firstNonSystemIndex].role === 'assistant') {
+        cleanMessages.splice(firstNonSystemIndex, 1);
+    }
+    
+    console.log(`[LMStudio Non-Stream] Filtered messages: ${messages.length} -> ${cleanMessages.length}`);
+    
+    // LM Studio only has streaming, so we need to collect all chunks into a single response
+    const generator = LMStudioProvider.chat(cleanMessages, config) as AsyncGenerator<any>;
+    let fullContent = '';
+    
+    for await (const part of generator) {
+        if (part.type === 'content') {
+            fullContent += part.content;
+        } else if (part.type === 'error') {
+            throw new Error(part.error);
+        }
+    }
+    
+    // Convert to standard LLMChatResponse format
+    return {
+        id: `chatcmpl-${Date.now()}`,
+        object: 'chat.completion',
+        created: Math.floor(Date.now() / 1000),
+        model: config.model,
+        choices: [{
+            index: 0,
+            message: {
+                role: 'assistant',
+                content: fullContent
+            },
+            finish_reason: 'stop'
+        }],
+        usage: {
+            prompt_tokens: 0, // LM Studio doesn't provide token counts
+            completion_tokens: 0,
+            total_tokens: 0
+        }
+    };
+}
 
 interface UnifiedChatOptions {
   // basePersonality can be overridden if needed, otherwise defaults to personality.json
@@ -358,9 +433,9 @@ export async function getAiChatResponse(
       case 'jan':
         response = await janChat(messagesForLLM, providerConfig) as LLMChatResponse;
         break;
-      // case 'lmstudio':
-      //   // response = await lmStudioChat(messagesForLLM, providerConfig);
-      //   throw new Error('LM Studio provider not yet implemented in llmChatService.');
+      case 'lmstudio':
+        response = await lmStudioChatNonStream(messagesForLLM, providerConfig);
+        break;
       default:
         console.error(`Unsupported LLM provider: ${providerConfig.provider}`);
         throw new Error(`Unsupported LLM provider: ${providerConfig.provider}`);
@@ -426,15 +501,16 @@ export async function* getAiChatResponseStream(
         streamProviderProcessed = true;
         console.log('[llmChatService Stream] Jan stream iteration complete.');
         break;
-      // case 'lmstudio':
-      //   // When lmStudioChatStream is available and imported:
-      //   // for await (const part of lmStudioChatStream(messagesForLLM, streamingProviderConfig)) {
-      //   //   yield part;
-      //   // }
-      //   // streamProviderProcessed = true;
-      //   // break;
-      //   yield { type: 'error', error: 'LM Studio streaming not yet implemented in llmChatService.' };
-      //   return;
+      case 'lmstudio':
+        console.log('[llmChatService Stream] About to iterate LM Studio stream...');
+        for await (const part of LMStudioProvider.chat(messagesForLLM, streamingProviderConfig) as AsyncGenerator<StreamedChatResponsePart>) {
+          console.log('[llmChatService Stream] LM Studio part received:', JSON.stringify(part));
+          yield part;
+          console.log('[llmChatService Stream] LM Studio part yielded.');
+        }
+        streamProviderProcessed = true;
+        console.log('[llmChatService Stream] LM Studio stream iteration complete.');
+        break;
       default:
         console.error(`Unsupported LLM provider for streaming: ${streamingProviderConfig.provider}`);
         yield { type: 'error', error: `Unsupported LLM provider for streaming: ${streamingProviderConfig.provider}` };

@@ -66,7 +66,7 @@ const RECOMMENDED_LLM_KEYWORDS = [
 const llmProviderOptions: ProviderOption[] = [
     { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/ollama.png' },
     { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/jan.png' },
-    { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/lmstudio.png' },
+    { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'http://127.0.0.1:1234', logoUrl: '/images/lmstudio.png' },
 ];
 const embeddingProviderOptions: ProviderOption[] = [...llmProviderOptions]; // Reuse for now
 const ttsProviderOptions: ProviderOption[] = []; // Placeholder

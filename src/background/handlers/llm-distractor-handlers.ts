@@ -17,6 +17,15 @@ function getFullLanguageName(code: string): string {
     return lookup(code).fullName;
 }
 
+// Helper function to sanitize LLM responses for JSON parsing
+function sanitizeForJson(text: string): string {
+    return text
+        .replace(/['']/g, "'")  // Smart single quotes → ASCII apostrophe
+        .replace(/[""]/g, '"')  // Smart double quotes → ASCII quotes
+        .replace(/…/g, "...")   // Ellipsis → three dots
+        .trim();
+}
+
 // Helper function to convert LM Studio streaming to non-streaming for distractor generation
 async function lmStudioChatNonStream(messages: ChatMessage[], config: LLMConfig): Promise<LLMChatResponse> {
     // LM Studio only has streaming, so we need to collect all chunks into a single response
@@ -197,8 +206,13 @@ export function registerLlmDistractorHandlers(messaging: ReturnType<typeof defin
                 console.log("[LlmDistractorHandlers] Raw LLM content for distractors:", rawContent);
 
                 rawContent = rawContent.replace(/^```json\s*|```$/g, '').trim();
+                
+                // Sanitize the content to handle smart quotes and other Unicode characters
+                const sanitizedContent = sanitizeForJson(rawContent);
+                console.log("[LlmDistractorHandlers] Sanitized content for JSON parsing:", sanitizedContent);
+                
                 try {
-                    const parsedJson = JSON.parse(rawContent);
+                    const parsedJson = JSON.parse(sanitizedContent);
                     if (Array.isArray(parsedJson) && parsedJson.every(item => typeof item === 'string')) {
                         console.log("[LlmDistractorHandlers] Extracted distractors:", parsedJson);
                         

@@ -18,7 +18,7 @@ async function listModels(config: Pick<LLMConfig, 'baseUrl'>): Promise<ModelInfo
   if (baseUrl !== validatedBaseUrl) {
     console.warn(`[LMStudio Provider] Invalid baseUrl "${baseUrl}" provided for REST API. Using default: ${DEFAULT_LMSTUDIO_URL}`);
   }
-  const url = new URL('/api/v0/models', validatedBaseUrl).toString();
+  const url = new URL('/api/v0/models', validatedBaseUrl).toString(); // Use native LM Studio API
   console.log(`[LMStudio Provider] Fetching models from REST API: ${url}`);
   
   try {
@@ -58,8 +58,52 @@ async function* lmStudioChatStream(
 ): AsyncGenerator<StreamedChatResponsePart> {
   const baseUrl = config.baseUrl || DEFAULT_LMSTUDIO_URL;
   const validatedBaseUrl = /^https?:\/\//.test(baseUrl) ? baseUrl : DEFAULT_LMSTUDIO_URL;
-  const url = new URL('/api/v0/chat/completions', validatedBaseUrl).toString();
+  const url = new URL('/api/v0/chat/completions', validatedBaseUrl).toString(); // Use native LM Studio API
+  
+  // More robust message filtering for LM Studio
+  const cleanMessages: ChatMessage[] = [];
+  let lastRole: string | null = null;
+  
+  for (const msg of messages) {
+    // Always keep system messages
+    if (msg.role === 'system') {
+      cleanMessages.push(msg);
+      continue;
+    }
+    
+    // Skip empty assistant messages completely
+    if (msg.role === 'assistant' && (!msg.content || msg.content.trim() === '')) {
+      console.log('[LMStudio Provider] Skipping empty assistant message');
+      continue;
+    }
+    
+    // Skip consecutive messages from the same role
+    if (msg.role === lastRole) {
+      console.log(`[LMStudio Provider] Skipping consecutive message from same role: ${msg.role} ${msg.content.substring(0, 20)}...`);
+      continue;
+    }
+    
+    cleanMessages.push(msg);
+    lastRole = msg.role;
+  }
+  
+  // Ensure conversation starts with user message after system
+  // Find the first non-system message
+  let firstNonSystemIndex = cleanMessages.findIndex(msg => msg.role !== 'system');
+  if (firstNonSystemIndex !== -1 && cleanMessages[firstNonSystemIndex].role === 'assistant') {
+    console.log('[LMStudio Provider] Conversation starts with assistant message, removing it to ensure proper alternation');
+    cleanMessages.splice(firstNonSystemIndex, 1);
+  }
+  
+  // Revalidate the sequence after removal
+  const nonSystemMessages = cleanMessages.filter(msg => msg.role !== 'system');
+  if (nonSystemMessages.length > 0 && nonSystemMessages[0].role !== 'user') {
+    console.warn('[LMStudio Provider] Warning: Conversation still doesn\'t start with user message after filtering');
+  }
+  
   console.log(`[LMStudio Provider] Starting chat stream request to ${url} with model ${config.model}`);
+  console.log(`[LMStudio Provider] Filtered messages: ${messages.length} -> ${cleanMessages.length}`);
+  console.log('[LMStudio Provider] Final message structure:', cleanMessages.map(m => `${m.role}: ${m.content?.substring(0, 30)}...`));
 
   try {
     const response = await fetch(url, {
@@ -69,7 +113,7 @@ async function* lmStudioChatStream(
       },
       body: JSON.stringify({
         model: config.model,
-        messages: messages,
+        messages: cleanMessages,
         stream: true,
       }),
     });
@@ -103,19 +147,27 @@ async function* lmStudioChatStream(
 
         if (chunk.startsWith('data: ')) {
           const jsonStr = chunk.substring(6);
+          console.log('[LMStudio Provider] Raw chunk received:', chunk);
+          console.log('[LMStudio Provider] JSON string to parse:', jsonStr);
           if (jsonStr.trim() === '[DONE]') {
             console.log('[LMStudio Provider] Received [DONE] marker.');
             continue; 
           }
           try {
             const parsed = JSON.parse(jsonStr);
+            console.log('[LMStudio Provider] Parsed chunk:', JSON.stringify(parsed, null, 2));
             if (parsed.choices && parsed.choices[0]?.delta?.content) {
+              console.log('[LMStudio Provider] Yielding content:', parsed.choices[0].delta.content);
               yield { type: 'content', content: parsed.choices[0].delta.content };
+            } else {
+              console.log('[LMStudio Provider] No content found in chunk - choices:', parsed.choices?.[0]);
             }
           } catch (e: any) {
             console.error('[LMStudio Provider] Error parsing stream chunk:', e, 'Chunk:', jsonStr);
             yield { type: 'error', error: 'Error parsing stream data' };
           }
+        } else {
+          console.log('[LMStudio Provider] Non-data chunk received:', chunk);
         }
         boundary = buffer.indexOf('\n\n');
       } 
@@ -134,7 +186,7 @@ async function lmStudioEmbed(
 ): Promise<EmbeddingResponse> {
   const baseUrl = config.baseUrl || DEFAULT_LMSTUDIO_URL;
   const validatedBaseUrl = /^https?:\/\//.test(baseUrl) ? baseUrl : DEFAULT_LMSTUDIO_URL;
-  const url = new URL('/api/v0/embeddings', validatedBaseUrl).toString();
+  const url = new URL('/api/v0/embeddings', validatedBaseUrl).toString(); // Use native LM Studio API
   console.log(`[LMStudio Provider] Requesting embeddings from ${url} for model ${config.model}`);
 
   const inputText = Array.isArray(text) ? text : [text]; 

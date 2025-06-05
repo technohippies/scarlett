@@ -106,7 +106,7 @@ const availableProviders: ProviderOption[] = [ // Updated type
     {
       id: 'lmstudio',
       name: 'LM Studio',
-      defaultBaseUrl: 'ws://127.0.0.1:1234', // Default LM Studio WebSocket URL
+      defaultBaseUrl: 'http://127.0.0.1:1234', // Default LM Studio HTTP URL
       logoUrl: '/images/lmstudio.png' // Assuming logo path
     },
 ];
@@ -118,7 +118,7 @@ const availableLLMProviders: ProviderOption[] = availableProviders; // Reuse the
 const availableEmbeddingProviders: ProviderOption[] = [
     { id: 'ollama', name: 'Ollama', defaultBaseUrl: 'http://localhost:11434', logoUrl: '/images/ollama.png' },
     { id: 'jan', name: 'Jan', defaultBaseUrl: 'http://localhost:1337', logoUrl: '/images/jan.png' },
-    { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'ws://127.0.0.1:1234', logoUrl: '/images/lmstudio.png' },
+    { id: 'lmstudio', name: 'LM Studio', defaultBaseUrl: 'http://127.0.0.1:1234', logoUrl: '/images/lmstudio.png' },
 ];
 
 // Define available TTS Providers for Onboarding (Kokoro removed)
