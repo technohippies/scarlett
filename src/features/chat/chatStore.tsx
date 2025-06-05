@@ -339,14 +339,25 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           content: m.text_content
         }));
         console.log('[chatStore] historyForLLM:', historyForLLM);
+        
+        // Get the current thread's system prompt
+        const currentThread = state.threads.find(t => t.id === state.currentThreadId);
+        const threadSystemPrompt = currentThread?.systemPrompt || '';
+        
         // Dynamically instruct LLM to omit any romanization or pronunciation guides for the target language
         const langLabel = lookup(targetCode).fullName || targetCode || 'foreign language';
         const noRomanPrompt = `When including ${langLabel} text in your responses, do NOT include any romanization, phonetic transcriptions, or translations.`;
+        
+        // Combine thread system prompt with language instruction
+        const finalThreadPrompt = threadSystemPrompt 
+          ? `${threadSystemPrompt}\n\n[Current Thread Focus]\n${noRomanPrompt}`
+          : noRomanPrompt;
+        
         const stream = getAiChatResponseStream(
           historyForLLM as any,
           text,
           llmConfig,
-          { threadSystemPrompt: noRomanPrompt }
+          { threadSystemPrompt: finalThreadPrompt }
         ) as AsyncGenerator<StreamedChatResponsePart>;
         for await (const part of stream) {
           if (part.type === 'content') {
@@ -418,21 +429,32 @@ export const ChatProvider: ParentComponent<ChatProviderProps> = (props) => {
           const parsed = parseThinkingContent(full);
           const cleanContent = parsed.response_content || full;
           
-          const cleanMessage: Partial<ChatMessage> = {
-            id: placeholderId,
-            thread_id: aiPlaceholder.thread_id,
-            sender: aiPlaceholder.sender,
-            text_content: cleanContent, // Clean response content only (no thinking tokens)
-            tts_lang: aiPlaceholder.tts_lang,
-            // Add embedding data if available
-            ...(aiEmbeddingResult && {
-              [`embedding_${aiEmbeddingResult.dimension}`]: aiEmbeddingResult.embedding,
-              active_embedding_dimension: aiEmbeddingResult.dimension as 512 | 768 | 1024
-            })
-          };
-          
-          // Save only the clean message to database (no thinking content)
-          await messaging.sendMessage('addChatMessage', cleanMessage as ChatMessage);
+          // Only persist AI messages that have actual content
+          if (cleanContent && cleanContent.trim()) {
+            const cleanMessage: Partial<ChatMessage> = {
+              id: placeholderId,
+              thread_id: aiPlaceholder.thread_id,
+              sender: aiPlaceholder.sender,
+              text_content: cleanContent, // Clean response content only (no thinking tokens)
+              tts_lang: aiPlaceholder.tts_lang,
+              // Add embedding data if available
+              ...(aiEmbeddingResult && {
+                [`embedding_${aiEmbeddingResult.dimension}`]: aiEmbeddingResult.embedding,
+                active_embedding_dimension: aiEmbeddingResult.dimension as 512 | 768 | 1024
+              })
+            };
+            
+            // Save only the clean message to database (no thinking content)
+            await messaging.sendMessage('addChatMessage', cleanMessage as ChatMessage);
+            console.log('[chatStore] AI message persisted with content:', cleanContent.substring(0, 50) + '...');
+          } else {
+            console.warn('[chatStore] Skipping persistence of empty AI message');
+            // Remove the empty AI placeholder from local state if content is empty
+            const emptyIdx = state.messages.findIndex(m => m.id === placeholderId);
+            if (emptyIdx >= 0) {
+              setState('messages', msgs => msgs.filter((_, i) => i !== emptyIdx));
+            }
+          }
         } catch (e: any) {
           console.error('[chatStore] failed to persist AI message', e);
         }
